@@ -210,6 +210,12 @@
 
   load().then(() => { scene = "select"; });
   requestAnimationFrame(frame);
+  // 화면 밖 버튼(세로 화면용 점프/슬라이드 버튼)에서 쓰는 입력
+  RD.press = (action, down) => {
+    if (scene !== "play" || !run) return;
+    if (action === "jump") { run.input.jumpHeld = down; if (down) run.jump(); }
+    else run.input.slideHeld = down;
+  };
   RD.debugState = () => ({ scene, run });
   RD.startRun = (i) => { selected = i; startRun(); };
 })();
