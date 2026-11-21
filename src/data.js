@@ -49,6 +49,7 @@ RD.CHARACTERS = [
     skill: "돌진",
     desc: "빠르게 돌진하며 장애물을 부순다",
     illust: "illust_fox",
+    attack: { name: "검 베기", type: "melee", cd: 0.35, dmg: 2, range: 130, color: "#bfe4ff" },
   },
   {
     id: "cat",
@@ -56,6 +57,7 @@ RD.CHARACTERS = [
     skill: "자석 마법",
     desc: "화면의 아이템을 모두 끌어당긴다",
     illust: "illust_cat",
+    attack: { name: "마법 구슬", type: "shot", cd: 0.45, dmg: 1, pierce: true, color: "#c58aff" },
   },
   {
     id: "bear",
@@ -63,6 +65,7 @@ RD.CHARACTERS = [
     skill: "거대화",
     desc: "몸이 커져서 장애물을 부순다",
     illust: "illust_bear",
+    attack: { name: "망치 내려치기", type: "melee", cd: 0.55, dmg: 3, range: 165, color: "#ffb347" },
   },
   {
     id: "rabbit",
@@ -70,6 +73,7 @@ RD.CHARACTERS = [
     skill: "3단 점프",
     desc: "점프를 세 번까지 할 수 있고 점수가 2배",
     illust: "illust_rabbit",
+    attack: { name: "단검 던지기", type: "shot", cd: 0.25, dmg: 1, color: "#e6ecf2" },
   },
   {
     id: "owl",
@@ -77,8 +81,17 @@ RD.CHARACTERS = [
     skill: "비행",
     desc: "점프를 누르고 있으면 하늘을 난다",
     illust: "illust_owl",
+    attack: { name: "바람 깃털", type: "shot", cd: 0.4, dmg: 1, spread: true, color: "#bff5d8" },
   },
 ];
+
+// 몬스터: 부딪히면 체력이 깎이고, 공격하거나 위에서 밟으면 쓰러뜨린다.
+RD.MONSTERS = {
+  slime: { hp: 1, w: 44, h: 34, score: 80, coins: 2, minLevel: 0 }, // 제자리에서 통통 뛴다
+  mushroom: { hp: 2, w: 44, h: 52, score: 120, coins: 3, speed: 70, minLevel: 0 }, // 걸어온다
+  bat: { hp: 1, w: 46, h: 30, score: 100, coins: 2, speed: 50, fly: true, minLevel: 0.1 }, // 머리 높이로 날아온다
+  golem: { hp: 4, w: 70, h: 84, score: 300, coins: 8, speed: 30, minLevel: 0.35 }, // 단단하고 크다
+};
 
 RD.IMAGES = [
   "bg_forest", "ground",

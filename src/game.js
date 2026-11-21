@@ -1,6 +1,7 @@
 // 게임 진행: 달리기, 점프/슬라이드, 장애물, 아이템, 스킬, 펫
 (function () {
   const C = RD.CONFIG;
+  const overlap = (a, b) => a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
 
   class Run {
     constructor(charId) {
@@ -26,7 +27,16 @@
       this.effects = [];
       this.nextX = 900;
       this.chunkCount = 0;
-      this.input = { jumpHeld: false, slideHeld: false };
+      this.input = { jumpHeld: false, slideHeld: false, attackHeld: false };
+      this.char = RD.CHARACTERS.find((c) => c.id === charId);
+      this.monsters = [];
+      this.shots = []; // 날아가는 공격 (마법 구슬, 단검, 깃털)
+      this.slashes = []; // 근접 공격 효과
+      this.attackCd = 0;
+      this.attackAnim = 0;
+      this.kills = 0;
+      this.shake = 0;
+      this.curSpeed = C.startSpeed;
     }
 
     get camX() { return this.player.x - C.playerScreenX; }
@@ -46,6 +56,116 @@
         p.sliding = false;
         if (p.jumps > 1) this.puff(p.x, p.y, "#ffffff");
       }
+    }
+
+    attack() {
+      if (this.over || this.attackCd > 0) return;
+      const a = this.char.attack, p = this.player, s = p.scale;
+      this.attackCd = a.cd;
+      this.attackAnim = 0.18;
+      if (a.type === "melee") {
+        const range = a.range * s;
+        const bear = this.charId === "bear";
+        // 판정은 이펙트가 보이는 동안 계속 유지된다 (updateAttacks 에서 처리)
+        this.slashes.push({ x: p.x, y: p.y - 38 * s, r: range, dmg: a.dmg, hit: [], color: a.color, t: 0, life: bear ? 0.3 : 0.2, ground: bear });
+        if (bear) { this.shake = 0.18; this.puff(p.x + range * 0.7, C.groundY, "#d8b48a"); }
+      } else {
+        const y = p.y - 52 * s; // 박쥐(머리 높이)도 맞도록
+        const mk = (vy) => this.shots.push({ x: p.x + 20, y, vx: 950, vy, dmg: a.dmg, pierce: !!a.pierce, color: a.color, t: 0, life: 0.75, hit: [] });
+        if (a.spread) { mk(-170); mk(0); mk(170); } else mk(0);
+      }
+    }
+
+    // ---------- 몬스터 ----------
+    spawnMonster(type, x) {
+      const def = RD.MONSTERS[type];
+      const y = def.fly ? C.groundY - 58 : C.groundY;
+      this.monsters.push({ type, x, y, baseY: y, vy: 0, hp: def.hp, t: Math.random() * 2, flash: 0, dead: false });
+    }
+
+    monsterBox(m) {
+      const def = RD.MONSTERS[m.type];
+      return { x: m.x - def.w / 2, y: m.y - def.h, w: def.w, h: def.h };
+    }
+
+    hitMonster(m, dmg) {
+      if (m.dead) return;
+      m.hp -= dmg;
+      m.flash = 0.12;
+      m.x += 12; // 살짝 밀려남
+      this.effects.push({ type: "spark", x: m.x, y: m.y - 20, t: 0, life: 0.25 });
+      if (m.hp > 0) return;
+      const def = RD.MONSTERS[m.type];
+      m.dead = { vx: 260, vy: -650, rot: 0 };
+      this.kills++;
+      const mult = this.charId === "rabbit" && this.skill.active > 0 ? 2 : 1;
+      this.score += def.score * mult;
+      this.effects.push({ type: "text", x: m.x, y: m.y - def.h - 20, text: "+" + def.score * mult, color: "#ffe66b", t: 0, life: 0.8 });
+      this.puff(m.x, m.y - def.h / 2, "#ffffff");
+      // 코인을 떨어뜨린다
+      for (let i = 0; i < def.coins; i++) {
+        this.items.push({ x: m.x + 30 + i * 34, y: C.groundY - 40 - (i % 2) * 24, type: def.coins >= 8 && i === 0 ? "bigcoin" : "coin", taken: false });
+      }
+    }
+
+    updateMonsters(dt) {
+      const p = this.player;
+      for (const m of this.monsters) {
+        m.t += dt;
+        m.flash = Math.max(0, m.flash - dt);
+        if (m.dead) {
+          m.dead.vy += C.gravity * 0.6 * dt;
+          m.x += m.dead.vx * dt;
+          m.y += m.dead.vy * dt;
+          m.dead.rot += dt * 10;
+          continue;
+        }
+        const def = RD.MONSTERS[m.type];
+        if (m.x - p.x > C.width) continue; // 화면에 들어오기 전에는 가만히
+        if (def.speed) m.x -= def.speed * dt;
+        if (def.fly) m.y = m.baseY + Math.sin(m.t * 4) * 12;
+        if (m.type === "slime") {
+          m.vy += C.gravity * dt;
+          m.y += m.vy * dt;
+          if (m.y >= C.groundY) { m.y = C.groundY; m.vy = 0; }
+          if (m.y >= C.groundY && (m.hopT = (m.hopT || 0) + dt) > 1.1) { m.hopT = 0; m.vy = -620; }
+        }
+      }
+      this.monsters = this.monsters.filter((m) => m.y < C.height + 200 && m.x > this.camX - 200);
+    }
+
+    updateAttacks(dt) {
+      this.attackCd = Math.max(0, this.attackCd - dt);
+      this.attackAnim = Math.max(0, this.attackAnim - dt);
+      if (this.input.attackHeld) this.attack(); // 누르고 있으면 연속 공격
+      for (const sh of this.shots) {
+        sh.t += dt;
+        sh.x += (sh.vx + this.curSpeed) * dt;
+        sh.y += sh.vy * dt;
+        for (const m of this.monsters) {
+          if (m.dead || sh.hit.includes(m)) continue;
+          if (overlap({ x: sh.x - 18, y: sh.y - 18, w: 36, h: 36 }, this.monsterBox(m))) {
+            this.hitMonster(m, sh.dmg);
+            sh.hit.push(m);
+            if (!sh.pierce) { sh.t = sh.life; break; }
+          }
+        }
+      }
+      this.shots = this.shots.filter((sh) => sh.t < sh.life);
+      const p = this.player;
+      for (const sl of this.slashes) {
+        sl.t += dt;
+        sl.x = p.x; // 캐릭터를 따라간다
+        sl.y = p.y - 38 * p.scale;
+        const box = { x: p.x - 10, y: p.y - 100 * p.scale, w: sl.r + 10, h: 110 * p.scale };
+        for (const m of this.monsters) {
+          if (m.dead || sl.hit.includes(m) || !overlap(box, this.monsterBox(m))) continue;
+          sl.hit.push(m);
+          this.hitMonster(m, sl.dmg);
+        }
+      }
+      this.slashes = this.slashes.filter((sl) => sl.t < sl.life);
+      this.shake = Math.max(0, this.shake - dt);
     }
 
     // ---------- 맵 생성 ----------
@@ -78,8 +198,8 @@
       let len;
 
       const pick = () => {
-        const kinds = ["flat", "pillar", "log", "gap"];
-        if (level > 0.3) kinds.push("pillar2", "logpillar", "gap");
+        const kinds = ["flat", "pillar", "log", "gap", "mob", "mob", "bat"];
+        if (level > 0.3) kinds.push("pillar2", "logpillar", "gap", "mobpillar", "mob2");
         return kinds[Math.floor(Math.random() * kinds.length)];
       };
       const kind = n < 2 ? "flat" : pick();
@@ -116,6 +236,32 @@
           this.itemRow(x + 120, C.groundY - 22, 6, 46, "coin");
           this.itemArc(x + 570, 260, 150, 7, "star");
           break;
+        case "mob": {
+          len = 600;
+          const pool = ["slime", "mushroom"];
+          if (level >= RD.MONSTERS.golem.minLevel) pool.push("golem");
+          this.spawnMonster(pool[Math.floor(Math.random() * pool.length)], x + 380);
+          this.itemRow(x + 40, C.groundY - 40, 5, 48);
+          break;
+        }
+        case "mob2":
+          len = 700;
+          this.spawnMonster("mushroom", x + 320);
+          this.spawnMonster("slime", x + 480);
+          this.spawnMonster("bat", x + 640);
+          this.itemRow(x + 40, C.groundY - 40, 4, 48, "star");
+          break;
+        case "bat":
+          len = 560;
+          this.spawnMonster("bat", x + 360);
+          this.itemRow(x + 160, C.groundY - 22, 6, 46, "coin");
+          break;
+        case "mobpillar":
+          len = 700;
+          this.obstacles.push({ type: "stone", x: x + 200 });
+          this.itemArc(x + 230, 240, 150, 6, "star");
+          this.spawnMonster("mushroom", x + 560);
+          break;
         case "gap": {
           len = 560;
           const gw = 130 + level * 90 + Math.random() * 40;
@@ -146,6 +292,7 @@
         p.y = Math.min(p.y + p.vy * dt, C.height + 200);
         if (this.groundAt(p.x) && p.y > C.groundY && p.y < C.groundY + 40) { p.y = C.groundY; p.vy = 0; }
         this.updateEffects(dt);
+        this.updateMonsters(dt);
         return;
       }
 
@@ -206,6 +353,9 @@
       this.items = this.items.filter((it) => it.x > cut && !it.gone);
       while (this.ground.length > 1 && this.ground[0][1] < cut) this.ground.shift();
 
+      this.curSpeed = speed;
+      this.updateMonsters(dt);
+      this.updateAttacks(dt);
       this.collide(dt);
       this.updatePet(dt);
       this.updateEffects(dt);
@@ -235,7 +385,6 @@
     collide() {
       const p = this.player;
       const hb = this.hitbox();
-      const overlap = (a, b) => a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
 
       for (const o of this.obstacles) {
         if (o.flying || o.passed) continue;
@@ -251,6 +400,28 @@
           p.invuln = C.hitInvuln;
           p.hurtTimer = 0.4;
           o.passed = true;
+          this.effects.push({ type: "flash", t: 0, life: 0.25 });
+        }
+      }
+
+      // 몬스터: 위에서 밟으면 쓰러뜨리고, 옆에서 부딪히면 다친다
+      for (const m of this.monsters) {
+        if (m.dead) continue;
+        const box = this.monsterBox(m);
+        if (!overlap(hb, box)) continue;
+        const smash = this.boost > 0 || (this.skill.active > 0 && ["fox", "bear"].includes(this.charId));
+        const prevBottom = p.y - p.vy * (1 / 60);
+        if (p.vy > 0 && prevBottom <= box.y + 16) {
+          this.hitMonster(m, 2);
+          p.vy = -620;
+          p.jumps = 1;
+          this.floatText("밟기!", "#9fffb0");
+        } else if (smash) {
+          this.hitMonster(m, 99);
+        } else if (p.invuln <= 0) {
+          this.hp -= C.hitDamage;
+          p.invuln = C.hitInvuln;
+          p.hurtTimer = 0.4;
           this.effects.push({ type: "flash", t: 0, life: 0.25 });
         }
       }

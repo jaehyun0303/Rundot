@@ -207,6 +207,79 @@
     for (let i = 0; i < add.length; i += 2) g.fillRect(add[i], add[i + 1], 1, 1);
   }
 
+  // ---------- 몬스터 (32x32, 왼쪽을 보고 플레이어 쪽으로 온다) ----------
+  const MSIZE = 32;
+  const MON = {
+    // 초록 슬라임: frame 0 = 납작, 1 = 늘어남
+    slime(p, f, hurt) {
+      const body = hurt ? "#ffffff" : "#5fcf5a", dark = "#3f9a3c";
+      if (f % 2 === 0) {
+        p(5, 20, 22, 10, body); p(7, 17, 18, 3, body); p(10, 15, 12, 2, body);
+        p(7, 27, 18, 3, dark);
+        p(11, 21, 3, 3, OUTLINE); p(18, 21, 3, 3, OUTLINE); p(11, 21, 1, 1, "#fff"); p(18, 21, 1, 1, "#fff");
+        p(14, 26, 4, 1, OUTLINE); p(9, 17, 3, 2, "#c9f7b0");
+      } else {
+        p(8, 14, 16, 16, body); p(10, 11, 12, 3, body); p(12, 9, 8, 2, body);
+        p(9, 27, 14, 3, dark);
+        p(11, 17, 3, 3, OUTLINE); p(18, 17, 3, 3, OUTLINE); p(11, 17, 1, 1, "#fff"); p(18, 17, 1, 1, "#fff");
+        p(14, 23, 4, 1, OUTLINE); p(11, 12, 3, 2, "#c9f7b0");
+      }
+    },
+    // 독버섯: 빨간 갓, 화난 눈, 걷는 발
+    mushroom(p, f, hurt) {
+      const cap = hurt ? "#ffffff" : "#d8343c";
+      p(4, 6, 24, 8, cap); p(7, 3, 18, 3, cap); p(10, 1, 12, 2, cap);
+      p(8, 5, 4, 3, "#fff2e0"); p(18, 4, 3, 2, "#fff2e0"); p(22, 9, 3, 3, "#fff2e0"); p(5, 10, 2, 2, "#fff2e0");
+      p(4, 13, 24, 1, "#8f1f28");
+      p(9, 14, 14, 12, "#f0dcb8");
+      p(10, 17, 4, 1, OUTLINE); p(18, 17, 4, 1, OUTLINE); // 화난 눈썹
+      p(11, 18, 2, 3, OUTLINE); p(19, 18, 2, 3, OUTLINE);
+      p(13, 23, 6, 1, OUTLINE);
+      const step = f % 2 === 0 ? 0 : 2;
+      p(9 + step, 26, 5, 4, "#a06a3c"); p(18 - step, 26, 5, 4, "#a06a3c");
+    },
+    // 박쥐: 날개 위/아래
+    bat(p, f, hurt) {
+      const body = hurt ? "#ffffff" : "#6a4a9a", wing = hurt ? "#ffffff" : "#4b3270";
+      p(11, 12, 10, 9, body); p(12, 9, 2, 3, body); p(18, 9, 2, 3, body);
+      p(12, 14, 2, 2, "#ff4d5e"); p(18, 14, 2, 2, "#ff4d5e");
+      p(14, 18, 1, 2, "#fff"); p(17, 18, 1, 2, "#fff");
+      if (f % 2 === 0) {
+        p(2, 6, 9, 4, wing); p(4, 10, 7, 3, wing); p(21, 6, 9, 4, wing); p(21, 10, 7, 3, wing);
+      } else {
+        p(2, 17, 9, 4, wing); p(4, 14, 7, 3, wing); p(21, 17, 9, 4, wing); p(21, 14, 7, 3, wing);
+      }
+    },
+    // 돌 골렘: 크고 단단함, 이끼, 빛나는 룬 눈
+    golem(p, f, hurt) {
+      const st = hurt ? "#ffffff" : "#8a8f99", dk = "#5d626c";
+      p(7, 4, 18, 12, st); p(5, 7, 22, 7, st);
+      p(9, 4, 6, 2, "#5a8f3a"); p(19, 5, 4, 2, "#5a8f3a");
+      p(10, 9, 4, 3, "#59e0ff"); p(18, 9, 4, 3, "#59e0ff");
+      p(12, 13, 8, 2, dk);
+      p(4, 16, 24, 10, st); p(8, 18, 16, 6, dk); p(14, 19, 4, 4, "#59e0ff");
+      p(1, 15, 4, 11, st); p(27, 15, 4, 11, st);
+      const step = f % 2 === 0 ? 0 : 1;
+      p(7, 26 - step, 7, 4 + step, dk); p(18, 26 - (1 - step), 7, 4 + (1 - step), dk);
+    },
+  };
+
+  const mcache = {};
+  RD.MONSTER_SIZE = MSIZE;
+  RD.getMonsterFrame = function (type, frame, hurt) {
+    const key = type + frame + (hurt ? "h" : "");
+    if (!mcache[key]) {
+      const cv = document.createElement("canvas");
+      cv.width = cv.height = MSIZE;
+      const g = cv.getContext("2d");
+      const p = (x, y, w, h, col) => { g.fillStyle = col; g.fillRect(x, y, w, h); };
+      MON[type](p, frame, hurt);
+      outline(cv);
+      mcache[key] = cv;
+    }
+    return mcache[key];
+  };
+
   const cache = {};
   RD.SPRITE_SIZE = SIZE;
   RD.SPRITE_FEET = 29 + OY; // 발바닥이 있는 픽셀 줄

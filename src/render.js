@@ -106,6 +106,97 @@
     }
   }
 
+  function drawMonsters(g, run) {
+    const S = 3;
+    for (const m of run.monsters) {
+      const x = m.x - run.camX;
+      if (x < -100 || x > C.width + 100) continue;
+      const f = Math.floor(m.t * (m.type === "bat" ? 10 : 5)) % 2;
+      const frame = m.type === "slime" ? (m.y < C.groundY - 2 ? 1 : 0) : f;
+      const spr = RD.getMonsterFrame(m.type, frame, m.flash > 0);
+      const size = RD.MONSTER_SIZE * S * (m.type === "golem" ? 1.1 : 1);
+      if (!m.dead && !RD.MONSTERS[m.type].fly) {
+        g.fillStyle = "rgba(0,0,0,0.3)";
+        g.beginPath();
+        g.ellipse(x, C.groundY + 2, size * 0.28, 5, 0, 0, Math.PI * 2);
+        g.fill();
+      }
+      g.save();
+      g.translate(Math.round(x), Math.round(m.y - (m.type === "bat" ? 20 * S : 30 * S * size / (RD.MONSTER_SIZE * S)) + size / 2));
+      if (m.dead) { g.rotate(m.dead.rot); g.globalAlpha = 0.85; }
+      g.drawImage(spr, -size / 2, -size / 2, size, size);
+      g.restore();
+      // 체력이 여러 칸인 몬스터는 체력바 표시
+      const def = RD.MONSTERS[m.type];
+      if (!m.dead && def.hp > 1 && m.hp < def.hp) {
+        const box = run.monsterBox(m);
+        g.fillStyle = "#1d1622";
+        g.fillRect(x - 24, box.y - 14, 48, 7);
+        g.fillStyle = "#ff4d5e";
+        g.fillRect(x - 23, box.y - 13, 46 * (m.hp / def.hp), 5);
+      }
+      if (RD.debug) {
+        const b = run.monsterBox(m);
+        g.strokeStyle = "orange";
+        g.strokeRect(b.x - run.camX, b.y, b.w, b.h);
+      }
+    }
+  }
+
+  function drawAttacks(g, run) {
+    for (const sl of run.slashes) {
+      const k = sl.t / sl.life;
+      const x = sl.x - run.camX;
+      g.save();
+      g.globalAlpha = 1 - k;
+      g.strokeStyle = sl.color;
+      if (sl.ground) {
+        // 망치 충격파
+        g.lineWidth = 8;
+        g.beginPath();
+        g.ellipse(x + sl.r * 0.6, C.groundY, sl.r * (0.4 + k * 0.6), 18 + k * 20, 0, Math.PI, 0);
+        g.stroke();
+        g.lineWidth = 14;
+        g.beginPath();
+        g.arc(x + 10, sl.y, sl.r * 0.8, -1.2 + k * 1.6, -0.2 + k * 1.6);
+        g.stroke();
+      } else {
+        // 검 베기: 초승달 모양
+        g.lineWidth = 12;
+        g.beginPath();
+        g.arc(x + 10, sl.y, sl.r * 0.75, -1.3 + k * 0.8, 1.0 + k * 0.8);
+        g.stroke();
+        g.strokeStyle = "#ffffff";
+        g.lineWidth = 4;
+        g.beginPath();
+        g.arc(x + 10, sl.y, sl.r * 0.75, -1.1 + k * 0.8, 0.8 + k * 0.8);
+        g.stroke();
+      }
+      g.restore();
+    }
+    for (const sh of run.shots) {
+      const x = sh.x - run.camX;
+      g.save();
+      g.translate(x, sh.y);
+      if (run.charId === "cat") {
+        g.fillStyle = "rgba(197,138,255,0.35)";
+        g.fillRect(-34, -7, 30, 14);
+        g.fillStyle = sh.color; g.fillRect(-10, -10, 20, 20);
+        g.fillStyle = "#ffffff"; g.fillRect(-5, -5, 8, 8);
+      } else if (run.charId === "rabbit") {
+        g.rotate(sh.t * 30);
+        g.fillStyle = "#e6ecf2"; g.fillRect(-12, -3, 18, 6);
+        g.fillStyle = "#6b4528"; g.fillRect(6, -4, 8, 8);
+      } else {
+        g.fillStyle = "rgba(191,245,216,0.35)";
+        g.fillRect(-30, -4, 26, 8);
+        g.fillStyle = sh.color; g.fillRect(-12, -5, 22, 10);
+        g.fillStyle = "#ffffff"; g.fillRect(-12, -1, 22, 2);
+      }
+      g.restore();
+    }
+  }
+
   function drawPet(g, run) {
     const pet = run.pet;
     const f = Math.floor(pet.t * 8) % 4;
@@ -128,7 +219,8 @@
     const spr = RD.getCharacterFrame(run.charId, pose, pose === "run" || owlFly ? frame : 0);
     const s = C.spriteScale * p.scale;
     const x = p.x - run.camX, size = RD.SPRITE_SIZE * s;
-    const dx = Math.round(x - size / 2), dy = Math.round(p.y - (RD.SPRITE_FEET + 1) * s);
+    const lean = run.attackAnim > 0 ? 6 : 0;
+    const dx = Math.round(x - size / 2 + lean), dy = Math.round(p.y - (RD.SPRITE_FEET + 1) * s);
 
     // 그림자
     if (run.groundAt(p.x)) {
@@ -218,13 +310,18 @@
   }
 
   RD.drawRun = function (g, run) {
+    g.save();
+    if (run.shake > 0) g.translate((Math.random() - 0.5) * 10, (Math.random() - 0.5) * 8);
     drawBackground(g, run.camX);
     drawGround(g, run);
     drawItems(g, run);
     drawObstacles(g, run);
+    drawMonsters(g, run);
     drawPet(g, run);
     drawPlayer(g, run);
+    drawAttacks(g, run);
     drawEffects(g, run);
+    g.restore();
     drawHud(g, run);
   };
 })();

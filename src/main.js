@@ -51,13 +51,14 @@
   }
 
   // ---------- 입력 ----------
-  const keys = { jump: ["Space", "ArrowUp", "KeyW"], slide: ["ArrowDown", "KeyS"] };
+  const keys = { jump: ["Space", "ArrowUp", "KeyW"], slide: ["ArrowDown", "KeyS"], attack: ["KeyX", "KeyJ", "ArrowRight", "KeyD"] };
   addEventListener("keydown", (e) => {
-    if ([...keys.jump, ...keys.slide].includes(e.code)) e.preventDefault();
+    if ([...keys.jump, ...keys.slide, ...keys.attack].includes(e.code)) e.preventDefault();
     if (e.repeat) return;
     if (scene === "play") {
       if (keys.jump.includes(e.code)) { run.input.jumpHeld = true; run.jump(); }
       if (keys.slide.includes(e.code)) run.input.slideHeld = true;
+      if (keys.attack.includes(e.code)) { run.input.attackHeld = true; run.attack(); }
       if (e.code === "KeyB") RD.debug = !RD.debug;
     } else if (scene === "select") {
       if (e.code === "ArrowLeft") selected = (selected + 4) % 5;
@@ -72,6 +73,7 @@
     if (scene !== "play") return;
     if (keys.jump.includes(e.code)) run.input.jumpHeld = false;
     if (keys.slide.includes(e.code)) run.input.slideHeld = false;
+    if (keys.attack.includes(e.code)) run.input.attackHeld = false;
   });
 
   function toGame(e) {
@@ -83,11 +85,10 @@
     e.preventDefault();
     const pt = toGame(e);
     if (scene === "play") {
-      // 오븐브레이크처럼: 왼쪽 절반 = 슬라이드, 오른쪽 절반 = 점프
-      const action = pt.x < C.width / 2 ? "slide" : "jump";
+      // 왼쪽 절반 = 슬라이드, 오른쪽 위 = 공격, 오른쪽 아래 = 점프
+      const action = pt.x < C.width / 2 ? "slide" : pt.y < C.height * 0.5 ? "attack" : "jump";
       pointers.set(e.pointerId, action);
-      if (action === "jump") { run.input.jumpHeld = true; run.jump(); }
-      else run.input.slideHeld = true;
+      RD.press(action, true);
       return;
     }
     for (const b of buttons) {
@@ -98,9 +99,7 @@
     const action = pointers.get(e.pointerId);
     pointers.delete(e.pointerId);
     if (!run || !action) return;
-    const still = [...pointers.values()];
-    if (action === "jump" && !still.includes("jump")) run.input.jumpHeld = false;
-    if (action === "slide" && !still.includes("slide")) run.input.slideHeld = false;
+    if (![...pointers.values()].includes(action)) RD.press(action, false);
   };
   canvas.addEventListener("pointerup", release);
   canvas.addEventListener("pointercancel", release);
@@ -143,7 +142,8 @@
         g.imageSmoothingEnabled = false;
       }
       RD.text(g, ch.name, x + cw / 2, y + 190 - (sel ? 6 : 0), 17, sel ? "#ffd34d" : "#fff", "center");
-      RD.text(g, "스킬: " + ch.skill, x + cw / 2, y + 216 - (sel ? 6 : 0), 14, "#9fd0ff", "center");
+      RD.text(g, "공격: " + ch.attack.name, x + cw / 2, y + 212 - (sel ? 6 : 0), 13, "#ffc49a", "center");
+      RD.text(g, "스킬: " + ch.skill, x + cw / 2, y + 230 - (sel ? 6 : 0), 13, "#9fd0ff", "center");
       buttons.push({ x, y, w: cw, h: chh, onClick: () => { if (selected === i) startRun(); selected = i; save.set("char", i); } });
     });
 
@@ -163,21 +163,23 @@
     RD.text(g, "결과", C.width / 2, 110, 44, "#ffd34d", "center");
     RD.text(g, run.score.toLocaleString() + " 점", C.width / 2, 200, 56, "#fff", "center");
     if (run.newBest) RD.text(g, "최고 기록!", C.width / 2, 254, 24, "#ff8a3d", "center");
-    RD.text(g, `코인 +${run.coins}   달린 거리 ${Math.floor(run.player.x / 100)}m`, C.width / 2, 300, 22, "#ffd34d", "center");
+    RD.text(g, `코인 +${run.coins}   처치 ${run.kills}마리   거리 ${Math.floor(run.player.x / 100)}m`, C.width / 2, 300, 22, "#ffd34d", "center");
     button(C.width / 2 - 230, 380, 210, 70, "다시 달리기", startRun);
     button(C.width / 2 + 20, 380, 210, 70, "캐릭터 선택", () => { scene = "select"; }, "#5b8ff0");
   }
 
   function drawTouchHints() {
     if (!matchMedia("(pointer: coarse)").matches) {
-      RD.text(g, "점프: Space / ↑    슬라이드: ↓", C.width / 2, C.height - 18, 14, "rgba(255,255,255,0.7)", "center");
+      RD.text(g, "점프: Space / ↑    슬라이드: ↓    공격: X / →", C.width / 2, C.height - 18, 14, "rgba(255,255,255,0.7)", "center");
       return;
     }
     g.globalAlpha = 0.35;
     g.fillStyle = "#1d1622";
     g.beginPath(); g.arc(80, C.height - 70, 44, 0, Math.PI * 2); g.fill();
     g.beginPath(); g.arc(C.width - 80, C.height - 70, 44, 0, Math.PI * 2); g.fill();
+    g.beginPath(); g.arc(C.width - 80, C.height * 0.5 - 70, 44, 0, Math.PI * 2); g.fill();
     g.globalAlpha = 1;
+    RD.text(g, "공격", C.width - 80, C.height * 0.5 - 70, 18, "#fff", "center");
     RD.text(g, "슬라이드", 80, C.height - 70, 16, "#fff", "center");
     RD.text(g, "점프", C.width - 80, C.height - 70, 18, "#fff", "center");
   }
@@ -214,6 +216,7 @@
   RD.press = (action, down) => {
     if (scene !== "play" || !run) return;
     if (action === "jump") { run.input.jumpHeld = down; if (down) run.jump(); }
+    else if (action === "attack") { run.input.attackHeld = down; if (down) run.attack(); }
     else run.input.slideHeld = down;
   };
   RD.debugState = () => ({ scene, run });
