@@ -37,15 +37,24 @@
   let menuT = 0;
   let buttons = []; // 이번 프레임에 그린 클릭 영역
 
+  const MODE_IDS = Object.keys(RD.MODES);
+  const DIFF_IDS = Object.keys(RD.DIFFICULTY);
+  let mode = MODE_IDS.includes(save.get("mode")) ? save.get("mode") : "story";
+  let diff = DIFF_IDS.includes(save.get("diff")) ? save.get("diff") : "normal";
+  // 최고 점수는 모드와 난이도마다 따로
+  const bestKey = () => `best_${mode}_${diff}`;
+  const loadBest = () => { best = save.get(bestKey(), 0); RD.best = best; };
+  loadBest();
+
   function startRun() {
-    run = new RD.Run(RD.CHARACTERS[selected].id);
+    run = new RD.Run(RD.CHARACTERS[selected].id, mode, diff);
     scene = "play";
   }
 
   function endRun() {
     scene = "result";
     run.newBest = run.score > best;
-    if (run.newBest) { best = run.score; RD.best = best; save.set("best", best); }
+    if (run.newBest) { best = run.score; RD.best = best; save.set(bestKey(), best); }
   }
 
   // ---------- 입력 ----------
@@ -66,6 +75,14 @@
     held.add(e.code);
     syncKeys();
     if (e.repeat) return;
+    if (scene === "play" && run.choosing) {
+      const n = { Digit1: 0, Digit2: 1, Digit3: 2, Numpad1: 0, Numpad2: 1, Numpad3: 2 }[e.code];
+      if (n != null) run.choose(n);
+      if (e.code === "ArrowLeft" || e.code === "KeyA") run.choosing.sel = ((run.choosing.sel ?? 1) + 2) % 3;
+      if (e.code === "ArrowRight" || e.code === "KeyD") run.choosing.sel = ((run.choosing.sel ?? 1) + 1) % 3;
+      if (e.code === "Enter" || e.code === "Space") run.choose(run.choosing.sel ?? 1);
+      return;
+    }
     if (scene === "play") {
       if (e.code === "KeyX" || e.code === "Space" || e.code === "KeyK") run.bomb();
       if (e.code === "KeyB") RD.debug = !RD.debug;
@@ -102,6 +119,12 @@
     if (scene !== "play" || !run) return;
     if (e.target.closest && e.target.closest("button")) return; // 화면 밖 폭탄 버튼
     const pt = toGame(e);
+    if (run.choosing) {
+      // 강화 카드 고르기 (선택 직후 실수로 눌리지 않게 0.35초 기다림)
+      if (run.choosing.t < 0.35) return;
+      RD.cardRects.forEach((r, i) => { if (pt.x >= r.x && pt.x <= r.x + r.w && pt.y >= r.y && pt.y <= r.y + r.h) run.choose(i); });
+      return;
+    }
     if (isTouch() && Math.hypot(pt.x - BOMB_BTN.x, pt.y - BOMB_BTN.y) < BOMB_BTN.r && e.target === canvas) { run.bomb(); return; }
     if (drag) return;
     drag = { id: e.pointerId, x: e.clientX, y: e.clientY };
@@ -132,61 +155,89 @@
     buttons.push({ x, y, w, h, onClick });
   }
 
+  function tab(x, y, w, h, label, active, color, onClick) {
+    g.fillStyle = "#1d1622";
+    g.fillRect(x - 2, y - 2, w + 4, h + 4);
+    g.fillStyle = active ? color : "#2b2140";
+    g.fillRect(x, y, w, h);
+    RD.text(g, label, x + w / 2, y + h / 2 + 1, 15, active ? "#1d1622" : "#cfc6e0", "center", active ? color : "#1d1622");
+    buttons.push({ x, y, w, h, onClick });
+  }
+
   function drawSelect() {
     menuT += 1 / 60;
     RD.drawBackground(g, menuT * 120);
-    g.fillStyle = "rgba(10,8,20,0.45)";
+    g.fillStyle = "rgba(10,8,20,0.5)";
     g.fillRect(0, 0, C.width, C.height);
-    RD.text(g, "RUNDOT", C.width / 2, 52, 52, "#ffd34d", "center");
-    RD.text(g, "출격할 캐릭터를 고르세요", C.width / 2, 98, 20, "#fff", "center");
+    RD.text(g, "RUNDOT", 24, 34, 36, "#ffd34d");
 
-    const cw = 164, chh = 240, gap = 14;
+    // 모드
+    RD.text(g, "모드", 200, 34, 14, "#9fd0ff");
+    MODE_IDS.forEach((id, i) => tab(240 + i * 118, 20, 110, 30, RD.MODES[id].name, id === mode, "#7fe6ff", () => { mode = id; save.set("mode", id); loadBest(); }));
+    // 난이도
+    RD.text(g, "난이도", 186, 76, 14, "#9fd0ff");
+    DIFF_IDS.forEach((id, i) => {
+      const D = RD.DIFFICULTY[id];
+      tab(240 + i * 118, 62, 110, 30, D.name, id === diff, D.color, () => { diff = id; save.set("diff", id); loadBest(); });
+    });
+    const D = RD.DIFFICULTY[diff];
+    RD.text(g, `${RD.MODES[mode].desc}  ·  잔기 ${D.lives}  ·  적 체력 x${D.enemyHp}  ·  받는 피해 x${D.damage}  ·  점수 x${D.score}`, C.width / 2, 116, 13, "#e8e0f5", "center");
+
+    // 캐릭터
+    const cw = 172, chh = 232, gap = 12;
     const x0 = (C.width - (cw * 5 + gap * 4)) / 2;
     RD.CHARACTERS.forEach((ch, i) => {
-      const x = x0 + i * (cw + gap), y = 126;
       const sel = i === selected;
+      const x = x0 + i * (cw + gap), y = 140 - (sel ? 5 : 0);
       g.fillStyle = sel ? "#ffd34d" : "#1d1622";
-      g.fillRect(x - 4, y - 4 - (sel ? 6 : 0), cw + 8, chh + 8);
+      g.fillRect(x - 4, y - 4, cw + 8, chh + 8);
       g.fillStyle = "#2b2140";
-      g.fillRect(x, y - (sel ? 6 : 0), cw, chh);
+      g.fillRect(x, y, cw, chh);
       const im = RD.img(ch.illust);
       if (im && im.width) {
-        // 일러스트 가운데(캐릭터) 부분만 잘라서 보여 준다
-        const sw = im.height * (cw / 170), sx = (im.width - sw) / 2;
+        const sw = im.height * (cw / 150), sx = (im.width - sw) / 2;
         g.imageSmoothingEnabled = true;
-        g.drawImage(im, sx, 0, sw, im.height, x, y - (sel ? 6 : 0), cw, 170);
+        g.drawImage(im, sx, 0, sw, im.height, x, y, cw, 150);
         g.imageSmoothingEnabled = false;
       }
-      RD.text(g, ch.name, x + cw / 2, y + 190 - (sel ? 6 : 0), 17, sel ? "#ffd34d" : "#fff", "center");
-      RD.text(g, `${ch.type} · ${ch.shot.name}`, x + cw / 2, y + 212 - (sel ? 6 : 0), 13, "#ffc49a", "center");
-      RD.text(g, "폭탄: " + ch.bomb.name, x + cw / 2, y + 230 - (sel ? 6 : 0), 13, "#9fd0ff", "center");
+      RD.text(g, ch.name, x + cw / 2, y + 166, 16, sel ? "#ffd34d" : "#fff", "center");
+      RD.text(g, `${ch.type} · ${ch.shot.name}`, x + cw / 2, y + 187, 12, "#ffc49a", "center");
+      RD.text(g, "전용: " + ch.sig.name, x + cw / 2, y + 204, 12, "#ffd34d", "center");
+      RD.text(g, "폭탄: " + ch.bomb.name, x + cw / 2, y + 221, 12, "#9fd0ff", "center");
       buttons.push({ x, y, w: cw, h: chh, onClick: () => { if (selected === i) startRun(); selected = i; save.set("char", i); } });
     });
 
     const ch = RD.CHARACTERS[selected];
-    // 선택한 캐릭터의 인게임 도트 모습 미리보기
     const spr = RD.getCharacterFrame(ch.id, ch.id === "owl" ? "run" : "jump", Math.floor(menuT * 10) % 4);
-    g.drawImage(spr, 40, 380, 120, 120);
-    RD.text(g, ch.desc, 175, 432, 18, "#fff");
-    RD.text(g, `최고 점수 ${best.toLocaleString()}`, 175, 466, 16, "#ffd34d");
-    button(C.width - 250, 410, 210, 72, "출격!", startRun);
+    g.drawImage(spr, 24, 392, 110, 110);
+    RD.text(g, ch.desc, 145, 420, 16, "#fff");
+    RD.text(g, `전용 강화 · ${ch.sig.name}: ${ch.sig.desc}`, 145, 446, 13, "#ffd34d");
+    RD.text(g, `최고 점수 (${RD.MODES[mode].name} · ${D.name}) ${best.toLocaleString()}`, 145, 472, 13, "#9fd0ff");
+    button(C.width - 230, 412, 200, 70, "출격!", startRun);
   }
 
   function drawResult() {
     RD.drawRun(g, run);
-    g.fillStyle = "rgba(10,8,20,0.7)";
+    g.fillStyle = "rgba(10,8,20,0.72)";
     g.fillRect(0, 0, C.width, C.height);
-    RD.text(g, "GAME OVER", C.width / 2, 110, 48, "#ff4d5e", "center");
-    RD.text(g, run.score.toLocaleString() + " 점", C.width / 2, 200, 56, "#fff", "center");
-    if (run.newBest) RD.text(g, "최고 기록!", C.width / 2, 254, 24, "#ff8a3d", "center");
-    RD.text(g, `격추 ${run.kills}   도달 ${run.loop}주차`, C.width / 2, 300, 22, "#ffd34d", "center");
-    button(C.width / 2 - 230, 380, 210, 70, "다시 출격", startRun);
-    button(C.width / 2 + 20, 380, 210, 70, "캐릭터 선택", () => { scene = "select"; }, "#5b8ff0");
+    const title = run.win ? (run.mode === "timeattack" ? "TIME UP" : "ALL CLEAR!") : "GAME OVER";
+    RD.text(g, title, C.width / 2, 96, 48, run.win ? "#ffd34d" : "#ff4d5e", "center");
+    RD.text(g, `${RD.MODES[run.mode].name} · ${run.D.name}`, C.width / 2, 140, 18, run.D.color, "center");
+    RD.text(g, run.score.toLocaleString() + " 점", C.width / 2, 200, 52, "#fff", "center");
+    if (run.newBest) RD.text(g, "최고 기록!", C.width / 2, 248, 22, "#ff8a3d", "center");
+    const reach = run.mode === "story" ? `스테이지 ${run.loop}` : run.mode === "bossrush" ? `${run.loop}라운드` : `${Math.floor(run.t)}초 생존`;
+    RD.text(g, `격추 ${run.kills}   Lv.${run.level}   ${reach}`, C.width / 2, 290, 20, "#ffd34d", "center");
+    // 고른 강화 목록
+    const ups = RD.UPGRADES.filter((u) => run.lv(u.id)).map((u) => `${u.id === "sig" ? run.char.sig.name : u.name} ${run.lv(u.id)}`);
+    RD.text(g, ups.join(" · ") || "강화 없음", C.width / 2, 328, 13, "#cfd8ff", "center");
+    button(C.width / 2 - 230, 390, 210, 66, "다시 출격", startRun);
+    button(C.width / 2 + 20, 390, 210, 66, "메뉴로", () => { scene = "select"; }, "#5b8ff0");
   }
 
   function drawTouchHints() {
+    if (run.choosing) return;
     if (!isTouch()) {
-      if (run.t < 6) RD.text(g, "이동: 방향키 / WASD    정밀 이동: Shift    폭탄: X    사격은 자동", C.width / 2, C.height - 18, 14, "rgba(255,255,255,0.8)", "center");
+      if (run.t < 6) RD.text(g, "이동: 방향키 / WASD    정밀 이동: Shift    폭탄: X    사격은 자동", C.width / 2, C.height - 50, 14, "rgba(255,255,255,0.8)", "center");
       return;
     }
     if (run.t < 5) RD.text(g, "화면을 대고 끌어서 이동 · 사격은 자동", C.width / 2, C.height / 2 + 90, 18, "#fff", "center");
@@ -219,7 +270,7 @@
       run.update(dt);
       RD.drawRun(g, run);
       drawTouchHints();
-      if (run.over && run.overTimer > 1.5) endRun();
+      if (run.over && run.overTimer > (run.win ? 3 : 1.5)) endRun();
     } else if (scene === "result") {
       drawResult();
     }

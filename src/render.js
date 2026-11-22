@@ -70,9 +70,17 @@
         g.beginPath(); g.ellipse(-2, 0, 12, h - 3, 0, -Math.PI / 2, Math.PI / 2); g.stroke();
         g.strokeStyle = "#fff"; g.lineWidth = 2;
         g.beginPath(); g.ellipse(0, 0, 11, h - 6, 0, -Math.PI / 2, Math.PI / 2); g.stroke();
+      } else if (s.kind === "missile") {
+        // 보조무기: 유도 미사일
+        g.rotate(Math.atan2(s.vy, s.vx));
+        P(-22, -2, 10, 4, "rgba(255,160,60,0.7)");
+        P(-12, -4, 18, 8, "#d8dde6");
+        P(4, -3, 6, 6, "#ff4d5e");
+        P(-12, -6, 5, 12, "#8a93a0");
       } else if (s.kind === "orb") {
         // 고양이: 마법 구슬 + 꼬리
         g.rotate(Math.atan2(s.vy, s.vx));
+        if (s.small) g.scale(0.6, 0.6);
         P(-30, -4, 20, 8, "rgba(197,138,255,0.3)");
         P(-16, -6, 8, 12, "rgba(197,138,255,0.6)");
         P(-9, -9, 18, 18, s.color);
@@ -147,10 +155,33 @@
     if (p.dead > 0) return;
     const pet = run.pet;
     const petImg = RD.img("pet_" + (Math.floor(pet.t * 10) % 4));
-    const pw = run.power >= 2 ? 44 : 34;
-    g.globalAlpha = run.power >= 2 ? 1 : 0.6;
+    const petOn = run.lv("pet") > 0;
+    const pw = petOn ? 40 + run.lv("pet") * 3 : 32;
+    g.globalAlpha = petOn ? 1 : 0.55;
     g.drawImage(petImg, pet.x - pw / 2, pet.y - (petImg.height / petImg.width) * pw / 2, pw, (petImg.height / petImg.width) * pw);
     g.globalAlpha = 1;
+
+    // 레이저
+    if (run.sub.laserOn > 0) {
+      const half = 8 + 4 * run.lv("laser");
+      const k = Math.min(1, run.sub.laserOn / 0.15);
+      g.fillStyle = `rgba(127,230,255,${0.35 * k})`;
+      g.fillRect(p.x + 20, p.y - half - 6, C.width, (half + 6) * 2);
+      g.fillStyle = `rgba(127,230,255,${0.9 * k})`;
+      g.fillRect(p.x + 20, p.y - half, C.width, half * 2);
+      g.fillStyle = `rgba(255,255,255,${k})`;
+      g.fillRect(p.x + 20, p.y - half / 3, C.width, (half / 3) * 2);
+    }
+    // 수호 구슬
+    const ob = run.lv("orbit");
+    for (let i = 0; i < ob; i++) {
+      const a = run.t * 3 + (i / ob) * Math.PI * 2;
+      const ox = p.x + Math.cos(a) * 70, oy = p.y + Math.sin(a) * 70;
+      g.fillStyle = "rgba(255,211,77,0.35)";
+      g.beginPath(); g.arc(ox, oy, 16, 0, Math.PI * 2); g.fill();
+      g.fillStyle = "#ffd34d"; g.fillRect(ox - 8, oy - 8, 16, 16);
+      g.fillStyle = "#fff"; g.fillRect(ox - 4, oy - 4, 6, 6);
+    }
 
     if (p.invuln > 0 && Math.floor(run.t * 16) % 2 === 0) return;
     const frame = run.charId === "owl" ? Math.floor(p.animT * 12) % 4 : 0;
@@ -177,7 +208,7 @@
       const k = e.t / e.life;
       if (e.type === "boom") {
         // 도트 폭발: 원이 퍼지고 파편이 튄다
-        const r = (e.big ? 90 : 34) * (0.3 + k);
+        const r = (e.r || (e.big ? 90 : 34)) * (0.3 + k);
         g.globalAlpha = 1 - k;
         g.fillStyle = "#ffd34d";
         g.beginPath(); g.arc(e.x, e.y, r, 0, Math.PI * 2); g.fill();
@@ -191,6 +222,21 @@
           g.fillRect(e.x + Math.cos(a) * r * 1.3 - 3, e.y + Math.sin(a) * r * 1.3 - 3, 6, 6);
         }
         g.globalAlpha = 1;
+      } else if (e.type === "bolt") {
+        // 번개: 하늘에서 지그재그로 떨어진다
+        g.strokeStyle = `rgba(200,240,255,${1 - k})`;
+        g.lineWidth = 5;
+        g.beginPath();
+        g.moveTo(e.x, 0);
+        for (let y = 40; y < e.y; y += 40) g.lineTo(e.x + ((y / 40) % 2 ? 14 : -14), y);
+        g.lineTo(e.x, e.y);
+        g.stroke();
+        g.strokeStyle = `rgba(255,255,255,${1 - k})`;
+        g.lineWidth = 2;
+        g.stroke();
+      } else if (e.type === "flash") {
+        g.fillStyle = `rgba(255,40,60,${0.3 * (1 - k)})`;
+        g.fillRect(0, 0, C.width, C.height);
       } else if (e.type === "spark") {
         g.fillStyle = `rgba(255,255,220,${1 - k})`;
         g.fillRect(e.x - 5, e.y - 5, 10, 10);
@@ -231,44 +277,76 @@
     g.restore();
   }
 
-  function drawHud(g, run) {
-    text(g, "SCORE " + run.score.toLocaleString(), 18, 24, 20, "#fff");
-    text(g, "HI " + Math.max(RD.best || 0, run.score).toLocaleString(), C.width / 2, 24, 16, "#ffd34d", "center");
-    text(g, run.loop + "주차", C.width - 18, 24, 16, "#9fd0ff", "right");
+  function bar(g, x, y, w, h, k, color) {
+    g.fillStyle = "#1d1622";
+    g.fillRect(x - 2, y - 2, w + 4, h + 4);
+    g.fillStyle = "#3a2d48";
+    g.fillRect(x, y, w, h);
+    g.fillStyle = color;
+    g.fillRect(x, y, w * Math.max(0, Math.min(1, k)), h);
+    g.fillStyle = "rgba(255,255,255,0.25)";
+    g.fillRect(x, y, w * Math.max(0, Math.min(1, k)), Math.ceil(h / 3));
+  }
 
-    // 남은 잔기 (캐릭터 얼굴)
+  function drawHud(g, run) {
+    const p = run.player;
+    text(g, run.score.toLocaleString(), 18, 22, 20, "#fff");
+    text(g, "HI " + Math.max(RD.best || 0, run.score).toLocaleString(), C.width / 2, 22, 15, "#ffd34d", "center");
+    const D = run.D, M = RD.MODES[run.mode];
+    const right = run.mode === "timeattack"
+      ? `남은 시간 ${Math.ceil(run.timeLeft)}`
+      : run.mode === "story" ? `스테이지 ${run.loop}` : run.mode === "bossrush" ? `${run.loop}라운드` : `${Math.floor(run.t)}초`;
+    text(g, right, C.width - 18, 22, 16, run.mode === "timeattack" && run.timeLeft < 20 ? "#ff4d5e" : "#9fd0ff", "right");
+    text(g, `${M.name} · ${D.name}`, C.width - 18, 44, 12, D.color, "right");
+
+    // 체력
+    const hpK = Math.max(0, p.hp) / run.maxHp;
+    bar(g, 46, 40, 170 + run.lv("hp") * 14, 12, hpK, hpK < 0.3 ? "#ff4d5e" : "#5fdc6a");
+    const HEART = ["0110110", "1111111", "1111111", "0111110", "0011100", "0001000"];
+    HEART.forEach((row, y) => [...row].forEach((v, x) => {
+      if (v === "1") { g.fillStyle = "#ff4d6a"; g.fillRect(18 + x * 3, 38 + y * 3, 3, 3); }
+    }));
+    text(g, `${Math.max(0, Math.ceil(p.hp))}`, 52 + 170 + run.lv("hp") * 14, 46, 12, "#fff");
+    // 경험치와 레벨
+    bar(g, 46, 60, 170, 6, run.exp / run.expNeed, "#7fe6ff");
+    text(g, "Lv." + run.level, 18, 63, 12, "#7fe6ff");
+
+    // 아래: 잔기, 폭탄, 가진 강화
     const head = RD.getCharacterFrame(run.charId, "jump", 0);
-    for (let i = 0; i < Math.min(run.lives, 6); i++) g.drawImage(head, 8 + i * 28, C.height - 104, 38, 38);
-    // 파워
-    text(g, "POWER", 18, C.height - 52, 13, "#ff8a8a");
-    for (let i = 0; i < C.maxPower; i++) {
-      g.fillStyle = "#1d1622";
-      g.fillRect(70 + i * 18, C.height - 59, 15, 14);
-      g.fillStyle = i < run.power ? "#ff5a5a" : "#3a2d48";
-      g.fillRect(72 + i * 18, C.height - 57, 11, 10);
-    }
-    // 폭탄
-    text(g, "BOMB", 18, C.height - 28, 13, "#9fd0ff");
+    for (let i = 0; i < Math.min(run.lives, 6); i++) g.drawImage(head, 6 + i * 26, C.height - 80, 34, 34);
+    text(g, "BOMB", 14, C.height - 24, 12, "#9fd0ff");
     for (let i = 0; i < run.bombs; i++) {
       g.fillStyle = "#1d1622";
-      g.beginPath(); g.arc(78 + i * 20, C.height - 28, 8, 0, Math.PI * 2); g.fill();
+      g.beginPath(); g.arc(66 + i * 18, C.height - 24, 7, 0, Math.PI * 2); g.fill();
       g.fillStyle = "#4aa8ff";
-      g.beginPath(); g.arc(78 + i * 20, C.height - 28, 6, 0, Math.PI * 2); g.fill();
+      g.beginPath(); g.arc(66 + i * 18, C.height - 24, 5, 0, Math.PI * 2); g.fill();
+    }
+    let ux = 190;
+    for (const u of RD.UPGRADES) {
+      const lv = run.lv(u.id);
+      if (!lv) continue;
+      const name = u.id === "sig" ? run.char.sig.name : u.name;
+      g.font = `bold 11px ${FONT}`;
+      const w = g.measureText(name).width + 26;
+      if (ux + w > C.width - 140) break;
+      g.fillStyle = "rgba(20,12,30,0.7)";
+      g.fillRect(ux, C.height - 33, w, 18);
+      g.fillStyle = u.color;
+      g.fillRect(ux, C.height - 33, 3, 18);
+      text(g, `${name} ${lv}`, ux + 7, C.height - 24, 11, "#fff");
+      ux += w + 4;
     }
 
     // 보스 체력바
     const boss = run.boss;
     if (boss) {
       const def = RD.ENEMIES[boss.type];
-      const w = 520, x = (C.width - w) / 2;
-      g.fillStyle = "#1d1622";
-      g.fillRect(x - 3, 40, w + 6, 16);
-      g.fillStyle = def.boss ? "#ff4d5e" : "#ffb347";
-      g.fillRect(x, 43, w * Math.max(0, boss.hp / boss.maxHp), 10);
-      text(g, def.boss ? "박쥐 왕" : "돌 골렘", x, 68, 13, "#fff");
+      const w = 440, x = (C.width - w) / 2;
+      bar(g, x, 40, w, 10, boss.hp / boss.maxHp, def.boss ? "#ff4d5e" : "#ffb347");
+      text(g, def.boss ? "박쥐 왕" : "돌 골렘", x, 62, 12, "#fff");
     }
 
-    // WARNING / STAGE CLEAR
+    // WARNING / STAGE CLEAR 등
     const b = run.banner;
     if (b) {
       const blink = b.text === "WARNING" ? Math.floor(b.t * 6) % 2 === 0 : true;
@@ -276,9 +354,59 @@
         g.fillStyle = "rgba(255,40,60,0.25)";
         g.fillRect(0, C.height / 2 - 60, C.width, 120);
       }
-      if (blink) text(g, b.text, C.width / 2, C.height / 2 - (b.sub ? 14 : 0), b.small ? 34 : 64, b.color, "center");
-      if (b.sub) text(g, b.sub, C.width / 2, C.height / 2 + 34, 20, "#fff", "center");
+      if (blink) text(g, b.text, C.width / 2, C.height / 2 - (b.sub ? 14 : 0), b.small ? 34 : 60, b.color, "center");
+      if (b.sub) text(g, b.sub, C.width / 2, C.height / 2 + 32, 20, "#fff", "center");
     }
+    if (run.choosing) drawChoice(g, run);
+  }
+
+  // 레벨업 강화 카드 3장
+  RD.cardRects = [];
+  function drawChoice(g, run) {
+    g.fillStyle = "rgba(10,6,20,0.72)";
+    g.fillRect(0, 0, C.width, C.height);
+    text(g, `LEVEL UP!  Lv.${run.level - run.pendingLevels + 1}`, C.width / 2, 70, 36, "#7fe6ff", "center");
+    text(g, run.pendingLevels > 1 ? `강화를 하나 고르세요 (남은 선택 ${run.pendingLevels})` : "강화를 하나 고르세요", C.width / 2, 108, 18, "#fff", "center");
+    const opts = run.choosing.options;
+    const cw = 250, ch = 270, gap = 26;
+    const x0 = (C.width - (cw * opts.length + gap * (opts.length - 1))) / 2;
+    const y = 140;
+    RD.cardRects = [];
+    const pop = Math.min(1, run.choosing.t * 5);
+    opts.forEach((u, i) => {
+      const x = x0 + i * (cw + gap);
+      const yy = y + (1 - pop) * 40;
+      const lv = run.lv(u.id);
+      const info = run.upgradeInfo(u);
+      g.fillStyle = run.choosing.sel === i ? "#ffffff" : "#1d1622";
+      g.fillRect(x - 4, yy - 4, cw + 8, ch + 8);
+      g.fillStyle = "#2b2140";
+      g.fillRect(x, yy, cw, ch);
+      g.fillStyle = u.color;
+      g.fillRect(x, yy, cw, 34);
+      text(g, u.cat, x + 12, yy + 17, 14, "#1d1622", "left", u.color);
+      text(g, `${i + 1}`, x + cw - 16, yy + 17, 16, "#1d1622", "right", u.color);
+      text(g, info.name, x + cw / 2, yy + 80, 26, "#fff", "center");
+      // 단계 표시
+      for (let k = 0; k < u.max; k++) {
+        const px = x + cw / 2 - (u.max * 22) / 2 + k * 22;
+        g.fillStyle = "#1d1622"; g.fillRect(px, yy + 112, 18, 14);
+        g.fillStyle = k < lv ? u.color : k === lv ? "#ffffff" : "#3a2d48";
+        g.fillRect(px + 2, yy + 114, 14, 10);
+      }
+      text(g, lv ? `Lv.${lv} → Lv.${lv + 1}` : "NEW!", x + cw / 2, yy + 146, 15, lv ? "#cfd8ff" : "#ffd34d", "center");
+      // 설명 (두 줄까지 줄바꿈)
+      g.font = `bold 16px ${FONT}`;
+      const words = info.desc.split(" ");
+      const lines = [""];
+      for (const w of words) {
+        const tryLine = (lines[lines.length - 1] + " " + w).trim();
+        if (g.measureText(tryLine).width > cw - 30) lines.push(w);
+        else lines[lines.length - 1] = tryLine;
+      }
+      lines.slice(0, 3).forEach((l, li) => text(g, l, x + cw / 2, yy + 190 + li * 24, 16, "#fff", "center"));
+      RD.cardRects.push({ x, y: yy, w: cw, h: ch });
+    });
   }
 
   RD.drawRun = function (g, run) {
