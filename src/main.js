@@ -30,7 +30,17 @@
 
   // ---------- 상태 ----------
   let scene = "loading";
+  // ---------- 보유 캐릭터와 코인 (뽑기) ----------
+  const G = RD.GACHA;
+  let owned = save.get("owned", null); // 캐릭터 id → 별(각성) 단계
+  if (!owned) { owned = {}; RD.CHARACTERS.forEach((c) => { if (c.starter) owned[c.id] = 1; }); save.set("owned", owned); }
+  let coins = save.get("coins", null);
+  if (coins == null) { coins = G.startCoins; save.set("coins", coins); }
+  let pity = save.get("pity", 0);
+  const isOwned = (i) => !!owned[RD.CHARACTERS[i].id];
   let selected = save.get("char", 0);
+  if (!RD.CHARACTERS[selected] || !isOwned(selected)) selected = 0;
+  let gachaResult = null; // 뽑기 결과 연출
   let run = null;
   let best = save.get("best", 0);
   RD.best = best;
@@ -47,14 +57,57 @@
   loadBest();
 
   function startRun() {
-    run = new RD.Run(RD.CHARACTERS[selected].id, mode, diff);
+    const id = RD.CHARACTERS[selected].id;
+    run = new RD.Run(id, mode, diff, { stars: owned[id] || 1 });
     scene = "play";
   }
 
   function endRun() {
     scene = "result";
+    coins += run.coins;
+    save.set("coins", coins);
     run.newBest = run.score > best;
     if (run.newBest) { best = run.score; RD.best = best; save.set(bestKey(), best); }
+  }
+
+  // ---------- 뽑기 ----------
+  function rollOne(forceMin) {
+    let grade;
+    if (pity >= G.pity - 1) grade = "SSR";
+    else {
+      const r = Math.random();
+      grade = r < G.rates.SSR ? "SSR" : r < G.rates.SSR + G.rates.SR ? "SR" : r < G.rates.SSR + G.rates.SR + G.rates.R ? "R" : "C";
+    }
+    if (forceMin && grade === "C") grade = "R";
+    pity = grade === "SSR" ? 0 : pity + 1;
+    const pool = RD.CHARACTERS.filter((c) => c.grade === grade);
+    const ch = pool[Math.floor(Math.random() * pool.length)];
+    let kind;
+    if (!owned[ch.id]) { owned[ch.id] = 1; kind = "new"; }
+    else if (owned[ch.id] < G.maxStars) { owned[ch.id]++; kind = "star"; }
+    else { coins += 50; kind = "refund"; }
+    return { ch, grade, kind, stars: owned[ch.id] };
+  }
+
+  function gacha(n) {
+    const cost = n === 10 ? G.cost10 : G.cost1;
+    if (coins < cost) return;
+    coins -= cost;
+    const list = [];
+    for (let i = 0; i < n; i++) list.push(rollOne(false));
+    // 10회 뽑기는 희귀 이상 1개 보장
+    if (n === 10 && !list.some((r) => r.grade !== "C")) {
+      const last = list.pop();
+      if (last.kind === "new") delete owned[last.ch.id];
+      if (last.kind === "star") owned[last.ch.id]--;
+      if (last.kind === "refund") coins -= 50;
+      pity = Math.max(0, pity - 1);
+      list.push(rollOne(true));
+    }
+    save.set("owned", owned);
+    save.set("coins", coins);
+    save.set("pity", pity);
+    gachaResult = { list, t: 0 };
   }
 
   // ---------- 입력 ----------
@@ -89,10 +142,14 @@
     } else if (scene === "select") {
       if (e.code === "ArrowLeft") selected = (selected + 4) % 5;
       if (e.code === "ArrowRight") selected = (selected + 1) % 5;
-      if (e.code === "Enter" || e.code === "Space") startRun();
+      if (e.code === "KeyG") scene = "gacha";
+      if (e.code === "Enter" || e.code === "Space") { if (isOwned(selected)) startRun(); }
     } else if (scene === "result") {
       if (e.code === "Enter" || e.code === "Space") startRun();
       if (e.code === "Escape") scene = "select";
+    } else if (scene === "gacha") {
+      if (gachaResult) { if (e.code === "Enter" || e.code === "Space" || e.code === "Escape") gachaResult = null; }
+      else if (e.code === "Escape") scene = "select";
     }
   });
   addEventListener("keyup", (e) => { held.delete(e.code); syncKeys(); });
@@ -204,16 +261,117 @@
       RD.text(g, `${ch.type} · ${ch.shot.name}`, x + cw / 2, y + 187, 12, "#ffc49a", "center");
       RD.text(g, "전용: " + ch.sig.name, x + cw / 2, y + 204, 12, "#ffd34d", "center");
       RD.text(g, "폭탄: " + ch.bomb.name, x + cw / 2, y + 221, 12, "#9fd0ff", "center");
-      buttons.push({ x, y, w: cw, h: chh, onClick: () => { if (selected === i) startRun(); selected = i; save.set("char", i); } });
+      // 등급
+      const GR = RD.GRADES[ch.grade];
+      g.fillStyle = "#1d1622"; g.fillRect(x + 4, y + 4, 44, 20);
+      g.fillStyle = GR.color; g.fillRect(x + 6, y + 6, 40, 16);
+      RD.text(g, GR.name, x + 26, y + 15, 11, "#1d1622", "center", GR.color);
+      if (isOwned(i)) {
+        // 각성 별
+        const st = owned[ch.id];
+        RD.text(g, "★".repeat(st) + "☆".repeat(G.maxStars - st), x + cw - 6, y + 14, 11, "#ffd34d", "right");
+      } else {
+        // 잠김: 뽑기로 얻는다
+        g.fillStyle = "rgba(10,6,20,0.72)";
+        g.fillRect(x, y, cw, chh);
+        RD.text(g, "🔒", x + cw / 2, y + 80, 34, "#fff", "center");
+        RD.text(g, "뽑기로 얻기", x + cw / 2, y + 120, 15, GR.color, "center");
+        RD.text(g, ch.name, x + cw / 2, y + 166, 16, "#aaa", "center");
+      }
+      buttons.push({ x, y, w: cw, h: chh, onClick: () => {
+        if (!isOwned(i)) { scene = "gacha"; return; }
+        if (selected === i) startRun();
+        selected = i; save.set("char", i);
+      } });
     });
 
     const ch = RD.CHARACTERS[selected];
     const spr = RD.getCharacterFrame(ch.id, ch.id === "owl" ? "run" : "jump", Math.floor(menuT * 10) % 4);
     g.drawImage(spr, 24, 392, 110, 110);
-    RD.text(g, ch.desc, 145, 420, 16, "#fff");
-    RD.text(g, `전용 강화 · ${ch.sig.name}: ${ch.sig.desc}`, 145, 446, 13, "#ffd34d");
+    RD.text(g, ch.desc.split(". ")[0], 145, 420, 15, "#fff");
+    RD.text(g, `전용 · ${ch.sig.name}: ${ch.sig.desc}`, 145, 446, 12, "#ffd34d");
     RD.text(g, `최고 점수 (${RD.MODES[mode].name} · ${D.name}) ${best.toLocaleString()}`, 145, 472, 13, "#9fd0ff");
-    button(C.width - 230, 412, 200, 70, "출격!", startRun);
+    if (owned[ch.id] > 1) RD.text(g, `각성 ★${owned[ch.id]}: 위력 +${Math.round(G.starDmg * 100 * (owned[ch.id] - 1))}%, 체력 +${G.starHp * (owned[ch.id] - 1)}`, 145, 496, 12, "#ffd34d");
+    RD.text(g, `코인 ${coins.toLocaleString()}`, C.width - 318, 400, 14, "#ffd34d", "center");
+    button(C.width - 384, 414, 132, 66, "뽑기", () => { scene = "gacha"; }, "#c58aff");
+    button(C.width - 230, 414, 200, 66, "출격!", startRun);
+  }
+
+  // ---------- 뽑기 화면 ----------
+  function drawGacha() {
+    menuT += 1 / 60;
+    RD.drawBackground(g, menuT * 60);
+    g.fillStyle = "rgba(10,8,20,0.75)";
+    g.fillRect(0, 0, C.width, C.height);
+    RD.text(g, "캐릭터 뽑기", C.width / 2, 44, 36, "#ffd34d", "center");
+    RD.text(g, `코인 ${coins.toLocaleString()}`, C.width / 2, 86, 20, "#ffd34d", "center");
+    RD.text(g, `전설 확정까지 ${G.pity - pity}회`, C.width / 2, 112, 14, "#cfd8ff", "center");
+
+    if (gachaResult) { drawGachaResult(); return; }
+
+    // 확률표
+    const order = ["SSR", "SR", "R", "C"];
+    const rate = { SSR: G.rates.SSR, SR: G.rates.SR, R: G.rates.R, C: 1 - G.rates.SSR - G.rates.SR - G.rates.R };
+    order.forEach((gr, i) => {
+      const GR = RD.GRADES[gr];
+      const chars = RD.CHARACTERS.filter((c) => c.grade === gr);
+      const y = 158 + i * 44;
+      g.fillStyle = "rgba(255,255,255,0.06)";
+      g.fillRect(210, y - 18, 540, 36);
+      g.fillStyle = GR.color; g.fillRect(210, y - 18, 6, 36);
+      RD.text(g, GR.name, 232, y, 16, GR.color);
+      RD.text(g, chars.map((c) => c.name + (owned[c.id] ? ` ★${owned[c.id]}` : "")).join(", "), 300, y, 15, "#fff");
+      RD.text(g, `${(rate[gr] * 100).toFixed(1)}%`, 735, y, 15, GR.color, "right");
+      chars.forEach((c, k) => g.drawImage(RD.getCharacterFrame(c.id, "jump", 0), 760 + k * 36, y - 22, 44, 44));
+    });
+    RD.text(g, "이미 가진 캐릭터가 나오면 각성(★ +1): 위력 +6%, 최대 체력 +6. 최대 ★6을 넘으면 코인 50 돌려받기", C.width / 2, 340, 13, "#cfd8ff", "center");
+    RD.text(g, "10회 뽑기는 희귀 이상 1개 보장", C.width / 2, 362, 13, "#cfd8ff", "center");
+
+    const can1 = coins >= G.cost1, can10 = coins >= G.cost10;
+    button(C.width / 2 - 330, 400, 200, 76, `1회 · ${G.cost1}`, () => gacha(1), can1 ? "#c58aff" : "#4a3d5c");
+    button(C.width / 2 - 100, 400, 200, 76, `10회 · ${G.cost10}`, () => gacha(10), can10 ? "#ffb347" : "#4a3d5c");
+    button(C.width / 2 + 130, 400, 200, 76, "돌아가기", () => { scene = "select"; }, "#5b8ff0");
+    if (!can1) RD.text(g, "코인이 부족해요. 게임을 해서 코인을 모으세요", C.width / 2, 500, 14, "#ff8a8a", "center");
+  }
+
+  function drawGachaResult() {
+    const R = gachaResult;
+    R.t += 1 / 60;
+    const n = R.list.length;
+    const cw = n === 1 ? 200 : 150, ch = n === 1 ? 250 : 156, gap = 12;
+    const cols = n === 1 ? 1 : 5;
+    const x0 = (C.width - (cw * cols + gap * (cols - 1))) / 2;
+    R.list.forEach((r, i) => {
+      const x = x0 + (i % cols) * (cw + gap);
+      const y = 132 + Math.floor(i / cols) * (ch + gap);
+      const show = R.t > 0.3 + i * 0.18;
+      const GR = RD.GRADES[r.grade];
+      if (!show) {
+        g.fillStyle = "#1d1622"; g.fillRect(x - 3, y - 3, cw + 6, ch + 6);
+        g.fillStyle = "#3a2d48"; g.fillRect(x, y, cw, ch);
+        RD.text(g, "?", x + cw / 2, y + ch / 2, 40, "#6a5a80", "center");
+        return;
+      }
+      // 등급 빛
+      if (r.grade === "SSR" || r.grade === "SR") {
+        g.fillStyle = r.grade === "SSR" ? `hsla(${(R.t * 200) % 360},90%,65%,0.6)` : "rgba(197,138,255,0.5)";
+        g.fillRect(x - 10, y - 10, cw + 20, ch + 20);
+      }
+      g.fillStyle = GR.color; g.fillRect(x - 3, y - 3, cw + 6, ch + 6);
+      g.fillStyle = "#2b2140"; g.fillRect(x, y, cw, ch);
+      const im = RD.img(r.ch.illust);
+      if (im && im.width) {
+        const ih = ch * 0.62, sw = im.height * (cw / ih), sx = (im.width - sw) / 2;
+        g.imageSmoothingEnabled = true;
+        g.drawImage(im, sx, 0, sw, im.height, x, y, cw, ih);
+        g.imageSmoothingEnabled = false;
+      }
+      RD.text(g, GR.name, x + 8, y + 12, 12, GR.color);
+      RD.text(g, r.ch.name, x + cw / 2, y + ch * 0.72, n === 1 ? 18 : 14, "#fff", "center");
+      const tag = r.kind === "new" ? "NEW!" : r.kind === "star" ? `각성 ★${r.stars}` : "코인 +50";
+      RD.text(g, tag, x + cw / 2, y + ch * 0.87, n === 1 ? 18 : 14, r.kind === "new" ? "#ff8a3d" : "#ffd34d", "center");
+    });
+    if (R.t > 0.4 + n * 0.18) button(C.width / 2 - 100, C.height - 58, 200, 46, "확인", () => { gachaResult = null; });
   }
 
   function drawResult() {
@@ -230,6 +388,7 @@
     // 고른 강화 목록
     const ups = RD.UPGRADES.filter((u) => run.lv(u.id)).map((u) => `${u.id === "sig" ? run.char.sig.name : u.name} ${run.lv(u.id)}`);
     RD.text(g, ups.join(" · ") || "강화 없음", C.width / 2, 328, 13, "#cfd8ff", "center");
+    RD.text(g, `코인 +${run.coins}  (보유 ${coins.toLocaleString()})`, C.width / 2, 356, 16, "#ffd34d", "center");
     button(C.width / 2 - 230, 390, 210, 66, "다시 출격", startRun);
     button(C.width / 2 + 20, 390, 210, 66, "메뉴로", () => { scene = "select"; }, "#5b8ff0");
   }
@@ -273,6 +432,8 @@
       if (run.over && run.overTimer > (run.win ? 3 : 1.5)) endRun();
     } else if (scene === "result") {
       drawResult();
+    } else if (scene === "gacha") {
+      drawGacha();
     }
     requestAnimationFrame(frame);
   }
@@ -284,6 +445,7 @@
     if (scene !== "play" || !run || !down) return;
     if (action === "bomb") run.bomb();
   };
-  RD.debugState = () => ({ scene, run });
+  RD.debugState = () => ({ scene, run, coins, owned, pity });
+  RD.debugGacha = (c) => { coins = c; scene = "gacha"; };
   RD.startRun = (i) => { selected = i; startRun(); };
 })();

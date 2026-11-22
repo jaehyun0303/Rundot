@@ -51,75 +51,110 @@ RD.MODES = {
   timeattack: { name: "타임 어택", desc: "3분 동안 최대한 많은 점수를 모아라", time: 180 },
 };
 
-// 캐릭터: 샷(파워 1~4)과 폭탄
-// shot.lanes[파워-1] = 한 번에 나가는 탄 배치 [y 오프셋, 각도(도)]
+// 캐릭터 등급 (뽑기)
+RD.GRADES = {
+  C: { name: "일반", color: "#cfd8e6" },
+  R: { name: "희귀", color: "#5fb8ff" },
+  SR: { name: "영웅", color: "#c58aff" },
+  SSR: { name: "전설", color: "#ffd34d" },
+};
+
+// 캐릭터: 공격 방식이 모두 다르다. starter 는 처음부터 가진 캐릭터
+// shot.multi[파워-1] 은 탄 추가 단계별 값 (캐릭터마다 의미가 다름)
 RD.CHARACTERS = [
   {
     id: "fox",
     name: "여우 견습기사",
-    type: "관통형",
-    desc: "적을 뚫고 나가는 검기. 줄지어 오는 적에게 강하다",
+    grade: "C",
+    starter: true,
+    type: "근접형",
+    desc: "가까이 붙어서 벤다. 베기는 적 탄도 베어 없앤다",
     illust: "illust_fox",
     shot: {
-      name: "검기", kind: "wave", cd: 0.16, dmg: 3, speed: 900, w: 26, h: 44, pierce: true, color: "#bfe4ff",
-      lanes: [[[0, 0]], [[-14, 0], [14, 0]], [[-24, -4], [0, 0], [24, 4]], [[-36, -6], [-12, 0], [12, 0], [36, 6]]],
+      name: "검 베기", kind: "slash", cd: 0.24, dmg: 4.5, range: 125, color: "#bfe4ff", pierceAll: true,
+      multi: [1, 1.18, 1.36, 1.55], // 베기 범위 배율
+      multiDesc: (lv) => `베기 범위 +18%${lv === 2 ? ", 위아래 두 번 베기" : ""}`,
     },
-    sig: { name: "검기 거대화", desc: "검기가 30% 커지고 위력 +15%" },
+    sig: { name: "검기 날리기", desc: "벨 때마다 앞으로 날아가는 검기가 나간다" },
     bomb: { name: "일섬", color: "#bfe4ff" },
-  },
-  {
-    id: "cat",
-    name: "고양이 마법사",
-    type: "유도형",
-    desc: "적을 따라가는 마법 구슬. 조준이 서툴러도 맞는다",
-    illust: "illust_cat",
-    shot: {
-      name: "유도 마법 구슬", kind: "orb", cd: 0.2, dmg: 2.5, speed: 700, w: 20, h: 20, homing: true, color: "#c58aff",
-      lanes: [[[0, 0]], [[-10, -10], [10, 10]], [[-14, -18], [0, 0], [14, 18]], [[-16, -26], [-6, -8], [6, 8], [16, 26]]],
-    },
-    sig: { name: "분열 구슬", desc: "구슬이 맞으면 작은 구슬로 갈라진다" },
-    bomb: { name: "별빛 마법진", color: "#c58aff" },
-  },
-  {
-    id: "bear",
-    name: "곰 대장장이",
-    type: "강타형",
-    desc: "느리지만 아주 센 쇠망치 탄. 보스에게 강하다",
-    illust: "illust_bear",
-    shot: {
-      name: "쇠망치 탄", kind: "hammer", cd: 0.3, dmg: 7, speed: 760, w: 28, h: 28, color: "#ffb347",
-      lanes: [[[0, 0]], [[-12, 0], [12, 0]], [[-20, -3], [0, 0], [20, 3]], [[-26, -5], [-9, 0], [9, 0], [26, 5]]],
-    },
-    sig: { name: "폭발 망치", desc: "망치가 맞은 자리에서 폭발한다" },
-    bomb: { name: "대지 강타", color: "#ffb347" },
   },
   {
     id: "rabbit",
     name: "토끼 도적",
-    type: "연사형",
-    desc: "빠르게 쏟아지는 단검. 앞쪽 화력이 가장 세다",
+    grade: "C",
+    starter: true,
+    type: "부메랑형",
+    desc: "단검이 날아갔다가 돌아온다. 갈 때와 올 때 두 번 맞힌다",
     illust: "illust_rabbit",
     shot: {
-      name: "단검 난사", kind: "dagger", cd: 0.07, dmg: 1.2, speed: 1150, w: 22, h: 10, color: "#e6ecf2",
-      lanes: [[[0, 0]], [[-8, 0], [8, 0]], [[-14, 0], [0, 0], [14, 0]], [[-20, -2], [-7, 0], [7, 0], [20, 2]]],
+      name: "부메랑 단검", kind: "boomerang", cd: 0.42, dmg: 3.2, speed: 1150, color: "#e6ecf2", pierceAll: true,
+      multi: [1, 2, 3, 4], // 한 번에 던지는 단검 수
+      multiDesc: (lv) => `한 번에 던지는 단검 ${lv + 1}개 → ${lv + 2}개`,
     },
     sig: { name: "급소 찌르기", desc: "단검이 15% 확률로 3배 피해" },
     bomb: { name: "그림자 단검 폭풍", color: "#9fffb0" },
   },
   {
+    id: "bear",
+    name: "곰 대장장이",
+    grade: "R",
+    type: "폭격형",
+    desc: "망치를 포물선으로 던진다. 떨어진 자리에서 크게 폭발한다",
+    illust: "illust_bear",
+    shot: {
+      name: "망치 투척", kind: "lob", cd: 0.6, dmg: 8, radius: 70, color: "#ffb347", pierceAll: true,
+      multi: [1, 2, 3, 4], // 한 번에 던지는 망치 수
+      multiDesc: (lv) => `한 번에 던지는 망치 ${lv + 1}개 → ${lv + 2}개`,
+    },
+    sig: { name: "대폭발", desc: "폭발 범위 +30%, 폭발 위력 +20%" },
+    bomb: { name: "대지 강타", color: "#ffb347" },
+  },
+  {
     id: "owl",
     name: "부엉이 비행사",
-    type: "확산형",
-    desc: "부채꼴로 퍼지는 바람 깃털. 화면 넓게 잡는다",
+    grade: "SR",
+    type: "설치형",
+    desc: "천천히 나아가는 회오리. 닿은 적을 계속 때리고 적 탄을 날려 버린다",
     illust: "illust_owl",
     shot: {
-      name: "바람 깃털", kind: "feather", cd: 0.15, dmg: 1.6, speed: 880, w: 22, h: 14, color: "#bff5d8",
-      lanes: [[[0, -8], [0, 0], [0, 8]], [[0, -16], [0, -6], [0, 6], [0, 16]], [[0, -24], [0, -12], [0, 0], [0, 12], [0, 24]], [[0, -32], [0, -20], [0, -8], [0, 8], [0, 20], [0, 32]]],
+      name: "회오리", kind: "tornado", cd: 0.85, dmg: 2.4, speed: 250, w: 54, h: 96, life: 2.4, color: "#bff5d8", pierceAll: true,
+      multi: [1, 2, 3, 4], // 한 번에 만드는 회오리 수
+      multiDesc: (lv) => `한 번에 만드는 회오리 ${lv + 1}개 → ${lv + 2}개`,
     },
-    sig: { name: "회오리 깃털", desc: "깃털이 적을 하나 더 관통하고 갈래 +1" },
+    sig: { name: "폭풍", desc: "회오리가 25% 커지고 더 오래 간다" },
     bomb: { name: "회오리 바람", color: "#bff5d8" },
   },
+  {
+    id: "cat",
+    name: "고양이 마법사",
+    grade: "SSR",
+    type: "유도형",
+    desc: "적을 따라가는 마법 구슬. 조준이 서툴러도 맞는다",
+    illust: "illust_cat",
+    shot: {
+      name: "유도 마법 구슬", kind: "orb", cd: 0.2, dmg: 3, speed: 700, w: 20, h: 20, homing: true, color: "#c58aff",
+      lanes: [[[0, 0]], [[-10, -10], [10, 10]], [[-14, -18], [0, 0], [14, 18]], [[-16, -26], [-6, -8], [6, 8], [16, 26]]],
+      multiDesc: (lv) => `한 번에 나가는 구슬 ${lv + 1}개 → ${lv + 2}개`,
+    },
+    sig: { name: "분열 구슬", desc: "구슬이 맞으면 작은 구슬로 갈라진다" },
+    bomb: { name: "별빛 마법진", color: "#c58aff" },
+  },
 ];
+
+// 캐릭터 뽑기
+RD.GACHA = {
+  cost1: 150, // 1회 코인
+  cost10: 1350, // 10회 코인 (희귀 이상 1개 보장)
+  startCoins: 600, // 처음 시작할 때 주는 코인
+  pity: 50, // 이 횟수 안에 전설이 안 나오면 다음에 전설 확정
+  rates: { SSR: 0.025, SR: 0.08, R: 0.22 }, // 나머지는 일반
+  maxStars: 6, // 같은 캐릭터가 또 나오면 각성 (별 +1)
+  starDmg: 0.06, // 별 하나당 위력 +6%
+  starHp: 6, // 별 하나당 최대 체력 +6
+};
+
+// 코인: 아이템을 먹거나 보스를 잡으면 모인다 (뽑기에 쓴다)
+RD.COIN_VALUE = { coin: 1, gem: 2, star: 8, golem: 25, boss: 60 };
 
 // 적. hp 는 1주차 기준 (주차가 오를수록 늘어난다)
 RD.ENEMIES = {
@@ -140,10 +175,10 @@ RD.BULLET = {
 // 레벨업 강화. 레벨이 오르면 3개 중 하나를 고른다.
 // cat: 분류(주무기/보조무기/능력), max: 최대 단계
 RD.UPGRADES = [
-  { id: "multi", cat: "주무기", name: "탄 추가", max: 3, color: "#ff5a5a", desc: (lv) => `한 번에 나가는 탄 ${lv + 1}줄 → ${lv + 2}줄` },
+  { id: "multi", cat: "주무기", name: "탄 추가", max: 3, color: "#ff5a5a", desc: (lv) => `한 번에 나가는 탄 ${lv + 1}줄 → ${lv + 2}줄` }, // 이름과 설명은 캐릭터마다 바뀐다
   { id: "dmg", cat: "주무기", name: "위력 강화", max: 5, color: "#ff5a5a", desc: () => "주무기 위력 +20%" },
   { id: "rate", cat: "주무기", name: "연사 속도", max: 5, color: "#ff5a5a", desc: () => "주무기 발사 간격 -12%" },
-  { id: "pierce", cat: "주무기", name: "관통", max: 2, color: "#ff5a5a", desc: () => "탄이 적을 하나 더 뚫고 지나간다" },
+  { id: "pierce", cat: "주무기", name: "관통", max: 2, color: "#ff5a5a", desc: () => "탄이 적을 하나 더 뚫고 지나간다", only: (ch) => !ch.shot.pierceAll },
   { id: "sig", cat: "전용", name: "", max: 3, color: "#ffd34d", desc: () => "" }, // 캐릭터 전용 (이름과 설명은 캐릭터 데이터)
   { id: "missile", cat: "보조무기", name: "유도 미사일", max: 5, color: "#7fe6ff", desc: (lv) => lv ? "미사일 +1발, 위력 증가" : "주기적으로 적을 쫓는 미사일 발사" },
   { id: "laser", cat: "보조무기", name: "레이저", max: 5, color: "#7fe6ff", desc: (lv) => lv ? "레이저 굵기와 위력 증가" : "주기적으로 앞으로 굵은 레이저 발사" },

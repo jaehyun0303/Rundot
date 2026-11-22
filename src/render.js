@@ -85,7 +85,34 @@
         P(-16, -6, 8, 12, "rgba(197,138,255,0.6)");
         P(-9, -9, 18, 18, s.color);
         P(-5, -5, 8, 8, "#fff");
-      } else if (s.kind === "hammer") {
+      } else if (s.kind === "boomerang") {
+        // 토끼: 빙글빙글 도는 부메랑 단검
+        g.rotate(s.t * 22);
+        P(-14, -3, 22, 6, "#e6ecf2");
+        P(-14, -1, 22, 2, "#fff");
+        P(-3, -14, 6, 22, "#e6ecf2");
+        P(-4, -4, 8, 8, "#6b4528");
+        g.rotate(-s.t * 22);
+        g.strokeStyle = s.back ? "rgba(159,255,176,0.5)" : "rgba(255,255,255,0.35)";
+        g.lineWidth = 2;
+        g.beginPath(); g.arc(0, 0, 16, 0, Math.PI * 2); g.stroke();
+      } else if (s.kind === "tornado") {
+        // 부엉이: 회오리 (층층이 흔들리는 띠)
+        const hh = s.h / 2, ww = s.w / 2;
+        const fade = Math.min(1, (s.life - s.t) * 3);
+        g.globalAlpha = 0.85 * fade;
+        for (let i = 0; i < 8; i++) {
+          const k = i / 7; // 0 = 아래, 1 = 위
+          const w = ww * (0.35 + 0.65 * k);
+          const off = Math.sin(s.t * 14 + i * 0.9) * ww * 0.35;
+          P(-w + off, hh - (i + 1) * (s.h / 8), w * 2, s.h / 8 - 2, i % 2 ? "#bff5d8" : "#e8fff2");
+          P(-w + off + w * 0.5, hh - (i + 1) * (s.h / 8), w * 0.5, 3, "#ffffff");
+        }
+        g.globalAlpha = 0.25 * fade;
+        g.fillStyle = s.color;
+        g.beginPath(); g.ellipse(0, 0, ww + 8, hh + 6, 0, 0, Math.PI * 2); g.fill();
+        g.globalAlpha = 1;
+      } else if (s.kind === "lob" || s.kind === "hammer") {
         // 곰: 빙글빙글 도는 쇠망치
         g.rotate(s.t * 18);
         P(-4, -2, 18, 5, "#8a5a35");
@@ -196,6 +223,25 @@
     g.fillRect(-40 - Math.random() * 6, 14, 14, 2);
     g.drawImage(spr, -20 * s, -24 * s, size, size);
     g.restore();
+    // 여우 베기 (부채꼴 궤적)
+    for (const sl of run.slashes) {
+      const k = sl.t / sl.life;
+      const a0 = sl.dir < 0 ? -1.25 : 1.25, a1 = -a0;
+      const cur = a0 + (a1 - a0) * Math.min(1, k * 1.4);
+      g.save();
+      g.globalAlpha = 1 - k * 0.6;
+      g.strokeStyle = "rgba(191,228,255,0.55)";
+      g.lineWidth = sl.r * 0.35;
+      g.beginPath();
+      g.arc(p.x, p.y, sl.r * 0.78, Math.min(a0, cur), Math.max(a0, cur));
+      g.stroke();
+      g.strokeStyle = "#ffffff";
+      g.lineWidth = 4;
+      g.beginPath();
+      g.arc(p.x, p.y, sl.r * 0.95, Math.min(a0, cur), Math.max(a0, cur));
+      g.stroke();
+      g.restore();
+    }
     // 피격 판정 점 (이 점에만 맞지 않으면 된다)
     g.fillStyle = "#ff4d5e";
     g.beginPath(); g.arc(p.x, p.y, C.hitRadius + 2, 0, Math.PI * 2); g.fill();
