@@ -49,7 +49,7 @@ RD.CHARACTERS = [
     skill: "돌진",
     desc: "빠르게 돌진하며 장애물을 부순다",
     illust: "illust_fox",
-    attack: { name: "검 베기", type: "melee", cd: 0.35, dmg: 2, range: 130, color: "#bfe4ff" },
+    attack: { name: "검기", kind: "wave", cd: 0.5, dmg: 2, speed: 780, life: 0.7, w: 34, h: 70, pierce: true, color: "#bfe4ff" },
   },
   {
     id: "cat",
@@ -57,7 +57,7 @@ RD.CHARACTERS = [
     skill: "자석 마법",
     desc: "화면의 아이템을 모두 끌어당긴다",
     illust: "illust_cat",
-    attack: { name: "마법 구슬", type: "shot", cd: 0.45, dmg: 1, pierce: true, color: "#c58aff" },
+    attack: { name: "유도 마법 구슬", kind: "orb", cd: 0.45, dmg: 2, speed: 700, life: 1.4, w: 30, h: 30, homing: true, color: "#c58aff" },
   },
   {
     id: "bear",
@@ -65,7 +65,7 @@ RD.CHARACTERS = [
     skill: "거대화",
     desc: "몸이 커져서 장애물을 부순다",
     illust: "illust_bear",
-    attack: { name: "망치 내려치기", type: "melee", cd: 0.55, dmg: 3, range: 165, color: "#ffb347" },
+    attack: { name: "땅울림 충격파", kind: "quake", cd: 0.7, dmg: 4, speed: 620, life: 0.8, w: 60, h: 110, pierce: true, ground: true, color: "#ffb347" },
   },
   {
     id: "rabbit",
@@ -73,7 +73,7 @@ RD.CHARACTERS = [
     skill: "3단 점프",
     desc: "점프를 세 번까지 할 수 있고 점수가 2배",
     illust: "illust_rabbit",
-    attack: { name: "단검 던지기", type: "shot", cd: 0.25, dmg: 1, color: "#e6ecf2" },
+    attack: { name: "단검 난사", kind: "dagger", cd: 0.2, dmg: 1.2, speed: 1000, life: 0.7, w: 30, h: 22, color: "#e6ecf2" },
   },
   {
     id: "owl",
@@ -81,16 +81,35 @@ RD.CHARACTERS = [
     skill: "비행",
     desc: "점프를 누르고 있으면 하늘을 난다",
     illust: "illust_owl",
-    attack: { name: "바람 깃털", type: "shot", cd: 0.4, dmg: 1, spread: true, color: "#bff5d8" },
+    attack: { name: "바람 깃털", kind: "feather", cd: 0.38, dmg: 1.4, speed: 900, life: 0.75, w: 30, h: 24, spread: 3, color: "#bff5d8" },
   },
 ];
 
 // 몬스터: 부딪히면 체력이 깎이고, 공격하거나 위에서 밟으면 쓰러뜨린다.
 RD.MONSTERS = {
-  slime: { hp: 1, w: 44, h: 34, score: 80, coins: 2, minLevel: 0 }, // 제자리에서 통통 뛴다
-  mushroom: { hp: 2, w: 44, h: 52, score: 120, coins: 3, speed: 70, minLevel: 0 }, // 걸어온다
-  bat: { hp: 1, w: 46, h: 30, score: 100, coins: 2, speed: 50, fly: true, minLevel: 0.1 }, // 머리 높이로 날아온다
-  golem: { hp: 4, w: 70, h: 84, score: 300, coins: 8, speed: 30, minLevel: 0.35 }, // 단단하고 크다
+  slime: { hp: 2, w: 44, h: 34, score: 30, coins: 1, exp: 1, speed: 40, from: 0 }, // 통통 뛰면서 다가온다
+  mushroom: { hp: 3, w: 44, h: 52, score: 50, coins: 1, exp: 2, speed: 90, from: 0 }, // 걸어온다
+  bat: { hp: 2, w: 46, h: 30, score: 40, coins: 1, exp: 1, speed: 120, fly: true, from: 8 }, // 날아온다 (높이가 여러 가지)
+  golem: { hp: 14, w: 70, h: 84, score: 250, coins: 6, exp: 8, speed: 40, from: 30 }, // 단단하고 크다
+};
+
+// 몬스터 떼 (시간이 지날수록 자주, 많이, 단단하게)
+RD.HORDE = {
+  firstAt: 2.5, // 첫 무리가 나오는 시간(초)
+  interval: [1.6, 0.45], // 무리 사이 간격: 시작 → 최소
+  rampTime: 120, // 이 시간 동안 점점 어려워진다
+  packSize: [2, 7], // 한 무리 마릿수: 시작 → 최대
+  hpGrowth: 1 / 50, // 초당 몬스터 체력 증가 비율
+  contactDamage: 12,
+};
+
+// 레벨업: 처치 경험치가 차면 공격이 강해진다
+RD.LEVELS = {
+  expBase: 6, // 1레벨 → 2레벨에 필요한 경험치
+  expGrowth: 1.35,
+  dmgPerLevel: 0.2, // 레벨당 위력 +20%
+  cdPerLevel: 0.93, // 레벨당 공격 간격 x0.93
+  extraShotEvery: 3, // 3레벨마다 발사 수 +1
 };
 
 RD.IMAGES = [

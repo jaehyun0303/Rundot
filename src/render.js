@@ -128,12 +128,12 @@
       g.restore();
       // 체력이 여러 칸인 몬스터는 체력바 표시
       const def = RD.MONSTERS[m.type];
-      if (!m.dead && def.hp > 1 && m.hp < def.hp) {
+      if (!m.dead && m.hp < m.maxHp) {
         const box = run.monsterBox(m);
         g.fillStyle = "#1d1622";
         g.fillRect(x - 24, box.y - 14, 48, 7);
         g.fillStyle = "#ff4d5e";
-        g.fillRect(x - 23, box.y - 13, 46 * (m.hp / def.hp), 5);
+        g.fillRect(x - 23, box.y - 13, 46 * Math.max(0, m.hp / m.maxHp), 5);
       }
       if (RD.debug) {
         const b = run.monsterBox(m);
@@ -175,23 +175,56 @@
       g.restore();
     }
     for (const sh of run.shots) {
+      if (sh.delay > 0) continue;
       const x = sh.x - run.camX;
+      const k = sh.t / sh.life;
       g.save();
-      g.translate(x, sh.y);
-      if (run.charId === "cat") {
-        g.fillStyle = "rgba(197,138,255,0.35)";
-        g.fillRect(-34, -7, 30, 14);
-        g.fillStyle = sh.color; g.fillRect(-10, -10, 20, 20);
-        g.fillStyle = "#ffffff"; g.fillRect(-5, -5, 8, 8);
-      } else if (run.charId === "rabbit") {
-        g.rotate(sh.t * 30);
-        g.fillStyle = "#e6ecf2"; g.fillRect(-12, -3, 18, 6);
-        g.fillStyle = "#6b4528"; g.fillRect(6, -4, 8, 8);
+      g.translate(Math.round(x), Math.round(sh.y));
+      g.globalAlpha = k > 0.8 ? (1 - k) * 5 : 1;
+      const P = (px, py, w, h, c) => { g.fillStyle = c; g.fillRect(px, py, w, h); };
+      if (sh.kind === "wave") {
+        // 여우: 초승달 모양 검기
+        const h = sh.h / 2;
+        g.fillStyle = "rgba(191,228,255,0.35)";
+        g.beginPath(); g.ellipse(-14, 0, 22, h, 0, -Math.PI / 2, Math.PI / 2); g.fill();
+        g.strokeStyle = sh.color; g.lineWidth = 8;
+        g.beginPath(); g.ellipse(-4, 0, 16, h - 4, 0, -Math.PI / 2, Math.PI / 2); g.stroke();
+        g.strokeStyle = "#ffffff"; g.lineWidth = 3;
+        g.beginPath(); g.ellipse(-2, 0, 15, h - 8, 0, -Math.PI / 2, Math.PI / 2); g.stroke();
+      } else if (sh.kind === "orb") {
+        // 고양이: 보라 마법 구슬 + 꼬리
+        g.rotate(Math.atan2(sh.vy, sh.vx));
+        P(-36, -5, 22, 10, "rgba(197,138,255,0.3)");
+        P(-20, -7, 10, 14, "rgba(197,138,255,0.55)");
+        P(-11, -11, 22, 22, sh.color);
+        P(-7, -7, 10, 10, "#ffffff");
+        P(5, -11, 6, 4, "#ff8af0");
+      } else if (sh.kind === "quake") {
+        // 곰: 땅을 타고 가는 충격파 (바위가 솟아오름)
+        const hh = sh.h;
+        g.fillStyle = "rgba(255,179,71,0.25)";
+        // sh.y 는 땅에서 34px 위. 바위 밑동을 땅(+34)에 맞춘다
+        g.fillRect(-sh.w / 2, 34 - hh, sh.w, hh);
+        for (let i = 0; i < 4; i++) {
+          const rh = 14 + ((i * 7 + Math.floor(sh.t * 30)) % 4) * 9;
+          P(-sh.w / 2 + i * 15, 34 - rh, 12, rh, i % 2 ? "#a8763f" : "#c4945c");
+          P(-sh.w / 2 + i * 15, 34 - rh, 12, 3, "#e8c08a");
+        }
+        P(-sh.w / 2 - 6, 30, sh.w + 12, 4, sh.color);
+      } else if (sh.kind === "dagger") {
+        // 토끼: 회전하는 단검
+        g.rotate(sh.t * 28);
+        P(-14, -3, 20, 6, "#e6ecf2");
+        P(-14, -1, 20, 2, "#ffffff");
+        P(6, -5, 4, 10, "#3e2817");
+        P(10, -3, 6, 6, "#6b4528");
       } else {
-        g.fillStyle = "rgba(191,245,216,0.35)";
-        g.fillRect(-30, -4, 26, 8);
-        g.fillStyle = sh.color; g.fillRect(-12, -5, 22, 10);
-        g.fillStyle = "#ffffff"; g.fillRect(-12, -1, 22, 2);
+        // 부엉이: 바람 깃털
+        g.rotate(Math.atan2(sh.vy, sh.vx + run.curSpeed));
+        P(-34, -3, 22, 6, "rgba(191,245,216,0.3)");
+        P(-14, -6, 26, 12, sh.color);
+        P(-14, -1, 26, 2, "#ffffff");
+        P(10, -4, 6, 8, "#ffffff");
       }
       g.restore();
     }
@@ -269,8 +302,14 @@
         g.stroke();
       } else if (e.type === "text") {
         g.globalAlpha = Math.min(1, k * 2);
-        text(g, e.text, e.x - run.camX, e.y, 28, e.color || "#ffe66b", "center");
+        text(g, e.text, e.x - run.camX, e.y, e.size || 28, e.color || "#ffe66b", "center");
         g.globalAlpha = 1;
+      } else if (e.type === "ring") {
+        g.strokeStyle = `rgba(127,230,255,${k})`;
+        g.lineWidth = 6;
+        g.beginPath();
+        g.arc(e.x - run.camX, e.y, 30 + (1 - k) * 90, 0, Math.PI * 2);
+        g.stroke();
       } else if (e.type === "flash") {
         g.fillStyle = `rgba(255,60,60,${0.35 * k})`;
         g.fillRect(0, 0, C.width, C.height);
@@ -302,6 +341,15 @@
     g.fillRect(62, 58, 196 * sk, 10);
     const ch = RD.CHARACTERS.find((c) => c.id === run.charId);
     text(g, ch.skill, 268, 63, 14, run.skill.active > 0 ? "#7fe6ff" : "#cfd8ff");
+
+    // 레벨과 경험치
+    g.fillStyle = "rgba(20,12,30,0.75)";
+    g.fillRect(60, 76, 200, 12);
+    g.fillStyle = "#7fe6ff";
+    g.fillRect(62, 78, 196 * (run.exp / run.expNeed), 8);
+    text(g, "Lv." + run.level, 268, 82, 15, "#7fe6ff");
+    const st = run.attackStats;
+    text(g, `${ch.attack.name} x${st.count}`, 330, 82, 13, "#ffc49a");
 
     // 점수와 코인
     text(g, run.score.toLocaleString(), C.width - 24, 36, 32, "#fff", "right");
