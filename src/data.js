@@ -1,121 +1,121 @@
-// 게임 밸런스 값과 캐릭터 데이터. 숫자를 바꿔 가며 조정하면 된다.
+// 게임 밸런스 값과 데이터. 숫자를 바꿔 가며 조정하면 된다.
+// 장르: 텐가이 / 1945 같은 오락실 슈팅. 가로로 스크롤되는 숲 위를 날며 자동으로 쏜다.
 window.RD = window.RD || {};
 
 RD.CONFIG = {
   width: 960,
   height: 540,
-  groundY: 440, // 캐릭터 발이 닿는 높이
-  playerScreenX: 200, // 화면에서 캐릭터가 서 있는 x 위치
-  gravity: 2600,
-  jumpVelocity: 900,
-  doubleJumpVelocity: 820,
-  startSpeed: 360,
-  maxSpeed: 680,
-  speedGain: 5, // 초당 속도 증가량
-  maxHp: 100,
-  hpDrain: 2.2, // 초당 체력 감소
-  hpDrainGain: 0.012, // 시간이 지날수록 감소량이 늘어남
-  hitDamage: 25,
-  hitInvuln: 1.2,
-  skillCharge: 12, // 스킬이 차는 데 걸리는 시간(초)
-  skillDuration: 5,
-  spriteScale: 3,
+  groundY: 470, // 땅 몬스터가 서 있는 높이
+  scrollSpeed: 140, // 배경이 흘러가는 속도
+  spriteScale: 2.4, // 플레이어 도트 확대 배율
+  moveSpeed: 330, // 키보드 이동 속도
+  focusSpeed: 160, // Shift 누르고 있을 때 (정밀 이동)
+  touchSensitivity: 1.35, // 손가락 이동량 대비 캐릭터 이동량
+  hitRadius: 5, // 플레이어 피격 판정 반지름 (작을수록 쉬움)
+  lives: 3,
+  bombs: 2,
+  maxBombs: 5,
+  maxPower: 4,
+  respawnInvuln: 2.5,
+  bombInvuln: 2.2,
+  bombDamage: 60,
+  extendEvery: 100000, // 이 점수마다 잔기 +1
 };
 
-// 수집 아이템: 점수, 코인, 효과
+// 아이템: P = 파워업, B = 폭탄, 나머지는 점수
 RD.ITEMS = {
-  gem: { img: "item_gem", size: 30, score: 10 },
-  star: { img: "item_star", size: 34, score: 30 },
-  coin: { img: "item_coin", size: 30, score: 5, coins: 1 },
-  bigcoin: { img: "item_coin_big", size: 52, score: 50, coins: 10 },
-  heart: { img: "item_heart", size: 44, score: 0, heal: 30 },
-  boost: { img: "item_star_rainbow", size: 46, score: 100, effect: "boost" },
-  magnet: { img: "item_orb", size: 46, score: 50, effect: "magnet" },
+  power: { label: "P", color: "#ff5a5a", size: 30, score: 100 },
+  bomb: { label: "B", color: "#4aa8ff", size: 30, score: 100 },
+  coin: { img: "item_coin", size: 24, score: 100 },
+  gem: { img: "item_gem", size: 26, score: 300 },
+  star: { img: "item_star", size: 30, score: 1000 },
+  life: { img: "item_heart", size: 34, score: 0, life: 1 },
 };
 
-// 장애물: kind 가 ground 면 점프로, hanging 이면 슬라이드로 피한다.
-RD.OBSTACLES = {
-  stone: { img: "obs_stone_pillar", kind: "ground", h: 92 },
-  totem: { img: "obs_totem", kind: "ground", h: 104 },
-  crystal: { img: "obs_crystal_pillar", kind: "ground", h: 112 },
-  log: { img: "obs_log_hanging", kind: "hanging", w: 210 },
-};
-
-// 캐릭터: 스킬 종류와 선택 화면 일러스트
+// 캐릭터: 샷(파워 1~4)과 폭탄
+// shot.lanes[파워-1] = 한 번에 나가는 탄 배치 [y 오프셋, 각도(도)]
 RD.CHARACTERS = [
   {
     id: "fox",
     name: "여우 견습기사",
-    skill: "돌진",
-    desc: "빠르게 돌진하며 장애물을 부순다",
+    type: "관통형",
+    desc: "적을 뚫고 나가는 검기. 줄지어 오는 적에게 강하다",
     illust: "illust_fox",
-    attack: { name: "검기", kind: "wave", cd: 0.5, dmg: 2, speed: 780, life: 0.7, w: 34, h: 70, pierce: true, color: "#bfe4ff" },
+    shot: {
+      name: "검기", kind: "wave", cd: 0.16, dmg: 3, speed: 900, w: 26, h: 44, pierce: true, color: "#bfe4ff",
+      lanes: [[[0, 0]], [[-14, 0], [14, 0]], [[-24, -4], [0, 0], [24, 4]], [[-36, -6], [-12, 0], [12, 0], [36, 6]]],
+    },
+    bomb: { name: "일섬", color: "#bfe4ff" },
   },
   {
     id: "cat",
     name: "고양이 마법사",
-    skill: "자석 마법",
-    desc: "화면의 아이템을 모두 끌어당긴다",
+    type: "유도형",
+    desc: "적을 따라가는 마법 구슬. 조준이 서툴러도 맞는다",
     illust: "illust_cat",
-    attack: { name: "유도 마법 구슬", kind: "orb", cd: 0.45, dmg: 2, speed: 700, life: 1.4, w: 30, h: 30, homing: true, color: "#c58aff" },
+    shot: {
+      name: "유도 마법 구슬", kind: "orb", cd: 0.2, dmg: 2.5, speed: 700, w: 20, h: 20, homing: true, color: "#c58aff",
+      lanes: [[[0, 0]], [[-10, -10], [10, 10]], [[-14, -18], [0, 0], [14, 18]], [[-16, -26], [-6, -8], [6, 8], [16, 26]]],
+    },
+    bomb: { name: "별빛 마법진", color: "#c58aff" },
   },
   {
     id: "bear",
     name: "곰 대장장이",
-    skill: "거대화",
-    desc: "몸이 커져서 장애물을 부순다",
+    type: "강타형",
+    desc: "느리지만 아주 센 쇠망치 탄. 보스에게 강하다",
     illust: "illust_bear",
-    attack: { name: "땅울림 충격파", kind: "quake", cd: 0.7, dmg: 4, speed: 620, life: 0.8, w: 60, h: 110, pierce: true, ground: true, color: "#ffb347" },
+    shot: {
+      name: "쇠망치 탄", kind: "hammer", cd: 0.3, dmg: 7, speed: 760, w: 28, h: 28, color: "#ffb347",
+      lanes: [[[0, 0]], [[-12, 0], [12, 0]], [[-20, -3], [0, 0], [20, 3]], [[-26, -5], [-9, 0], [9, 0], [26, 5]]],
+    },
+    bomb: { name: "대지 강타", color: "#ffb347" },
   },
   {
     id: "rabbit",
     name: "토끼 도적",
-    skill: "3단 점프",
-    desc: "점프를 세 번까지 할 수 있고 점수가 2배",
+    type: "연사형",
+    desc: "빠르게 쏟아지는 단검. 앞쪽 화력이 가장 세다",
     illust: "illust_rabbit",
-    attack: { name: "단검 난사", kind: "dagger", cd: 0.2, dmg: 1.2, speed: 1000, life: 0.7, w: 30, h: 22, color: "#e6ecf2" },
+    shot: {
+      name: "단검 난사", kind: "dagger", cd: 0.07, dmg: 1.1, speed: 1150, w: 22, h: 10, color: "#e6ecf2",
+      lanes: [[[0, 0]], [[-8, 0], [8, 0]], [[-14, 0], [0, 0], [14, 0]], [[-20, -2], [-7, 0], [7, 0], [20, 2]]],
+    },
+    bomb: { name: "그림자 단검 폭풍", color: "#9fffb0" },
   },
   {
     id: "owl",
     name: "부엉이 비행사",
-    skill: "비행",
-    desc: "점프를 누르고 있으면 하늘을 난다",
+    type: "확산형",
+    desc: "부채꼴로 퍼지는 바람 깃털. 화면 넓게 잡는다",
     illust: "illust_owl",
-    attack: { name: "바람 깃털", kind: "feather", cd: 0.38, dmg: 1.4, speed: 900, life: 0.75, w: 30, h: 24, spread: 3, color: "#bff5d8" },
+    shot: {
+      name: "바람 깃털", kind: "feather", cd: 0.15, dmg: 1.45, speed: 880, w: 22, h: 14, color: "#bff5d8",
+      lanes: [[[0, -8], [0, 0], [0, 8]], [[0, -16], [0, -6], [0, 6], [0, 16]], [[0, -24], [0, -12], [0, 0], [0, 12], [0, 24]], [[0, -32], [0, -20], [0, -8], [0, 8], [0, 20], [0, 32]]],
+    },
+    bomb: { name: "회오리 바람", color: "#bff5d8" },
   },
 ];
 
-// 몬스터: 부딪히면 체력이 깎이고, 공격하거나 위에서 밟으면 쓰러뜨린다.
-RD.MONSTERS = {
-  slime: { hp: 2, w: 44, h: 34, score: 30, coins: 1, exp: 1, speed: 40, from: 0 }, // 통통 뛰면서 다가온다
-  mushroom: { hp: 3, w: 44, h: 52, score: 50, coins: 1, exp: 2, speed: 90, from: 0 }, // 걸어온다
-  bat: { hp: 2, w: 46, h: 30, score: 40, coins: 1, exp: 1, speed: 120, fly: true, from: 8 }, // 날아온다 (높이가 여러 가지)
-  golem: { hp: 14, w: 70, h: 84, score: 250, coins: 6, exp: 8, speed: 40, from: 30 }, // 단단하고 크다
+// 적. hp 는 1주차 기준 (주차가 오를수록 늘어난다)
+RD.ENEMIES = {
+  bat: { sprite: "bat", hp: 3, w: 40, h: 26, score: 100, scale: 2 },
+  wisp: { sprite: "wisp", hp: 18, w: 40, h: 40, score: 400, scale: 2 },
+  slime: { sprite: "slime", hp: 6, w: 40, h: 30, score: 200, scale: 2, ground: true },
+  mushroom: { sprite: "mushroom", hp: 10, w: 40, h: 46, score: 300, scale: 2, ground: true },
+  golem: { sprite: "golem", hp: 500, w: 90, h: 100, score: 5000, scale: 3.6, ground: true, midboss: true },
+  boss: { sprite: "batking", hp: 2400, w: 200, h: 150, score: 50000, scale: 6, boss: true },
 };
 
-// 몬스터 떼 (시간이 지날수록 자주, 많이, 단단하게)
-RD.HORDE = {
-  firstAt: 2.5, // 첫 무리가 나오는 시간(초)
-  interval: [1.6, 0.45], // 무리 사이 간격: 시작 → 최소
-  rampTime: 120, // 이 시간 동안 점점 어려워진다
-  packSize: [2, 7], // 한 무리 마릿수: 시작 → 최대
-  hpGrowth: 1 / 50, // 초당 몬스터 체력 증가 비율
-  contactDamage: 12,
-};
-
-// 레벨업: 처치 경험치가 차면 공격이 강해진다
-RD.LEVELS = {
-  expBase: 6, // 1레벨 → 2레벨에 필요한 경험치
-  expGrowth: 1.35,
-  dmgPerLevel: 0.2, // 레벨당 위력 +20%
-  cdPerLevel: 0.93, // 레벨당 공격 간격 x0.93
-  extraShotEvery: 3, // 3레벨마다 발사 수 +1
+// 적 탄
+RD.BULLET = {
+  speed: 230, // 기본 탄속 (주차마다 +12%)
+  radius: 6,
 };
 
 RD.IMAGES = [
   "bg_forest", "ground",
-  "item_gem", "item_star", "item_star_rainbow", "item_coin", "item_coin_big", "item_heart", "item_orb",
-  "obs_log_hanging", "obs_stone_pillar", "obs_totem", "obs_crystal_pillar",
+  "item_gem", "item_star", "item_coin", "item_heart",
   "pet_0", "pet_1", "pet_2", "pet_3",
 ];
 RD.ILLUSTS = ["illust_fox", "illust_cat", "illust_bear", "illust_rabbit", "illust_owl"];

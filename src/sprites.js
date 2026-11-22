@@ -264,6 +264,25 @@
     },
   };
 
+  // 도깨비불: 파란 불꽃 정령 (탄을 원형으로 뿌린다)
+  MON.wisp = function (p, f, hurt) {
+    const a = hurt ? "#ffffff" : "#5fb8ff", b = hurt ? "#ffffff" : "#bfe8ff";
+    const fl = f % 2;
+    p(10, 10, 12, 14, a); p(8, 13, 16, 9, a); p(12, 6 - fl, 8, 4, a); p(14, 3 - fl, 4, 3, a); p(20, 4 + fl, 3, 4, a);
+    p(12, 13, 8, 9, b);
+    p(13, 15, 2, 3, OUTLINE); p(18, 15, 2, 3, OUTLINE);
+    p(14, 20, 4, 1, OUTLINE);
+    p(9, 24, 3, 3 + fl, a); p(15, 24, 3, 4 - fl, a); p(21, 24, 3, 3 + fl, a);
+  };
+  // 보스: 박쥐 왕 (왕관과 망토)
+  MON.batking = function (p, f, hurt) {
+    MON.bat(p, f, hurt);
+    const gold = hurt ? "#ffffff" : "#ffd34d";
+    p(11, 5, 10, 3, gold); p(11, 3, 2, 2, gold); p(15, 2, 2, 3, gold); p(19, 3, 2, 2, gold);
+    p(15, 6, 2, 1, "#ff4d5e");
+    p(12, 21, 8, 4, hurt ? "#ffffff" : "#8f1f28");
+  };
+
   const mcache = {};
   RD.MONSTER_SIZE = MSIZE;
   RD.getMonsterFrame = function (type, frame, hurt) {
