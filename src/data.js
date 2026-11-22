@@ -76,7 +76,7 @@ RD.CHARACTERS = [
       multiDesc: (lv) => `베기 범위 +18%${lv === 2 ? ", 위아래 두 번 베기" : ""}`,
     },
     sig: { name: "검기 날리기", desc: "벨 때마다 앞으로 날아가는 검기가 나간다" },
-    bomb: { name: "일섬", color: "#bfe4ff" },
+    bomb: { name: "일섬", desc: "화면 끝까지 돌진한 뒤 지나간 가로줄을 통째로 벤다", color: "#bfe4ff" },
   },
   {
     id: "rabbit",
@@ -92,7 +92,7 @@ RD.CHARACTERS = [
       multiDesc: (lv) => `한 번에 던지는 단검 ${lv + 1}개 → ${lv + 2}개`,
     },
     sig: { name: "급소 찌르기", desc: "단검이 15% 확률로 3배 피해" },
-    bomb: { name: "그림자 단검 폭풍", color: "#9fffb0" },
+    bomb: { name: "그림자 단검 폭풍", desc: "그림자 분신 4명이 3초 동안 단검을 쏟아붓는다", color: "#9fffb0" },
   },
   {
     id: "bear",
@@ -107,7 +107,7 @@ RD.CHARACTERS = [
       multiDesc: (lv) => `한 번에 던지는 망치 ${lv + 1}개 → ${lv + 2}개`,
     },
     sig: { name: "대폭발", desc: "폭발 범위 +30%, 폭발 위력 +20%" },
-    bomb: { name: "대지 강타", color: "#ffb347" },
+    bomb: { name: "대지 강타", desc: "바위 기둥이 앞으로 차례차례 솟는다. 땅의 적에게 특히 강하다", color: "#ffb347" },
   },
   {
     id: "owl",
@@ -122,7 +122,7 @@ RD.CHARACTERS = [
       multiDesc: (lv) => `한 번에 만드는 회오리 ${lv + 1}개 → ${lv + 2}개`,
     },
     sig: { name: "폭풍", desc: "회오리가 25% 커지고 더 오래 간다" },
-    bomb: { name: "회오리 바람", color: "#bff5d8" },
+    bomb: { name: "회오리 바람", desc: "거대한 회오리가 적과 탄을 빨아들인다", color: "#bff5d8" },
   },
   {
     id: "cat",
@@ -137,7 +137,7 @@ RD.CHARACTERS = [
       multiDesc: (lv) => `한 번에 나가는 구슬 ${lv + 1}개 → ${lv + 2}개`,
     },
     sig: { name: "분열 구슬", desc: "구슬이 맞으면 작은 구슬로 갈라진다" },
-    bomb: { name: "별빛 마법진", color: "#c58aff" },
+    bomb: { name: "별빛 마법진", desc: "적 탄을 코인으로 바꾸고 별똥별을 떨어뜨린다", color: "#c58aff" },
   },
 ];
 

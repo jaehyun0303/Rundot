@@ -260,7 +260,7 @@
       RD.text(g, ch.name, x + cw / 2, y + 166, 16, sel ? "#ffd34d" : "#fff", "center");
       RD.text(g, `${ch.type} · ${ch.shot.name}`, x + cw / 2, y + 187, 12, "#ffc49a", "center");
       RD.text(g, "전용: " + ch.sig.name, x + cw / 2, y + 204, 12, "#ffd34d", "center");
-      RD.text(g, "폭탄: " + ch.bomb.name, x + cw / 2, y + 221, 12, "#9fd0ff", "center");
+      RD.text(g, "궁극기: " + ch.bomb.name, x + cw / 2, y + 221, 12, "#9fd0ff", "center");
       // 등급
       const GR = RD.GRADES[ch.grade];
       g.fillStyle = "#1d1622"; g.fillRect(x + 4, y + 4, 44, 20);
@@ -290,8 +290,9 @@
     g.drawImage(spr, 24, 392, 110, 110);
     RD.text(g, ch.desc.split(". ")[0], 145, 420, 15, "#fff");
     RD.text(g, `전용 · ${ch.sig.name}: ${ch.sig.desc}`, 145, 446, 12, "#ffd34d");
-    RD.text(g, `최고 점수 (${RD.MODES[mode].name} · ${D.name}) ${best.toLocaleString()}`, 145, 472, 13, "#9fd0ff");
-    if (owned[ch.id] > 1) RD.text(g, `각성 ★${owned[ch.id]}: 위력 +${Math.round(G.starDmg * 100 * (owned[ch.id] - 1))}%, 체력 +${G.starHp * (owned[ch.id] - 1)}`, 145, 496, 12, "#ffd34d");
+    RD.text(g, `궁극기 · ${ch.bomb.name}: ${ch.bomb.desc}`, 145, 470, 12, "#9fd0ff");
+    RD.text(g, `최고 점수 (${RD.MODES[mode].name} · ${D.name}) ${best.toLocaleString()}`, 145, 494, 12, "#cfc6e0");
+    if (owned[ch.id] > 1) RD.text(g, `각성 ★${owned[ch.id]}: 위력 +${Math.round(G.starDmg * 100 * (owned[ch.id] - 1))}%, 체력 +${G.starHp * (owned[ch.id] - 1)}`, 145, 516, 12, "#ffd34d");
     RD.text(g, `코인 ${coins.toLocaleString()}`, C.width - 318, 400, 14, "#ffd34d", "center");
     button(C.width - 384, 414, 132, 66, "뽑기", () => { scene = "gacha"; }, "#c58aff");
     button(C.width - 230, 414, 200, 66, "출격!", startRun);
@@ -396,7 +397,7 @@
   function drawTouchHints() {
     if (run.choosing) return;
     if (!isTouch()) {
-      if (run.t < 6) RD.text(g, "이동: 방향키 / WASD    정밀 이동: Shift    폭탄: X    사격은 자동", C.width / 2, C.height - 50, 14, "rgba(255,255,255,0.8)", "center");
+      if (run.t < 6) RD.text(g, "이동: 방향키 / WASD    정밀 이동: Shift    궁극기: X    사격은 자동", C.width / 2, C.height - 50, 14, "rgba(255,255,255,0.8)", "center");
       return;
     }
     if (run.t < 5) RD.text(g, "화면을 대고 끌어서 이동 · 사격은 자동", C.width / 2, C.height / 2 + 90, 18, "#fff", "center");
@@ -406,7 +407,7 @@
     g.globalAlpha = 1;
     g.strokeStyle = "#4aa8ff"; g.lineWidth = 3;
     g.beginPath(); g.arc(BOMB_BTN.x, BOMB_BTN.y, BOMB_BTN.r, 0, Math.PI * 2); g.stroke();
-    RD.text(g, "폭탄", BOMB_BTN.x, BOMB_BTN.y - 8, 17, "#fff", "center");
+    RD.text(g, "궁극기", BOMB_BTN.x, BOMB_BTN.y - 8, 16, "#fff", "center");
     RD.text(g, "x" + run.bombs, BOMB_BTN.x, BOMB_BTN.y + 14, 15, "#9fd0ff", "center");
   }
 

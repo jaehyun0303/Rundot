@@ -85,6 +85,20 @@
         P(-16, -6, 8, 12, "rgba(197,138,255,0.6)");
         P(-9, -9, 18, 18, s.color);
         P(-5, -5, 8, 8, "#fff");
+      } else if (s.kind === "meteor") {
+        // 고양이 궁극기: 별똥별
+        g.rotate(Math.atan2(s.vy, s.vx));
+        P(-50, -4, 40, 8, "rgba(255,211,77,0.35)");
+        P(-26, -6, 18, 12, "rgba(255,240,180,0.7)");
+        g.rotate(-Math.atan2(s.vy, s.vx) + s.t * 6);
+        g.fillStyle = "#ffd34d";
+        g.beginPath();
+        for (let i = 0; i < 10; i++) {
+          const r = i % 2 ? 7 : 16, a = (i * Math.PI) / 5;
+          g[i ? "lineTo" : "moveTo"](Math.cos(a) * r, Math.sin(a) * r);
+        }
+        g.fill();
+        P(-4, -4, 8, 8, "#fff");
       } else if (s.kind === "boomerang") {
         // 토끼: 빙글빙글 도는 부메랑 단검
         g.rotate(s.t * 22);
@@ -268,6 +282,21 @@
           g.fillRect(e.x + Math.cos(a) * r * 1.3 - 3, e.y + Math.sin(a) * r * 1.3 - 3, 6, 6);
         }
         g.globalAlpha = 1;
+      } else if (e.type === "pillar") {
+        // 곰 대지 강타: 땅에서 솟는 바위 기둥
+        const rise = Math.min(1, e.t / 0.12);
+        const h = 300 * rise;
+        g.globalAlpha = e.t > 0.45 ? 1 - (e.t - 0.45) / 0.25 : 1;
+        g.fillStyle = "#6b4a2e";
+        g.fillRect(e.x - 28, C.groundY + 10 - h, 56, h);
+        g.fillStyle = "#8a6440";
+        g.fillRect(e.x - 20, C.groundY + 10 - h, 16, h);
+        g.fillStyle = "#c4945c";
+        g.fillRect(e.x - 28, C.groundY + 10 - h, 56, 10);
+        for (let y = C.groundY - h + 30; y < C.groundY; y += 46) { g.fillStyle = "#4a3020"; g.fillRect(e.x - 8, y, 24, 4); }
+        g.fillStyle = "#d8b48a";
+        g.fillRect(e.x - 46, C.groundY - 4, 92, 10);
+        g.globalAlpha = 1;
       } else if (e.type === "bolt") {
         // 번개: 하늘에서 지그재그로 떨어진다
         g.strokeStyle = `rgba(200,240,255,${1 - k})`;
@@ -299,28 +328,103 @@
   }
 
   // 폭탄 연출: 캐릭터 색으로 화면이 번쩍이고 고리가 퍼진다
-  function drawBomb(g, run) {
-    if (run.bombT <= 0) return;
-    const k = 1 - run.bombT / 1.2;
-    const col = run.char.bomb.color;
-    g.save();
-    g.globalAlpha = 0.35 * (1 - k);
-    g.fillStyle = col;
-    g.fillRect(0, 0, C.width, C.height);
-    g.globalAlpha = 1 - k;
-    g.strokeStyle = col;
-    for (let i = 0; i < 3; i++) {
-      g.lineWidth = 14 - i * 4;
+  // 궁극기 연출 (캐릭터마다 다름)
+  function drawUltBack(g, run) {
+    const u = run.ult;
+    if (!u) return;
+    const k = u.t / u.life;
+    if (u.kind === "fox") {
+      g.fillStyle = `rgba(0,0,10,${0.45 * (1 - k)})`;
+      g.fillRect(0, 0, C.width, C.height);
+    } else if (u.kind === "bear" && u.t < 0.5) {
+      g.fillStyle = `rgba(120,70,20,${0.35 * (1 - u.t / 0.5)})`;
+      g.fillRect(0, 0, C.width, C.height);
+    } else if (u.kind === "owl" && u.cx) {
+      // 거대한 회오리
+      const fade = Math.min(1, u.t * 3, (u.life - u.t) * 2);
+      g.save();
+      g.globalAlpha = 0.8 * fade;
+      for (let i = 0; i < 16; i++) {
+        const y = u.cy + 230 - i * 30;
+        const w = 40 + i * 13;
+        const off = Math.sin(u.t * 9 + i * 0.7) * 30;
+        g.fillStyle = i % 2 ? "rgba(191,245,216,0.75)" : "rgba(232,255,242,0.8)";
+        g.fillRect(u.cx - w + off, y - 12, w * 2, 22);
+        g.fillStyle = "#ffffff";
+        g.fillRect(u.cx - w + off + w * 1.3, y - 12, w * 0.35, 4);
+      }
+      g.strokeStyle = "rgba(191,245,216,0.5)";
+      g.lineWidth = 3;
+      for (let i = 0; i < 5; i++) {
+        g.beginPath();
+        g.arc(u.cx, u.cy, 120 + i * 50, u.t * 4 + i, u.t * 4 + i + 1.4);
+        g.stroke();
+      }
+      g.restore();
+    } else if (u.kind === "cat") {
+      g.fillStyle = `rgba(40,10,80,${0.35 * Math.min(1, u.t * 4, (u.life - u.t) * 3)})`;
+      g.fillRect(0, 0, C.width, C.height);
+    }
+  }
+
+  function drawUltFront(g, run) {
+    const u = run.ult;
+    if (!u) return;
+    const p = run.player;
+    if (u.kind === "fox") {
+      if (u.t < 0.42) {
+        // 돌진 궤적
+        g.fillStyle = "rgba(191,228,255,0.8)";
+        g.fillRect(u.x0, u.y0 - 3, p.x - u.x0, 6);
+        g.fillStyle = "#fff";
+        g.fillRect(u.x0, u.y0 - 1, p.x - u.x0, 2);
+      } else {
+        // 베어진 가로줄
+        const k = Math.min(1, (u.t - 0.42) / 0.5);
+        g.fillStyle = `rgba(255,255,255,${0.9 * (1 - k)})`;
+        g.fillRect(0, u.y0 - 80 * (1 - k) - 2, C.width, 160 * (1 - k) + 4);
+        g.fillStyle = `rgba(191,228,255,${1 - k})`;
+        g.fillRect(0, u.y0 - 3 - k * 40, C.width, 3);
+        g.fillRect(0, u.y0 + k * 40, C.width, 3);
+      }
+    } else if (u.kind === "rabbit" && u.clones) {
+      // 그림자 분신
+      const spr = RD.getCharacterFrame("rabbit", "jump", 0);
+      const s = C.spriteScale, size = RD.SPRITE_SIZE * s;
+      const fade = Math.min(1, u.t * 5, (u.life - u.t) * 3);
+      for (const [x, y] of u.clones) {
+        g.globalAlpha = 0.35 * fade;
+        g.fillStyle = "#1d3a24";
+        g.beginPath(); g.arc(x, y, 34, 0, Math.PI * 2); g.fill();
+        g.globalAlpha = 0.55 * fade;
+        g.drawImage(spr, x - 20 * s, y - 24 * s, size, size);
+      }
+      g.globalAlpha = 1;
+    } else if (u.kind === "cat") {
+      // 마법진
+      const fade = Math.min(1, u.t * 4, (u.life - u.t) * 3);
+      g.save();
+      g.translate(p.x, p.y);
+      g.globalAlpha = fade;
+      g.strokeStyle = "#c58aff";
+      g.lineWidth = 3;
+      g.beginPath(); g.arc(0, 0, 110, 0, Math.PI * 2); g.stroke();
+      g.beginPath(); g.arc(0, 0, 86, 0, Math.PI * 2); g.stroke();
+      g.rotate(u.t * 1.5);
+      g.strokeStyle = "#ffd34d";
       g.beginPath();
-      g.arc(run.player.x, run.player.y, (k * 1.4 + i * 0.15) * C.width, 0, Math.PI * 2);
+      for (let i = 0; i <= 5; i++) {
+        const a = (i * 4 * Math.PI) / 5 - Math.PI / 2;
+        g[i ? "lineTo" : "moveTo"](Math.cos(a) * 86, Math.sin(a) * 86);
+      }
       g.stroke();
+      g.fillStyle = "#ffd34d";
+      for (let i = 0; i < 8; i++) {
+        const a = (i / 8) * Math.PI * 2;
+        g.fillRect(Math.cos(a) * 110 - 4, Math.sin(a) * 110 - 4, 8, 8);
+      }
+      g.restore();
     }
-    g.fillStyle = "#fff";
-    for (let i = 0; i < 14; i++) {
-      const y = ((i * 73 + run.t * 900) % C.height);
-      g.fillRect(((i * 197) % C.width) - k * 200, y, 120, 4);
-    }
-    g.restore();
   }
 
   function bar(g, x, y, w, h, k, color) {
@@ -360,12 +464,12 @@
     // 아래: 잔기, 폭탄, 가진 강화
     const head = RD.getCharacterFrame(run.charId, "jump", 0);
     for (let i = 0; i < Math.min(run.lives, 6); i++) g.drawImage(head, 6 + i * 26, C.height - 80, 34, 34);
-    text(g, "BOMB", 14, C.height - 24, 12, "#9fd0ff");
+    text(g, "궁극기", 12, C.height - 24, 12, "#9fd0ff");
     for (let i = 0; i < run.bombs; i++) {
       g.fillStyle = "#1d1622";
-      g.beginPath(); g.arc(66 + i * 18, C.height - 24, 7, 0, Math.PI * 2); g.fill();
+      g.beginPath(); g.arc(70 + i * 18, C.height - 24, 7, 0, Math.PI * 2); g.fill();
       g.fillStyle = "#4aa8ff";
-      g.beginPath(); g.arc(66 + i * 18, C.height - 24, 5, 0, Math.PI * 2); g.fill();
+      g.beginPath(); g.arc(70 + i * 18, C.height - 24, 5, 0, Math.PI * 2); g.fill();
     }
     let ux = 190;
     for (const u of RD.UPGRADES) {
@@ -459,12 +563,13 @@
     g.save();
     if (run.shake > 0) g.translate((Math.random() - 0.5) * 12 * run.shake * 2, (Math.random() - 0.5) * 10 * run.shake * 2);
     drawBackground(g, run.scroll);
+    drawUltBack(g, run);
     drawItems(g, run);
     drawEnemies(g, run);
     drawShots(g, run);
     drawPlayer(g, run);
     drawEffects(g, run);
-    drawBomb(g, run);
+    drawUltFront(g, run);
     drawBullets(g, run);
     g.restore();
     drawHud(g, run);

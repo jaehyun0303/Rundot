@@ -82,7 +82,8 @@
       this.effects = [];
       this.groups = {};
       this.groupId = 0;
-      this.bombT = 0;
+      this.bombT = 0; // 궁극기 남은 시간
+      this.ult = null; // 궁극기 상태
       this.banner = null;
       this.shake = 0;
       this.spawnT = 3;
@@ -478,16 +479,138 @@
       }
     }
 
+    // ---------- 궁극기 (캐릭터마다 다름) ----------
     bomb() {
       if (this.over || this.choosing || this.bombs <= 0 || this.bombT > 0 || this.player.dead > 0) return;
+      const p = this.player;
       this.bombs--;
-      this.bombT = 1.2;
-      this.player.invuln = Math.max(this.player.invuln, C.bombInvuln);
-      this.shake = 0.5;
-      for (const b of this.bullets) this.effects.push({ type: "pop", x: b.x, y: b.y, t: 0, life: 0.3 });
-      this.addScore(this.bullets.length * 10);
-      this.bullets = [];
+      const life = { fox: 1.0, rabbit: 3.0, bear: 1.5, owl: 3.5, cat: 3.0 }[this.charId];
+      this.bombT = life;
+      this.ult = { kind: this.charId, t: 0, life, x0: p.x, y0: p.y, done: {}, spawnT: 0, mul: 1 + 0.3 * this.lv("bomb") };
+      p.invuln = Math.max(p.invuln, life + 0.6);
       this.banner = { text: this.char.bomb.name + "!", color: this.char.bomb.color, t: 0, life: 1.2, small: true };
+
+      const popAll = () => {
+        for (const b of this.bullets) this.effects.push({ type: "pop", x: b.x, y: b.y, t: 0, life: 0.3 });
+        this.addScore(this.bullets.length * 10);
+        this.bullets = [];
+      };
+      if (this.charId === "rabbit") popAll();
+      if (this.charId === "bear") { popAll(); this.shake = 0.8; }
+      if (this.charId === "cat") {
+        // 적 탄이 코인으로 바뀐다 (최대 30개, 나머지는 사라짐)
+        this.bullets.forEach((b, i) => {
+          if (i < 30) this.items.push({ type: "coin", x: b.x, y: b.y, vx: rand(-30, 30), vy: rand(-120, -40) });
+          else this.effects.push({ type: "pop", x: b.x, y: b.y, t: 0, life: 0.3 });
+        });
+        this.bullets = [];
+      }
+    }
+
+    updateUlt(dt) {
+      const u = this.ult;
+      if (!u) return;
+      const p = this.player;
+      u.t += dt;
+      const live = this.enemies.filter((e) => !e.dead && !(e.delay > 0) && e.x < C.width + 20);
+      const big = (e) => RD.ENEMIES[e.type].boss || RD.ENEMIES[e.type].midboss;
+
+      switch (u.kind) {
+        case "fox": {
+          // 일섬: 화면 끝까지 돌진 → 지나간 가로줄을 벤다 → 제자리로
+          const dashEnd = 0.3, cutAt = 0.42;
+          if (u.t < dashEnd) p.x = u.x0 + (C.width - 70 - u.x0) * (u.t / dashEnd);
+          else if (u.t > cutAt + 0.15) p.x += (u.x0 - p.x) * Math.min(1, dt * 8);
+          if (u.t >= cutAt && !u.done.cut) {
+            u.done.cut = true;
+            this.shake = 0.6;
+            for (const b of this.bullets) this.effects.push({ type: "pop", x: b.x, y: b.y, t: 0, life: 0.3 });
+            this.addScore(this.bullets.length * 10);
+            this.bullets = [];
+            for (const e of live) {
+              const inBand = Math.abs(e.y - u.y0) < 80 + RD.ENEMIES[e.type].h / 2;
+              this.damage(e, (inBand ? 130 : 25) * u.mul);
+            }
+          }
+          break;
+        }
+        case "rabbit": {
+          // 그림자 단검 폭풍: 분신 4명이 적에게 단검을 쏟아붓는다
+          u.clones = [[p.x - 60, p.y - 110], [p.x - 60, p.y + 110], [p.x + 90, p.y - 170], [p.x + 90, p.y + 170]]
+            .map(([x, y]) => [x, Math.max(50, Math.min(C.groundY - 20, y))]);
+          u.spawnT -= dt;
+          while (u.spawnT <= 0 && u.t < u.life - 0.3) {
+            u.spawnT += 0.05;
+            const [cx, cy] = pick(u.clones);
+            const tg = live.length ? pick(live) : null;
+            const a = tg ? Math.atan2(tg.y - cy, tg.x - cx) : rand(-0.4, 0.4);
+            this.addShot({ kind: "dagger", x: cx, y: cy, vx: Math.cos(a) * 1000, vy: Math.sin(a) * 1000, w: 22, h: 12, dmg: 2.4 * u.mul, pierce: 0, homing: true, color: "#9fffb0" });
+          }
+          // 분신 주변의 적 탄도 막는다
+          this.bullets = this.bullets.filter((b) => !u.clones.some(([x, y]) => Math.hypot(b.x - x, b.y - y) < 40));
+          break;
+        }
+        case "bear": {
+          // 대지 강타: 바위 기둥이 앞쪽으로 차례차례 솟는다
+          const cols = 8;
+          for (let i = 0; i < cols; i++) {
+            const at = 0.1 + i * 0.1;
+            if (u.t < at || u.done[i]) continue;
+            u.done[i] = true;
+            const cx = u.x0 + 40 + i * ((C.width - u.x0) / cols);
+            this.effects.push({ type: "pillar", x: cx, t: 0, life: 0.7 });
+            this.shake = Math.max(this.shake, 0.25);
+            for (const e of live) {
+              const def = RD.ENEMIES[e.type];
+              if (Math.abs(e.x - cx) > 55 + def.w / 2) continue;
+              if (def.ground) this.damage(e, 60 * u.mul); // 땅의 적에게 강하다
+              else if (e.y > C.groundY - 300) this.damage(e, 35 * u.mul);
+            }
+          }
+          break;
+        }
+        case "owl": {
+          // 회오리 바람: 화면 가운데의 거대한 회오리가 적과 탄을 빨아들인다
+          const cx = C.width * 0.64, cy = 260;
+          u.cx = cx; u.cy = cy;
+          const fade = Math.min(1, (u.life - u.t) * 2);
+          for (const b of this.bullets) {
+            const a = Math.atan2(cy - b.y, cx - b.x);
+            b.vx += Math.cos(a) * 1600 * dt * fade;
+            b.vy += Math.sin(a) * 1600 * dt * fade;
+          }
+          const before = this.bullets.length;
+          this.bullets = this.bullets.filter((b) => Math.hypot(b.x - cx, b.y - cy) > 40);
+          this.addScore((before - this.bullets.length) * 10);
+          for (const e of live) {
+            const d = Math.hypot(e.x - cx, e.y - cy);
+            if (!big(e)) {
+              const a = Math.atan2(cy - e.y, cx - e.x);
+              const pull = Math.min(260, d * 2) * dt * fade;
+              e.x += Math.cos(a) * pull;
+              e.y += Math.sin(a) * pull;
+              if (e.baseY != null) e.baseY = e.y;
+            }
+            if (d < 220 + RD.ENEMIES[e.type].w / 2) this.damage(e, (big(e) ? 22 : 40) * u.mul * dt, true);
+          }
+          // 회오리 근처의 탄은 플레이어 쪽으로 오지 못한다
+          this.bullets = this.bullets.filter((b) => Math.hypot(b.x - p.x, b.y - p.y) > 60);
+          break;
+        }
+        case "cat": {
+          // 별빛 마법진: 별똥별이 적에게 떨어진다
+          u.spawnT -= dt;
+          while (u.spawnT <= 0 && u.t < u.life - 0.4) {
+            u.spawnT += 0.11;
+            const tg = live.length ? pick(live) : null;
+            const tx = tg ? tg.x : rand(400, C.width);
+            this.addShot({ kind: "meteor", x: tx + rand(-160, 60), y: -30, vx: 260, vy: 900, w: 30, h: 30, dmg: 5.5 * u.mul, pierce: 2, homing: true, color: "#ffd34d" });
+          }
+          this.bullets = this.bullets.filter((b) => Math.hypot(b.x - p.x, b.y - p.y) > 110); // 마법진이 탄을 막는다
+          break;
+        }
+      }
+      if (u.t >= u.life) this.ult = null;
     }
 
     // ---------- 피격과 체력 ----------
@@ -581,11 +704,7 @@
       this.updateItems(dt);
       this.updateEffects(dt);
 
-      if (this.bombT > 0) {
-        this.bullets = [];
-        const dmg = C.bombDamage * (1 + 0.3 * this.lv("bomb"));
-        for (const e of this.enemies) if (!e.dead && e.x < C.width + 20) this.damage(e, (dmg / 1.2) * dt, true);
-      }
+      this.updateUlt(dt);
 
       // 피격 판정 (판정은 캐릭터 가운데의 작은 점)
       if (p.dead <= 0 && p.invuln <= 0) {
