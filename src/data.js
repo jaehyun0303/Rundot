@@ -322,7 +322,7 @@ RD.ENEMIES = {
   angel: { sprite: "wisp", variant: "holy", exp: 15, hp: 420, w: 60, h: 60, score: 8000, scale: 3, elite: true, desc: "결박에서 풀린 천사" },
   boss_nightmare: { sprite: "wisp", variant: "nightmare", exp: 80, hp: 3200, w: 170, h: 170, score: 80000, scale: 7, boss: true, style: "nightmare" },
   boss_abaddon: { sprite: "batking", variant: "locust", exp: 90, hp: 2600, w: 210, h: 160, score: 100000, scale: 6.5, boss: true, style: "abaddon" },
-  boss_chaos: { sprite: "batking", variant: "chaos", exp: 120, hp: 4200, w: 230, h: 170, score: 200000, scale: 7.2, boss: true, style: "chaos" },
+  boss_chaos: { img: ["boss_chaos_0", "boss_chaos_1"], drawH: 270, sprite: "batking", variant: "chaos", exp: 120, hp: 4200, w: 230, h: 170, score: 200000, scale: 7.2, boss: true, style: "chaos" },
   boss_dragon: { sprite: "batking", variant: "crimson", exp: 150, hp: 5600, w: 240, h: 180, score: 300000, scale: 7.5, boss: true, style: "dragon" },
   boss_bat: { img: ["boss_bat_0", "boss_bat_1"], drawH: 250, sprite: "batking", exp: 60, hp: 1700, w: 200, h: 150, score: 50000, scale: 6, boss: true, style: "bat" },
   boss_crystal: { img: ["boss_crystal_0", "boss_crystal_1"], drawH: 270, sprite: "golem", variant: "crystal", exp: 70, hp: 2000, w: 150, h: 160, score: 60000, scale: 5.6, boss: true, ground: true, style: "crystal" },
@@ -367,6 +367,7 @@ RD.IMAGES = [
   // 지역 보스 이미지 (2프레임)
   "boss_bat_0", "boss_bat_1", "boss_crystal_0", "boss_crystal_1", "boss_fire_0", "boss_fire_1",
   "boss_frost_0", "boss_frost_1", "boss_storm_0", "boss_storm_1",
+  "boss_chaos_0", "boss_chaos_1", "cut_angel_0", "cut_angel_1",
   "item_gem", "item_star", "item_coin", "item_heart",
   "pet_0", "pet_1", "pet_2", "pet_3",
 ];

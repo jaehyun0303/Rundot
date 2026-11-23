@@ -89,6 +89,8 @@
       tone(hz(n), d, { type: "sawtooth", vol: 0.16, at, attack: 0.05 });
       tone(hz(n) * 1.005, d, { type: "square", vol: 0.06, at, attack: 0.05 });
     }),
+    // 뽑기 소환: 점점 올라가는 소리
+    gacha_charge: () => { for (let i = 0; i < 10; i++) tone(hz(60 + i * 2), 0.22, { type: "triangle", vol: 0.06 + i * 0.008, at: i * 0.2 }); noise(2, { vol: 0.08, freq: 400, slide: 8, q: 2 }); },
     gacha: () => [60, 64, 67, 72].forEach((n, i) => tone(hz(n), 0.12, { vol: 0.1, at: i * 0.06 })),
     gacha_rare: () => [72, 76, 79, 84, 88, 91].forEach((n, i) => tone(hz(n), 0.25, { type: "triangle", vol: 0.14, at: i * 0.07 })),
   };

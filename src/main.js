@@ -37,7 +37,10 @@
   let coins = save.get("coins", null);
   if (coins == null) { coins = G.startCoins; save.set("coins", coins); }
   let pity = save.get("pity", 0);
-  const isOwned = (i) => !!owned[RD.CHARACTERS[i].id];
+  // 테스트 모드: 켜 두면 모든 캐릭터와 지역이 열리고 뽑기가 무료 (진짜 진행 상황은 건드리지 않는다)
+  let testMode = !!save.get("testMode", false);
+  const starsOf = (id) => (testMode ? Math.max(1, owned[id] || 0) : owned[id] || 0);
+  const isOwned = (i) => starsOf(RD.CHARACTERS[i].id) > 0;
   let selected = save.get("char", 0);
   if (!RD.CHARACTERS[selected] || !isOwned(selected)) selected = 0;
   let gachaResult = null; // 뽑기 결과 연출
@@ -61,7 +64,7 @@
 
   function startRun() {
     const id = RD.CHARACTERS[selected].id;
-    run = new RD.Run(id, mode, diff, { stars: owned[id] || 1, stage: mode === "stageselect" ? pickStage : 0 });
+    run = new RD.Run(id, mode, diff, { stars: starsOf(id) || 1, stage: mode === "stageselect" ? pickStage : 0 });
     scene = "play";
   }
 
@@ -97,8 +100,9 @@
   }
 
   function gacha(n) {
-    const cost = n === 10 ? G.cost10 : G.cost1;
+    const cost = testMode ? 0 : n === 10 ? G.cost10 : G.cost1;
     if (coins < cost) return;
+    const backup = testMode ? { owned: { ...owned }, coins, pity } : null;
     coins -= cost;
     const list = [];
     for (let i = 0; i < n; i++) list.push(rollOne(false));
@@ -111,11 +115,31 @@
       pity = Math.max(0, pity - 1);
       list.push(rollOne(true));
     }
+    if (backup) { owned = backup.owned; coins = backup.coins; pity = backup.pity; } // 테스트 모드: 결과만 보여 준다
     save.set("owned", owned);
     save.set("coins", coins);
     save.set("pity", pity);
-    gachaResult = { list, t: 0 };
-    RD.audio && RD.audio.sfx(list.some((r) => r.grade === "SSR" || r.grade === "SR") ? "gacha_rare" : "gacha");
+    // 뽑기 컷씬: 소환 → 번쩍 → (전설/영웅 새 캐릭터 등장 장면) → 카드 공개
+    const rank = { C: 0, R: 1, SR: 2, SSR: 3 };
+    const best = list.reduce((a, r) => (rank[r.grade] > rank[a] ? r.grade : a), "C");
+    const cutins = list.filter((r) => (r.grade === "SSR" || r.grade === "SR") && r.kind === "new");
+    gachaResult = { list, t: 0, state: "summon", best, cutins, ci: 0, st: 0 };
+    RD.audio && RD.audio.sfx("gacha_charge");
+  }
+
+  // 뽑기 컷씬 넘기기 (터치 / Space)
+  function skipGacha() {
+    const R = gachaResult;
+    if (!R) return;
+    if (R.state === "summon" || R.state === "flash") nextGachaState(R, true);
+    else if (R.state === "cutin") nextGachaState(R);
+  }
+  function nextGachaState(R, fromSummon) {
+    if (fromSummon && R.state !== "flash") RD.audio && RD.audio.sfx(R.best === "SSR" || R.best === "SR" ? "gacha_rare" : "gacha");
+    if (fromSummon && R.cutins.length) { R.state = "cutin"; R.ci = 0; }
+    else if (R.state === "cutin" && R.ci + 1 < R.cutins.length) R.ci++;
+    else { R.state = "cards"; R.t = 0; }
+    R.st = 0;
   }
 
   // ---------- 입력 ----------
@@ -164,12 +188,16 @@
       if (e.code === "ArrowLeft") selected = (selected + 4) % 5;
       if (e.code === "ArrowRight") selected = (selected + 1) % 5;
       if (e.code === "KeyG") scene = "gacha";
+      if (e.code === "KeyT") { testMode = !testMode; save.set("testMode", testMode); }
       if (e.code === "Enter" || e.code === "Space") { if (isOwned(selected)) startRun(); }
     } else if (scene === "result") {
       if (e.code === "Enter" || e.code === "Space") startRun();
       if (e.code === "Escape") scene = "select";
     } else if (scene === "gacha") {
-      if (gachaResult) { if (e.code === "Enter" || e.code === "Space" || e.code === "Escape") gachaResult = null; }
+      if (gachaResult) {
+        if (gachaResult.state !== "cards") { if (["Enter", "Space", "Escape"].includes(e.code)) skipGacha(); }
+        else if (e.code === "Enter" || e.code === "Space" || e.code === "Escape") gachaResult = null;
+      }
       else if (e.code === "Escape") scene = "select";
     }
   });
@@ -190,6 +218,7 @@
     e.preventDefault();
     const pt = toGame(e);
     if (soundHit(pt)) { RD.audio && RD.audio.toggle(); return; }
+    if (scene === "gacha" && gachaResult && gachaResult.state !== "cards") { skipGacha(); return; }
     for (const b of buttons) {
       if (pt.x >= b.x && pt.x <= b.x + b.w && pt.y >= b.y && pt.y <= b.y + b.h) { RD.audio && RD.audio.sfx("click"); b.onClick(); break; }
     }
@@ -256,6 +285,9 @@
     g.fillStyle = "rgba(10,8,20,0.5)";
     g.fillRect(0, 0, C.width, C.height);
     RD.text(g, "RUNDOT", 24, 34, 36, "#ffd34d");
+    // 테스트 모드 켜기/끄기
+    tab(20, 60, 150, 28, testMode ? "🧪 테스트 모드 ON" : "🧪 테스트 모드 OFF", testMode, "#7fe08a", () => { testMode = !testMode; save.set("testMode", testMode); });
+    if (testMode) RD.text(g, "모든 캐릭터·지역 해제, 뽑기 무료", 24, 100, 11, "#7fe08a");
 
     // 모드
     RD.text(g, "모드", 200, 34, 14, "#9fd0ff");
@@ -272,7 +304,7 @@
     if (mode === "stageselect") {
       // 지역 고르기 (스토리에서 도달한 곳까지)
       RD.STAGES.filter((st) => !st.special).forEach((st, i) => {
-        const open = i <= maxStage;
+        const open = testMode || i <= maxStage;
         tab(120 + i * 146, 104, 138, 26, open ? `${i + 1}. ${st.name}` : `${i + 1}. 🔒`, i === pickStage, "#ffd34d", () => { if (open) { pickStage = i; save.set("pickStage", i); loadBest(); } });
       });
     } else {
@@ -307,7 +339,7 @@
       RD.text(g, GR.name, x + 26, y + 15, 11, "#1d1622", "center", GR.color);
       if (isOwned(i)) {
         // 각성 별
-        const st = owned[ch.id];
+        const st = starsOf(ch.id);
         RD.text(g, "★".repeat(st) + "☆".repeat(G.maxStars - st), x + cw - 6, y + 14, 11, "#ffd34d", "right");
       } else {
         // 잠김: 뽑기로 얻는다
@@ -332,7 +364,8 @@
     RD.text(g, `궁극기 · ${ch.bomb.name}: ${ch.bomb.desc}`, 145, 470, 12, "#9fd0ff");
     let ly = 494;
     if (ch.passive) { RD.text(g, `패시브 · ${ch.passive}`, 145, ly, 12, "#9fffb0"); ly += 22; }
-    const starTxt = owned[ch.id] > 1 ? `   각성 ★${owned[ch.id]}: 위력 +${Math.round(G.starDmg * 100 * (owned[ch.id] - 1))}%, 체력 +${G.starHp * (owned[ch.id] - 1)}` : "";
+    const stc = starsOf(ch.id);
+    const starTxt = stc > 1 ? `   각성 ★${stc}: 위력 +${Math.round(G.starDmg * 100 * (stc - 1))}%, 체력 +${G.starHp * (stc - 1)}` : "";
     RD.text(g, `최고 점수 (${RD.MODES[mode].name} · ${D.name}) ${best.toLocaleString()}${starTxt}`, 145, ly, 12, "#cfc6e0");
     RD.text(g, `코인 ${coins.toLocaleString()}`, C.width - 318, 400, 14, "#ffd34d", "center");
     button(C.width - 384, 414, 132, 66, "뽑기", () => { scene = "gacha"; }, "#c58aff");
@@ -346,7 +379,7 @@
     g.fillStyle = "rgba(10,8,20,0.75)";
     g.fillRect(0, 0, C.width, C.height);
     RD.text(g, "캐릭터 뽑기", C.width / 2, 44, 36, "#ffd34d", "center");
-    RD.text(g, `코인 ${coins.toLocaleString()}`, C.width / 2, 86, 20, "#ffd34d", "center");
+    RD.text(g, testMode ? "🧪 테스트 모드: 뽑기 무료 (결과는 저장되지 않음)" : `코인 ${coins.toLocaleString()}`, C.width / 2, 86, testMode ? 16 : 20, testMode ? "#7fe08a" : "#ffd34d", "center");
     RD.text(g, `전설 확정까지 ${G.pity - pity}회`, C.width / 2, 112, 14, "#cfd8ff", "center");
 
     if (gachaResult) { drawGachaResult(); return; }
@@ -369,15 +402,100 @@
     RD.text(g, "이미 가진 캐릭터가 나오면 각성(★ +1): 위력 +6%, 최대 체력 +6. 최대 ★6을 넘으면 코인 50 돌려받기", C.width / 2, 340, 13, "#cfd8ff", "center");
     RD.text(g, "10회 뽑기는 희귀 이상 1개 보장", C.width / 2, 362, 13, "#cfd8ff", "center");
 
-    const can1 = coins >= G.cost1, can10 = coins >= G.cost10;
-    button(C.width / 2 - 330, 400, 200, 76, `1회 · ${G.cost1}`, () => gacha(1), can1 ? "#c58aff" : "#4a3d5c");
-    button(C.width / 2 - 100, 400, 200, 76, `10회 · ${G.cost10}`, () => gacha(10), can10 ? "#ffb347" : "#4a3d5c");
+    const can1 = testMode || coins >= G.cost1, can10 = testMode || coins >= G.cost10;
+    button(C.width / 2 - 330, 400, 200, 76, testMode ? "1회 · 무료" : `1회 · ${G.cost1}`, () => gacha(1), can1 ? "#c58aff" : "#4a3d5c");
+    button(C.width / 2 - 100, 400, 200, 76, testMode ? "10회 · 무료" : `10회 · ${G.cost10}`, () => gacha(10), can10 ? "#ffb347" : "#4a3d5c");
     button(C.width / 2 + 130, 400, 200, 76, "돌아가기", () => { scene = "select"; }, "#5b8ff0");
     if (!can1) RD.text(g, "코인이 부족해요. 게임을 해서 코인을 모으세요", C.width / 2, 500, 14, "#ff8a8a", "center");
   }
 
+  // 소환 마법진: 등급에 따라 빛이 바뀐다 (전설은 무지개)
+  const GRADE_GLOW = { C: [207, 216, 230], R: [95, 184, 255], SR: [197, 138, 255], SSR: [255, 211, 77] };
+  function drawSummon(R) {
+    const k = Math.min(1, R.st / 2);
+    const cx = C.width / 2, cy = 270;
+    // 처음엔 파란빛, 점점 최고 등급 색으로 (영웅/전설은 막판에 바뀐다)
+    let col = R.st < 1.2 || R.best === "C" ? GRADE_GLOW.R : GRADE_GLOW[R.best];
+    if (R.best === "SSR" && R.st > 1.5) { const h = (R.st * 400) % 360; col = null; g.strokeStyle = `hsl(${h},90%,65%)`; }
+    const c = col ? `rgb(${col.join(",")})` : null;
+    g.fillStyle = "rgba(4,2,12,0.85)"; g.fillRect(0, 0, C.width, C.height);
+    const glow = g.createRadialGradient(cx, cy, 10, cx, cy, 260 * k + 40);
+    glow.addColorStop(0, col ? `rgba(${col.join(",")},0.55)` : "rgba(255,255,255,0.6)"); glow.addColorStop(1, "rgba(0,0,0,0)");
+    g.fillStyle = glow; g.fillRect(0, 0, C.width, C.height);
+    g.save(); g.translate(cx, cy);
+    for (let ring = 0; ring < 3; ring++) {
+      g.rotate((ring % 2 ? -1 : 1) * R.st * (1 + ring) * 0.8);
+      if (c) g.strokeStyle = c;
+      g.lineWidth = 3;
+      const r = (80 + ring * 45) * (0.4 + 0.6 * k);
+      g.beginPath(); g.arc(0, 0, r, 0, Math.PI * 2); g.stroke();
+      for (let q = 0; q < 8; q++) { const a = (q / 8) * Math.PI * 2; g.fillStyle = c || g.strokeStyle; g.fillRect(Math.cos(a) * r - 4, Math.sin(a) * r - 4, 8, 8); }
+    }
+    g.restore();
+    // 빨려 드는 빛 알갱이
+    for (let q = 0; q < 40; q++) {
+      const a = q * 2.4 + R.st, d = ((1 - ((R.st * 0.8 + q * 0.13) % 1)) * 320);
+      g.fillStyle = c || `hsl(${(q * 40 + R.st * 300) % 360},90%,65%)`;
+      g.fillRect(cx + Math.cos(a) * d - 2, cy + Math.sin(a) * d - 2, 4, 4);
+    }
+    RD.text(g, R.st < 1.2 ? "소환 중…" : R.best === "SSR" ? "!!! 전설의 기운 !!!" : R.best === "SR" ? "영웅의 기운!" : "소환 중…", cx, 470, 22, c || "#ffd34d", "center");
+    RD.text(g, "터치해서 건너뛰기", cx, 505, 12, "#9a8aa8", "center");
+  }
+
+  // 전설/영웅 새 캐릭터 등장 장면
+  function drawCutin(R) {
+    const r = R.cutins[R.ci], GR = RD.GRADES[r.grade];
+    const k = Math.min(1, R.st / 0.5);
+    g.fillStyle = "rgba(6,2,12,0.92)"; g.fillRect(0, 0, C.width, C.height);
+    // 빛살
+    g.save(); g.translate(C.width * 0.62, 260); g.rotate(R.st * 0.4);
+    for (let q = 0; q < 12; q++) {
+      g.rotate(Math.PI / 6);
+      g.fillStyle = r.grade === "SSR" ? `hsla(${(q * 30 + R.st * 120) % 360},90%,65%,0.18)` : "rgba(197,138,255,0.16)";
+      g.beginPath(); g.moveTo(0, 0); g.lineTo(600, -60); g.lineTo(600, 60); g.fill();
+    }
+    g.restore();
+    // 일러스트가 오른쪽에서 미끄러져 들어온다
+    const im = RD.img(r.ch.illust);
+    if (im && im.width) {
+      const h = 470, w = (im.width / im.height) * h;
+      const x = C.width * 0.62 - w / 2 + (1 - k) * 500;
+      g.save(); g.beginPath(); g.rect(C.width * 0.3, 30, C.width * 0.7, 470); g.clip();
+      g.imageSmoothingEnabled = true; g.globalAlpha = k;
+      g.drawImage(im, x, 30, w, h);
+      g.restore(); g.imageSmoothingEnabled = false; g.globalAlpha = 1;
+    }
+    const tx = 40 + (1 - k) * -300;
+    RD.text(g, `${GR.name} 등급!`, tx, 140, 44, GR.color);
+    RD.text(g, r.ch.name, tx, 200, 34, "#ffffff");
+    RD.text(g, `${r.ch.type} · ${r.ch.shot.name}`, tx, 244, 17, "#ffc49a");
+    RD.text(g, `궁극기 · ${r.ch.bomb.name}`, tx, 272, 17, "#9fd0ff");
+    if (r.ch.passive) RD.text(g, `패시브 · ${r.ch.passive.split(":")[0]}`, tx, 300, 17, "#9fffb0");
+    RD.text(g, "NEW!", tx, 350, 30, "#ff8a3d");
+    if (R.st > 0.8 && Math.floor(R.st * 2) % 2) RD.text(g, "▶ 터치", 40, 500, 14, "#ffd34d");
+  }
+
   function drawGachaResult() {
     const R = gachaResult;
+    R.st += 1 / 60;
+    if (R.state === "summon") {
+      drawSummon(R);
+      if (R.st > 2.1) { RD.audio && RD.audio.sfx(R.best === "SSR" || R.best === "SR" ? "gacha_rare" : "gacha"); R.state = "flash"; R.st = 0; }
+      return;
+    }
+    if (R.state === "flash") {
+      const k = R.st / 0.35;
+      const col = GRADE_GLOW[R.best];
+      g.fillStyle = `rgba(${col.join(",")},${1 - k})`; g.fillRect(0, 0, C.width, C.height);
+      g.fillStyle = `rgba(255,255,255,${Math.max(0, 1 - k * 1.5)})`; g.fillRect(0, 0, C.width, C.height);
+      if (R.st > 0.35) nextGachaState(R, true);
+      return;
+    }
+    if (R.state === "cutin") {
+      drawCutin(R);
+      if (R.st > 3.2) nextGachaState(R);
+      return;
+    }
     R.t += 1 / 60;
     const n = R.list.length;
     const cw = n === 1 ? 200 : 150, ch = n === 1 ? 250 : 156, gap = 12;

@@ -781,6 +781,16 @@
   // ---------- 나팔 컷씬 ----------
   // 도트 천사 (오른쪽에서 왼쪽을 보고 나팔을 분다)
   function drawAngel(g, x, y, S, t, blowing, idx) {
+    // 그림이 있으면 그림으로 (나팔을 불 때는 두 번째 프레임)
+    if (hasImg("cut_angel_0")) {
+      const im = RD.img(blowing ? "cut_angel_1" : "cut_angel_0");
+      const h = S * 44, w = (im.width / im.height) * h;
+      const cx = x + 16 * S + (blowing ? -w * 0.12 : 0);
+      g.imageSmoothingEnabled = true;
+      g.drawImage(im, cx - w / 2, y - S * 4 + Math.sin(t * 2) * 4, w, h);
+      g.imageSmoothingEnabled = false;
+      return;
+    }
     const P = (px, py, w, h, c) => { g.fillStyle = c; g.fillRect(x + px * S, y + py * S, w * S, h * S); };
     const flap = Math.sin(t * 3) > 0 ? 0 : 2;
     // 날개 (뒤쪽)

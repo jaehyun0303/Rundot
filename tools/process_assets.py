@@ -166,6 +166,12 @@ CROPS = [
     ("boss_frost.png", (540, 0, 1024, 572), "magenta", "boss_frost_1.png", None),
     ("boss_storm.png", (0, 0, 500, 572), "magenta", "boss_storm_0.png", None),
     ("boss_storm.png", (500, 0, 1024, 572), "magenta", "boss_storm_1.png", None),
+    # 혼돈의 심판 드래곤 (검은 테두리 상자 안쪽만)
+    ("boss_chaos.png", (23, 165, 502, 605), "magenta", "boss_chaos_0.png", None),
+    ("boss_chaos.png", (522, 165, 1001, 605), "magenta", "boss_chaos_1.png", None),
+    # 나팔 천사 컷씬 (가장자리 검은 선 제외)
+    ("cut_angel.png", (6, 4, 508, 760), "magenta", "cut_angel_0.png", None),
+    ("cut_angel.png", (516, 4, 1017, 760), "magenta", "cut_angel_1.png", None),
     # 배경 / 바닥 (불투명)
     ("bg_forest.png", (0, 0, 1024, 572), "none", "bg_forest.png", None),
     ("ground.png", (0, 0, 1024, 495), "checker", "ground.png", None),
