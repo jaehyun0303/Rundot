@@ -680,10 +680,11 @@
     text(g, run.score.toLocaleString(), 18, 22, 20, "#fff");
     text(g, "HI " + Math.max(RD.best || 0, run.score).toLocaleString(), C.width / 2, 22, 15, "#ffd34d", "center");
     const D = run.D, M = RD.MODES[run.mode];
-    const right = run.mode === "timeattack"
+    const right = run.mode === "timeattack" || run.mode === "raid"
       ? `남은 시간 ${Math.ceil(run.timeLeft)}`
       : `${run.stage.name}` + (run.mode === "bossrush" || run.mode === "endless" ? ` · ${run.loop}라운드` : "");
-    text(g, right, C.width - 18, 22, 16, run.mode === "timeattack" && run.timeLeft < 20 ? "#ff4d5e" : "#9fd0ff", "right");
+    if (run.raid) text(g, `준 피해 ${Math.round(run.raid.dmg).toLocaleString()}` + (run.raid.rage ? ` · 광폭화 ${run.raid.rage}` : ""), C.width - 18, 92, 13, run.raid.rage ? "#ff8a8a" : "#ffd34d", "right");
+    text(g, right, C.width - 18, 22, 16, (run.mode === "timeattack" || run.mode === "raid") && run.timeLeft < 20 ? "#ff4d5e" : "#9fd0ff", "right");
     text(g, `${M.name} · ${D.name} · ${run.stage.effectName}`, C.width - 18, 44, 12, D.color, "right");
 
     // 체력

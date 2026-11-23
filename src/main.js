@@ -55,9 +55,11 @@
   let mode = MODE_IDS.includes(save.get("mode")) ? save.get("mode") : "story";
   let diff = DIFF_IDS.includes(save.get("diff")) ? save.get("diff") : "normal";
   // 최고 점수는 모드와 난이도마다 따로
+  let raidPick = Math.min(save.get("raidPick", 0), RD.RAID_BOSSES.length - 1);
+  let raidLv = save.get("raidLv", {}); // 보스별 레이드 레벨
   let maxStage = save.get("maxStage", 0); // 스토리에서 도달한 지역 (스테이지 선택에서 고를 수 있다)
   let pickStage = Math.min(save.get("pickStage", 0), maxStage);
-  const bestKey = () => `best_${mode}_${diff}` + (mode === "stageselect" ? "_" + pickStage : "");
+  const bestKey = () => `best_${mode}_${diff}` + (mode === "stageselect" ? "_" + pickStage : mode === "raid" ? "_" + raidPick : "");
   const loadBest = () => { best = save.get(bestKey(), 0); RD.best = best; };
   loadBest();
 
@@ -71,12 +73,13 @@
       scene = "play";
       return;
     }
-    run = new RD.Run(id, mode, diff, { stars: starsOf(id) || 1, stage: mode === "stageselect" ? pickStage : 0 });
+    run = new RD.Run(id, mode, diff, { stars: starsOf(id) || 1, stage: mode === "stageselect" ? pickStage : 0, raidBoss: RD.RAID_BOSSES[raidPick][0], raidLv: raidLv[RD.RAID_BOSSES[raidPick][0]] || 1 });
     scene = "play";
   }
 
   function endRun() {
     scene = "result";
+    if (run.raid && run.win) { const k = run.raid.type; raidLv[k] = (raidLv[k] || 1) + 1; save.set("raidLv", raidLv); }
     if (["story", "hardcore"].includes(run.mode) && run.reached > maxStage) {
       maxStage = Math.min(RD.STAGES.length - 1, run.reached);
       save.set("maxStage", maxStage);
@@ -327,8 +330,8 @@
     RD.text(g, "모드", 200, 34, 14, "#9fd0ff");
     MODE_IDS.filter((id) => !RD.MODES[id].special).forEach((id, i) => tab(234 + i * 96, 20, 90, 30, RD.MODES[id].name, id === mode, "#7fe6ff", () => { mode = id; save.set("mode", id); loadBest(); }));
     // 특별 모드 (난이도 줄 오른쪽)
-    const SPECIAL = { dream: ["🍬 달콤한 꿈", "#ff9ad8"], adventure: ["🏃 어드벤처", "#7fe08a"], trumpets: ["🎺 일곱 나팔", "#ffd34d"] };
-    MODE_IDS.filter((id) => RD.MODES[id].special).forEach((id, i) => tab(586 + i * 106, 62, 102, 30, SPECIAL[id][0], id === mode, SPECIAL[id][1], () => { mode = id; save.set("mode", id); loadBest(); }));
+    const SPECIAL = { dream: ["🍬 꿈", "#ff9ad8"], adventure: ["🏃 어드벤처", "#7fe08a"], raid: ["⚔ 레이드", "#ff8a8a"], trumpets: ["🎺 나팔", "#ffd34d"] };
+    MODE_IDS.filter((id) => RD.MODES[id].special).forEach((id, i) => tab(586 + i * 80, 62, 76, 30, SPECIAL[id][0], id === mode, SPECIAL[id][1], () => { mode = id; save.set("mode", id); loadBest(); }));
     // 난이도
     RD.text(g, "난이도", 186, 76, 14, "#9fd0ff");
     DIFF_IDS.forEach((id, i) => {
@@ -336,7 +339,13 @@
       tab(234 + i * 86, 62, 82, 30, D.name, id === diff, D.color, () => { diff = id; save.set("diff", id); loadBest(); });
     });
     const D = RD.DIFFICULTY[diff];
-    if (mode === "stageselect") {
+    if (mode === "raid") {
+      // 레이드 보스 고르기
+      RD.RAID_BOSSES.forEach(([type, , name], i) => {
+        const lv = raidLv[type] || 1;
+        tab(14 + i * 117, 104, 113, 26, `${name.length > 6 ? name.slice(0, 6) + "…" : name} Lv${lv}`, i === raidPick, "#ff8a8a", () => { raidPick = i; save.set("raidPick", i); loadBest(); });
+      });
+    } else if (mode === "stageselect") {
       // 지역 고르기 (스토리에서 도달한 곳까지)
       RD.STAGES.filter((st) => !st.special).forEach((st, i) => {
         const open = testMode || i <= maxStage;
@@ -586,14 +595,14 @@
     RD.drawRun(g, run);
     g.fillStyle = "rgba(10,8,20,0.72)";
     g.fillRect(0, 0, C.width, C.height);
-    const title = run.win
+    const title = run.raid ? (run.win ? "레이드 성공!" : "레이드 종료") : run.win
       ? (run.mode === "timeattack" ? "TIME UP" : run.mode === "stageselect" ? "STAGE CLEAR!" : run.mode === "dream" ? "좋은 꿈 꿨어!" : run.mode === "trumpets" ? "심판 완료" : "ALL CLEAR!")
       : run.mode === "dream" ? "잠에서 깼다…" : "GAME OVER";
     RD.text(g, title, C.width / 2, 96, 48, run.win ? "#ffd34d" : "#ff4d5e", "center");
     RD.text(g, `${RD.MODES[run.mode].name} · ${run.D.name}`, C.width / 2, 140, 18, run.D.color, "center");
     RD.text(g, run.score.toLocaleString() + " 점", C.width / 2, 200, 52, "#fff", "center");
     if (run.newBest) RD.text(g, "최고 기록!", C.width / 2, 248, 22, "#ff8a3d", "center");
-    const reach = run.mode === "trumpets" ? (run.tr >= 0 ? RD.TRUMPETS[run.tr].name : "시작") : run.mode === "dream" ? `${Math.floor(run.t)}초 동안 꿈꿈` : ["story", "hardcore", "stageselect"].includes(run.mode) ? `${run.stage.name}` : run.mode === "bossrush" ? `${run.loop}라운드` : `${Math.floor(run.t)}초 생존`;
+    const reach = run.raid ? `준 피해 ${Math.round(run.raid.dmg).toLocaleString()} (${Math.round((100 * run.raid.dmg) / Math.max(1, (run.boss || { maxHp: run.raid.dmg }).maxHp))}%)` : run.mode === "trumpets" ? (run.tr >= 0 ? RD.TRUMPETS[run.tr].name : "시작") : run.mode === "dream" ? `${Math.floor(run.t)}초 동안 꿈꿈` : ["story", "hardcore", "stageselect"].includes(run.mode) ? `${run.stage.name}` : run.mode === "bossrush" ? `${run.loop}라운드` : `${Math.floor(run.t)}초 생존`;
     RD.text(g, `격추 ${run.kills}   Lv.${run.level}   ${reach}`, C.width / 2, 290, 20, "#ffd34d", "center");
     // 고른 강화 목록
     const ups = RD.UPGRADES.filter((u) => run.lv(u.id)).map((u) => `${u.id === "sig" ? run.char.sig.name : u.name} ${run.lv(u.id)}`);

@@ -113,7 +113,12 @@
         this.rushState = { wait: 2.5, next: "golem" };
       }
       // 특별 모드는 전용 지역에서 한다
-      const sp = this.M.special ? RD.STAGES.findIndex((st) => st.id === this.M.special) : -1;
+      if (mode === "raid") {
+        this.raid = { type: opts.raidBoss || "boss_bat", lv: opts.raidLv || 1, dmg: 0, rage: 0, spawned: false };
+        this.pendingLevels = 4; // 시작할 때 강화 4개
+      }
+      const raidStage = this.raid ? RD.RAID_BOSSES.find((r) => r[0] === this.raid.type)[1] : null;
+      const sp = raidStage ? RD.STAGES.findIndex((st) => st.id === raidStage) : this.M.special ? RD.STAGES.findIndex((st) => st.id === this.M.special) : -1;
       this.setStage(sp >= 0 ? sp : opts.stage || 0, true);
       this.sugar = 0; // 달콤한 꿈: 모은 사탕
       this.rush = 0; // 슈가 러시 남은 시간
@@ -133,12 +138,14 @@
     setStage(idx, first) {
       this.stageNo = idx;
       this.stage = RD.STAGES[idx];
-      this.terrain = this.stage.effect;
+      // 지형 효과는 난이도에 따라: 쉬움은 없음, 보통은 약하게, 어려움 이상은 강하게 (특별 모드 지역은 그대로)
+      this.TL = this.stage.special ? 1 : this.D.terrain;
+      this.terrain = this.TL > 0 ? this.stage.effect : "none";
       this.hazards = [];
       this.wind = null;
       this.terrainT = 0;
       this.reached = Math.max(this.reached, idx);
-      this.intro = { name: this.stage.name, effect: `${this.stage.effectName}: ${this.stage.effectDesc}`, t: 0, life: first ? 3.5 : 4.5, delay: first ? 0 : 1.5 };
+      this.intro = { name: this.stage.name, effect: this.TL > 0 ? `${this.stage.effectName}: ${this.stage.effectDesc}` + (this.TL < 1 ? " (약하게)" : this.TL > 1 ? " (강하게)" : "") : "쉬움: 지형 효과 없음", t: 0, life: first ? 3.5 : 4.5, delay: first ? 0 : 1.5 };
     }
 
     // ---------- 능력치 (강화 단계에서 계산) ----------
@@ -152,7 +159,7 @@
     get bossAlive() { return this.enemies.some((e) => !e.dead && (RD.ENEMIES[e.type].boss || RD.ENEMIES[e.type].midboss)); }
     get boss() { return this.enemies.find((e) => !e.dead && (RD.ENEMIES[e.type].boss || RD.ENEMIES[e.type].midboss)); }
     get bulletSpeed() { return RD.BULLET.speed * (1 + 0.12 * (this.loop - 1)) * this.D.bulletSpeed; }
-    get timeLeft() { return this.mode === "timeattack" ? Math.max(0, RD.MODES.timeattack.time - this.t) : null; }
+    get timeLeft() { return this.mode === "timeattack" || this.mode === "raid" ? Math.max(0, this.M.time - this.t) : null; }
 
     needFor(level) { return Math.round(5 + level * 3.5 + Math.pow(level, 1.5)); }
 
@@ -287,6 +294,7 @@
       const M = this.mode;
       if (this.M.special === "dream") return this.directDream(dt);
       if (this.M.special === "judgment") return this.directJudgment(dt);
+      if (this.raid) return this.directRaid(dt);
       // 혼돈 모드: 일정 시간마다 지역이 무작위로 바뀐다
       if (M === "chaos" && !this.bossAlive && (this.shiftT = (this.shiftT || 0) + dt) >= this.M.shiftEvery) {
         this.shiftT = 0;
@@ -327,6 +335,33 @@
         const base = M === "timeattack" ? 1.6 : 2.4;
         this.spawnT = Math.max(0.7, base - this.t / 90) * rand(0.8, 1.2);
         pick(PATTERNS)(this, k);
+      }
+    }
+
+    // ---------- 레이드 ----------
+    directRaid(dt) {
+      const R = this.raid, RC = RD.RAID;
+      if (!R.spawned && this.t > 2.5) {
+        R.spawned = true;
+        const type = R.type, def = RD.ENEMIES[type];
+        const name = RD.RAID_BOSSES.find((r) => r[0] === type)[2];
+        this.loop = 1 + 0.35 * (R.lv - 1);
+        const y = def.ground ? C.groundY - def.h / 2 : 240;
+        const b = this.addEnemy(type, C.width + 160, y, { path: "boss", phase: 1, name: `[레이드 Lv.${R.lv}] ${name}`, baseY: y, raidBoss: true });
+        b.maxHp = b.hp = RC.baseHp * (1 + RC.lvHp * (R.lv - 1)) * this.D.enemyHp; // 보스와 상관없이 같은 체력
+        if (def.style === "crystal") this.spawnShards(b);
+        RD.audio && RD.audio.sfx("warning");
+        this.banner = { text: "RAID", sub: `${name} · 레이드 Lv.${R.lv}`, sub2: "3분 안에 쓰러뜨려라! 시간이 갈수록 광폭해진다", color: "#ff4d5e", t: 0, life: 3 };
+      }
+      const b = this.enemies.find((e) => e.raidBoss && !e.dead);
+      if (b) R.dmg = b.maxHp - b.hp;
+      // 광폭화: 일정 시간마다 공격이 빨라진다
+      const rage = Math.floor(this.t / RC.rageEvery);
+      if (rage > R.rage) { R.rage = rage; this.banner = { text: `광폭화 ${rage}단계`, sub: "보스의 공격이 빨라진다", color: "#ff4d5e", t: 0, life: 1.8, small: true }; }
+      // 경험치를 얻을 잡몹
+      if (R.spawned && (this.spawnT -= dt) <= 0) {
+        this.spawnT = rand(5, 7);
+        pick(PATTERNS)(this, 2);
       }
     }
 
@@ -969,6 +1004,12 @@
         this.updateBullets(dt);
         return;
       }
+      if (this.mode === "raid" && this.timeLeft <= 0) {
+        this.over = true;
+        this.win = false;
+        this.banner = { text: "레이드 종료", sub: `준 피해 ${Math.round(this.raid.dmg).toLocaleString()}`, color: "#ffd34d", t: 0, life: 3 };
+        return;
+      }
       if (this.mode === "timeattack" && this.timeLeft <= 0) {
         this.over = true;
         this.win = true;
@@ -1187,7 +1228,7 @@
         if (this.M.noHeal && (type === "heal" || type === "life")) return; // 하드코어
         for (let i = 0; i < n; i++) this.items.push({ type, x: e.x + rand(-20, 20), y: e.y + rand(-20, 20), vx: rand(-40, 80), vy: rand(-220, -80) });
       };
-      const heartChance = 0.03 * (1 + this.lv("luck")) * (this.terrain === "bless" ? 2 : 1);
+      const heartChance = 0.03 * (1 + this.lv("luck")) * (this.terrain === "bless" ? 1 + this.TL : 1);
       if (Math.random() < heartChance) drop("heal");
       // 죽을 때 특성
       this._firing = e;
@@ -1212,6 +1253,17 @@
         this.bullets = [];
         const M = this.mode;
         RD.audio && RD.audio.sfx("clear");
+        if (e.raidBoss) {
+          const RC = RD.RAID;
+          this.raid.dmg = e.maxHp;
+          this.over = true;
+          this.win = true;
+          const reward = RC.reward + RC.lvReward * (this.raid.lv - 1);
+          this.coins += reward;
+          this.addScore(Math.round(e.maxHp) + Math.round(this.timeLeft) * 500);
+          this.banner = { text: "레이드 성공!", sub: `남은 시간 ${Math.ceil(this.timeLeft)}초 · 코인 +${reward} · 다음은 Lv.${this.raid.lv + 1}`, color: "#ffd34d", t: 0, life: 99 };
+          return;
+        }
         if (def.style === "abaddon") {
           this.banner = { text: "첫째 화가 지나갔다", sub: "그러나 아직 두 화가 남았다", color: "#ffd34d", t: 0, life: 3 };
           return;
@@ -1424,7 +1476,10 @@
             else for (let i = 0; i < 6; i++) this.fire(e.x - 30, e.y - 40, -Math.PI / 2 - 0.9 - i * 0.12, bs * 1.1, 8, "#c4945c");
             break;
           default:
-            if (RD.ENEMIES[e.type].boss) this.bossAttack(e, bs, fr);
+            if (RD.ENEMIES[e.type].boss) {
+              this.bossAttack(e, bs, fr);
+              if (e.raidBoss && this.raid.rage) e.fireT /= 1 + 0.2 * this.raid.rage;
+            }
         }
       }
       this._firing = null;
@@ -1836,18 +1891,18 @@
       if (tr === "lava") {
         // 용암 기둥 (예고 후 분출) + 떨어지는 불똥
         if ((this.lavaT = (this.lavaT || 2) - dt) <= 0) {
-          this.lavaT = rand(2.6, 4) / Math.sqrt(this.D.fireRate);
+          this.lavaT = rand(2.6, 4) / this.TL;
           const x = Math.random() < 0.6 ? p.x + rand(-40, 40) : rand(80, C.width - 80);
           this.hazards.push({ type: "lava", x, t: 0, warn: 1.2, active: 0.9, w: 70 });
         }
         if ((this.emberT = (this.emberT || 1) - dt) <= 0) {
-          this.emberT = rand(0.5, 0.9);
+          this.emberT = rand(0.5, 0.9) / this.TL;
           this.bullets.push({ x: rand(100, C.width), y: -10, vx: rand(-60, -20), vy: rand(110, 160), r: 5, color: "#ff8a3d" });
         }
       }
       if (tr === "storm") {
         if ((this.boltT = (this.boltT || 2.5) - dt) <= 0) {
-          this.boltT = rand(2.2, 3.4) / Math.sqrt(this.D.fireRate);
+          this.boltT = rand(2.2, 3.4) / this.TL;
           this.strike(Math.random() < 0.7 ? p.x + rand(-30, 30) : rand(60, C.width - 60));
         }
       }
@@ -1855,7 +1910,7 @@
         // 강풍: 몇 초마다 옆으로 민다
         if (!this.wind && (this.windT = (this.windT || 5) - dt) <= 0) {
           this.wind = { dir: Math.random() < 0.5 ? -1 : 1, t: 0, life: 2.2 };
-          this.windT = rand(5, 8);
+          this.windT = rand(5, 8) / this.TL;
         }
         if (this.wind) {
           if (p.dead <= 0) p.x = Math.max(30, Math.min(C.width - 40, p.x + this.wind.dir * 150 * dt));

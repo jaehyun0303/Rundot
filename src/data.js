@@ -38,10 +38,10 @@ RD.ITEMS = {
 
 // 난이도
 RD.DIFFICULTY = {
-  easy: { name: "쉬움", color: "#7fe08a", enemyHp: 0.7, bulletSpeed: 0.8, fireRate: 0.7, damage: 0.6, lives: 5, score: 0.5, exp: 1.3 },
-  normal: { name: "보통", color: "#ffd34d", enemyHp: 1, bulletSpeed: 1, fireRate: 1, damage: 1, lives: 3, score: 1, exp: 1 },
-  hard: { name: "어려움", color: "#ff8a3d", enemyHp: 1.35, bulletSpeed: 1.2, fireRate: 1.35, damage: 1.4, lives: 3, score: 1.6, exp: 0.9 },
-  hell: { name: "지옥", color: "#ff4d5e", enemyHp: 1.8, bulletSpeed: 1.4, fireRate: 1.8, damage: 2, lives: 2, score: 2.5, exp: 0.8 },
+  easy: { terrain: 0, name: "쉬움", color: "#7fe08a", enemyHp: 0.7, bulletSpeed: 0.8, fireRate: 0.7, damage: 0.6, lives: 5, score: 0.5, exp: 1.3 },
+  normal: { terrain: 0.7, name: "보통", color: "#ffd34d", enemyHp: 1, bulletSpeed: 1, fireRate: 1, damage: 1, lives: 3, score: 1, exp: 1 },
+  hard: { terrain: 1, name: "어려움", color: "#ff8a3d", enemyHp: 1.35, bulletSpeed: 1.2, fireRate: 1.35, damage: 1.4, lives: 3, score: 1.6, exp: 0.9 },
+  hell: { terrain: 1.35, name: "지옥", color: "#ff4d5e", enemyHp: 1.8, bulletSpeed: 1.4, fireRate: 1.8, damage: 2, lives: 2, score: 2.5, exp: 0.8 },
 };
 
 // 게임 모드
@@ -56,6 +56,7 @@ RD.MODES = {
   // 특별 모드
   dream: { name: "달콤한 꿈", special: "dream", lives: 1, desc: "사탕 나라의 꿈. 사탕을 모아 슈가 러시! 꿈 게이지가 바닥나면 잠에서 깬다" },
   adventure: { name: "어드벤처 런", special: "adventure", desc: "쿠키런처럼 자동으로 달린다! 점프(오른쪽/Space)와 슬라이드(왼쪽/↓)로 장애물을 피하고 젤리를 모아라" },
+  raid: { name: "레이드", special: "raid", time: 180, desc: "보스 하나에 3분! 쓰러뜨리면 레이드 레벨이 오르고 보상이 커진다. 시간이 갈수록 보스가 광폭해진다" },
   trumpets: { name: "일곱 나팔", special: "judgment", scoreMul: 2, desc: "일곱 나팔이 차례로 울리며 재앙이 내린다. 마지막엔 큰 붉은 용. 점수 x2" },
 };
 
@@ -380,6 +381,19 @@ RD.UPGRADES = [
   { id: "bomb", cat: "능력", name: "폭탄 상자", max: 3, color: "#9fffb0", desc: () => "폭탄 +2, 폭탄 위력 +30%" },
   { id: "luck", cat: "능력", name: "행운", max: 3, color: "#9fffb0", desc: () => "하트가 더 자주 나오고 점수 +15%" },
 ];
+
+// 레이드 보스: [보스 종류, 지역 id, 이름]
+RD.RAID_BOSSES = [
+  ["boss_bat", "forest", "박쥐 왕"],
+  ["boss_crystal", "cave", "수정 거인"],
+  ["boss_fire", "volcano", "마그마 슬라임 왕"],
+  ["boss_frost", "snow", "서리 여왕"],
+  ["boss_storm", "sky", "폭풍 군주"],
+  ["boss_nightmare", "dream", "악몽"],
+  ["boss_abaddon", "judgment", "무저갱의 사자 아바돈"],
+  ["boss_chaos", "judgment", "혼돈의 심판 드래곤"],
+];
+RD.RAID = { baseHp: 6500, lvHp: 0.45, rageEvery: 40, reward: 120, lvReward: 60 };
 
 // 어드벤처 런 (쿠키런 오븐브레이크 방식) 설정
 RD.ADV = {
