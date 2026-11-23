@@ -224,6 +224,13 @@
       g.fillStyle = "#fff"; g.fillRect(ox - 4, oy - 4, 6, 6);
     }
 
+    if (p.shielded) {
+      g.strokeStyle = `rgba(197,138,255,${0.6 + Math.sin(run.t * 6) * 0.25})`;
+      g.lineWidth = 3;
+      g.beginPath(); g.arc(p.x, p.y, 40, 0, Math.PI * 2); g.stroke();
+      g.fillStyle = "rgba(197,138,255,0.12)";
+      g.fill();
+    }
     if (p.invuln > 0 && Math.floor(run.t * 16) % 2 === 0) return;
     const frame = run.charId === "owl" ? Math.floor(p.animT * 12) % 4 : 0;
     const spr = RD.getCharacterFrame(run.charId, run.charId === "owl" ? "run" : "jump", frame);
@@ -460,6 +467,19 @@
     // 경험치와 레벨
     bar(g, 46, 60, 170, 6, run.exp / run.expNeed, "#7fe6ff");
     text(g, "Lv." + run.level, 18, 63, 12, "#7fe6ff");
+    // 패시브 표시
+    if (run.charId === "fox") {
+      text(g, "베기", 18, 82, 11, "#bfe4ff");
+      for (let i = 0; i < RD.FOX_PARRY.max; i++) {
+        const f = Math.max(0, Math.min(1, run.parry - i));
+        g.fillStyle = "#1d1622"; g.fillRect(46 + i * 22, 76, 20, 10);
+        g.fillStyle = f >= 1 ? "#bfe4ff" : "#4a5a6a"; g.fillRect(48 + i * 22, 78, 16 * f, 6);
+      }
+    }
+    if (run.charId === "cat") {
+      text(g, "보호막", 14, 82, 11, "#c58aff");
+      bar(g, 58, 78, 80, 6, p.shielded ? 1 : run.shield / RD.CAT_SHIELD.every, p.shielded ? "#c58aff" : "#6a4a90");
+    }
 
     // 아래: 잔기, 폭탄, 가진 강화
     const head = RD.getCharacterFrame(run.charId, "jump", 0);
@@ -508,7 +528,22 @@
       if (b.sub) text(g, b.sub, C.width / 2, C.height / 2 + 32, 20, "#fff", "center");
     }
     if (run.choosing) drawChoice(g, run);
+    RD.drawSoundButton(g);
   }
+
+  // 소리 켜기/끄기 버튼 (오른쪽 위)
+  RD.SOUND_BTN = { x: C.width - 24, y: 72, r: 14 };
+  RD.drawSoundButton = function (g) {
+    const b = RD.SOUND_BTN, m = RD.audio && RD.audio.muted;
+    g.fillStyle = "rgba(20,12,30,0.7)";
+    g.beginPath(); g.arc(b.x, b.y, b.r, 0, Math.PI * 2); g.fill();
+    g.fillStyle = "#fff";
+    g.fillRect(b.x - 8, b.y - 3, 4, 6);
+    g.beginPath(); g.moveTo(b.x - 4, b.y - 3); g.lineTo(b.x + 1, b.y - 8); g.lineTo(b.x + 1, b.y + 8); g.lineTo(b.x - 4, b.y + 3); g.fill();
+    g.strokeStyle = m ? "#ff4d5e" : "#fff"; g.lineWidth = 2;
+    if (m) { g.beginPath(); g.moveTo(b.x + 4, b.y - 5); g.lineTo(b.x + 10, b.y + 5); g.moveTo(b.x + 10, b.y - 5); g.lineTo(b.x + 4, b.y + 5); g.stroke(); }
+    else { g.beginPath(); g.arc(b.x + 2, b.y, 6, -0.9, 0.9); g.stroke(); }
+  };
 
   // 레벨업 강화 카드 3장
   RD.cardRects = [];

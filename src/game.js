@@ -45,6 +45,8 @@
       this.stars = opts.stars || 1; // 각성 단계 (뽑기에서 중복으로 얻으면 오른다)
       this.coins = 0; // 이번 판에 모은 코인
       this.slashes = []; // 여우 베기
+      this.parry = RD.FOX_PARRY.max; // 여우 베기 게이지 (탄을 벨 수 있는 횟수)
+      this.shield = 0; // 고양이 마력 보호막 충전 시간
       this.charId = charId;
       this.char = RD.CHARACTERS.find((c) => c.id === charId);
       this.mode = mode;
@@ -122,6 +124,7 @@
         this.level++;
         this.expNeed = this.needFor(this.level);
         this.pendingLevels++;
+        RD.audio && RD.audio.sfx("levelup");
       }
       this.openChoice();
     }
@@ -166,6 +169,7 @@
       if (u.id === "bomb") this.bombs = Math.min(C.maxBombs + 3, this.bombs + 2);
       const info = this.upgradeInfo(u);
       this.text(`${info.name} Lv.${this.lv(u.id)}`, u.color);
+      RD.audio && RD.audio.sfx("choose");
       this.choosing = null;
       this.pendingLevels--;
       this.player.invuln = Math.max(this.player.invuln, 0.8); // 고른 직후 잠깐 보호
@@ -213,7 +217,7 @@
       this.addEnemy("golem", C.width + 80, C.groundY - def.h / 2, { path: "midboss", stopX: 780, life: 30 });
     }
 
-    warning() { this.banner = { text: "WARNING", sub: "박쥐 왕이 다가온다", color: "#ff4d5e", t: 0, life: 3 }; }
+    warning() { RD.audio && RD.audio.sfx("warning"); this.banner = { text: "WARNING", sub: "박쥐 왕이 다가온다", color: "#ff4d5e", t: 0, life: 3 }; }
     spawnBoss() { this.addEnemy("boss", C.width + 160, 240, { path: "boss", phase: 1 }); }
 
     // ---------- 모드별 진행 ----------
@@ -256,7 +260,9 @@
 
     // ---------- 적 탄 ----------
     fire(x, y, ang, speed = this.bulletSpeed, r = RD.BULLET.radius, color = "#ff5aa8") {
-      this.bullets.push({ x, y, vx: Math.cos(ang) * speed, vy: Math.sin(ang) * speed, r, color });
+      const src = this._firing ? RD.ENEMIES[this._firing.type] : null;
+      // boss: 보스/중간 보스가 쏜 탄 (부엉이 회오리로 막을 수 없다)
+      this.bullets.push({ x, y, vx: Math.cos(ang) * speed, vy: Math.sin(ang) * speed, r, color, boss: !!(src && (src.boss || src.midboss)) });
     }
 
     aimAt(e) { const p = this.player; return Math.atan2(p.y - e.y, p.x - e.x); }
@@ -285,6 +291,7 @@
       const sig = this.lv("sig");
       const pw = this.power;
       const dmg = s.dmg * this.dmgMul;
+      RD.audio && RD.audio.sfx("shot_" + this.charId);
 
       switch (s.kind) {
         case "slash": {
@@ -299,9 +306,16 @@
         }
         case "boomerang": {
           // 토끼: 부메랑 단검
+          // 가장 가까운 앞쪽 적 쪽으로 던진다 (위아래 최대 약 35도)
           const n = s.multi[pw - 1];
+          let aim = 0, bd = 1e9;
+          for (const e of this.enemies) {
+            if (e.dead || e.delay > 0 || e.x < p.x + 30 || e.x > C.width) continue;
+            const d = Math.hypot(e.x - p.x, e.y - p.y);
+            if (d < bd) { bd = d; aim = Math.max(-0.6, Math.min(0.6, Math.atan2(e.y - p.y, e.x - p.x))); }
+          }
           for (let i = 0; i < n; i++) {
-            const a = (i - (n - 1) / 2) * 0.22;
+            const a = aim + (i - (n - 1) / 2) * 0.22;
             this.addShot({ kind: "boomerang", main: true, x: p.x + 20, y: p.y, vx: Math.cos(a) * s.speed, vy: Math.sin(a) * s.speed, w: 26, h: 26, dmg, pierce: 99, color: s.color, back: false });
           }
           break;
@@ -367,13 +381,15 @@
             this.effects.push({ type: "spark", x: e.x - def.w / 4, y: e.y, t: 0, life: 0.12 });
           }
         }
+        // 탄 베기는 베기 게이지를 하나씩 쓴다. 게이지가 없으면 탄을 벨 수 없다
         const before = this.bullets.length;
         this.bullets = this.bullets.filter((b) => {
-          if (!inArc(b.x, b.y, b.r)) return true;
+          if (this.parry < 1 || !inArc(b.x, b.y, b.r)) return true;
+          this.parry -= 1;
           this.effects.push({ type: "pop", x: b.x, y: b.y, t: 0, life: 0.25 });
           return false;
         });
-        this.addScore((before - this.bullets.length) * 10);
+        if (this.bullets.length < before) { this.addScore((before - this.bullets.length) * 10); RD.audio && RD.audio.sfx("parry"); }
       }
       this.slashes = this.slashes.filter((sl) => sl.t < sl.life);
     }
@@ -489,6 +505,7 @@
       this.ult = { kind: this.charId, t: 0, life, x0: p.x, y0: p.y, done: {}, spawnT: 0, mul: 1 + 0.3 * this.lv("bomb") };
       p.invuln = Math.max(p.invuln, life + 0.6);
       this.banner = { text: this.char.bomb.name + "!", color: this.char.bomb.color, t: 0, life: 1.2, small: true };
+      RD.audio && RD.audio.sfx("ult_" + this.charId);
 
       const popAll = () => {
         for (const b of this.bullets) this.effects.push({ type: "pop", x: b.x, y: b.y, t: 0, life: 0.3 });
@@ -616,6 +633,15 @@
     // ---------- 피격과 체력 ----------
     hurt(amount) {
       const p = this.player;
+      if (p.shielded) {
+        // 고양이 마력 보호막
+        p.shielded = false;
+        p.invuln = C.hitInvuln;
+        this.effects.push({ type: "ring", x: p.x, y: p.y, t: 0, life: 0.4 });
+        RD.audio && RD.audio.sfx("shieldbreak");
+        return;
+      }
+      RD.audio && RD.audio.sfx("hurt");
       p.hp -= amount * this.D.damage * this.armor;
       p.invuln = C.hitInvuln;
       p.hurt = 0.3;
@@ -626,12 +652,13 @@
 
     die() {
       const p = this.player;
+      RD.audio && RD.audio.sfx("die");
       this.effects.push({ type: "boom", x: p.x, y: p.y, t: 0, life: 0.8, big: true });
       this.shake = 0.4;
       this.lives--;
       this.bombs = Math.max(this.bombs, C.bombs);
       this.bullets = [];
-      if (this.lives <= 0) { this.over = true; p.dead = 99; p.hp = 0; return; }
+      if (this.lives <= 0) { this.over = true; p.dead = 99; p.hp = 0; RD.audio && RD.audio.sfx("gameover"); return; }
       p.dead = 1; // 1초 뒤 체력을 모두 채워 다시 등장
     }
 
@@ -687,6 +714,12 @@
       }
       p.invuln = Math.max(0, p.invuln - dt);
       p.hurt = Math.max(0, p.hurt - dt);
+      // 패시브
+      if (this.charId === "fox") this.parry = Math.min(RD.FOX_PARRY.max, this.parry + dt / RD.FOX_PARRY.regen);
+      if (this.charId === "cat" && !p.shielded) {
+        this.shield += dt;
+        if (this.shield >= RD.CAT_SHIELD.every) { this.shield = 0; p.shielded = true; RD.audio && RD.audio.sfx("shield"); }
+      }
       p.animT += dt;
       this.bombT = Math.max(0, this.bombT - dt);
 
@@ -779,7 +812,7 @@
             const last = s.tick.get(e) || -1;
             if (s.t - last >= 0.15) { s.tick.set(e, s.t); this.damage(e, s.dmg, true); }
           }
-          this.bullets = this.bullets.filter((b) => Math.abs(b.x - s.x) > s.w / 2 + b.r || Math.abs(b.y - s.y) > s.h / 2 + b.r);
+          this.bullets = this.bullets.filter((b) => b.boss || Math.abs(b.x - s.x) > s.w / 2 + b.r || Math.abs(b.y - s.y) > s.h / 2 + b.r);
           continue;
         }
 
@@ -813,17 +846,19 @@
         }
       }
       for (const o of spawned) this.addShot(o);
-      this.shots = this.shots.filter((s) => !s.gone && s.x < C.width + 80 && s.x > -80 && s.y > -200 && s.y < C.height + 60 && s.t < 4);
+      this.shots = this.shots.filter((s) => !s.gone && (s.kind === "boomerang" || s.x < C.width + 80) && s.x > -80 && s.y > -200 && s.y < C.height + 60 && s.t < 4);
     }
 
     damage(e, dmg, quiet) {
       if (e.dead) return;
       e.hp -= dmg;
+      if (!quiet) RD.audio && RD.audio.sfx("hit");
       if (!quiet || e.flash <= 0) e.flash = 0.06;
       if (e.hp > 0) return;
       const def = RD.ENEMIES[e.type];
       e.dead = true;
       this.kills++;
+      RD.audio && RD.audio.sfx(def.boss || def.midboss ? "boom" : "kill");
       this.addScore(def.score * this.loop);
       this.gainExp(def.exp);
       this.effects.push({ type: "boom", x: e.x, y: e.y, t: 0, life: def.boss ? 2 : def.midboss ? 1 : 0.5, big: def.boss || def.midboss });
@@ -849,8 +884,10 @@
           if (this.loop >= STORY_STAGES) {
             this.over = true;
             this.win = true;
+            RD.audio && RD.audio.sfx("clear");
             this.banner = { text: "ALL CLEAR!", sub: "박쥐 왕을 완전히 쓰러뜨렸다", color: "#ffd34d", t: 0, life: 99 };
           } else {
+            RD.audio && RD.audio.sfx("clear");
             this.banner = { text: `STAGE ${this.loop} CLEAR`, sub: `더 어려운 스테이지 ${this.loop + 1}로`, color: "#ffd34d", t: 0, life: 4 };
             this.loop++;
             this.stageT = -5;
@@ -913,6 +950,7 @@
         e.fireT -= dt;
         if (e.fireT > 0) continue;
         const L = this.loop;
+        this._firing = e;
         switch (e.type) {
           case "bat":
             e.fireT = 99; // 한 번만 쏜다
@@ -958,6 +996,7 @@
           }
         }
       }
+      this._firing = null;
       for (const e of this.enemies) {
         if (!e.dead && (e.x < -120 || e.y < -150 || e.y > C.height + 150)) {
           e.gone = true;
@@ -997,6 +1036,7 @@
       it.taken = true;
       const def = RD.ITEMS[it.type];
       this.coins += RD.COIN_VALUE[it.type] || 0;
+      RD.audio && RD.audio.sfx(def.heal ? "heal" : def.exp || def.life || it.type === "bomb" ? "power" : "coin");
       this.addScore(def.score * this.loop);
       if (def.exp) this.gainExp(def.exp);
       if (def.heal) {

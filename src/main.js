@@ -108,6 +108,7 @@
     save.set("coins", coins);
     save.set("pity", pity);
     gachaResult = { list, t: 0 };
+    RD.audio && RD.audio.sfx(list.some((r) => r.grade === "SSR" || r.grade === "SR") ? "gacha_rare" : "gacha");
   }
 
   // ---------- 입력 ----------
@@ -123,8 +124,15 @@
     run.input.dy = dy / len;
     run.input.focus = held.has("ShiftLeft") || held.has("ShiftRight");
   }
+  // 브라우저는 사용자가 한 번 누른 뒤에만 소리를 낼 수 있다
+  const unlock = () => RD.audio && RD.audio.init();
+  addEventListener("pointerdown", unlock, true);
+  addEventListener("keydown", unlock, true);
+  const soundHit = (pt) => Math.hypot(pt.x - RD.SOUND_BTN.x, pt.y - RD.SOUND_BTN.y) < RD.SOUND_BTN.r + 8;
+
   addEventListener("keydown", (e) => {
     if (MOVE[e.code] || e.code === "Space") e.preventDefault();
+    if (e.code === "KeyM" && !e.repeat) RD.audio && RD.audio.toggle();
     held.add(e.code);
     syncKeys();
     if (e.repeat) return;
@@ -168,14 +176,16 @@
     if (scene === "play") return; // 플레이 중에는 아래 window 핸들러가 처리
     e.preventDefault();
     const pt = toGame(e);
+    if (soundHit(pt)) { RD.audio && RD.audio.toggle(); return; }
     for (const b of buttons) {
-      if (pt.x >= b.x && pt.x <= b.x + b.w && pt.y >= b.y && pt.y <= b.y + b.h) { b.onClick(); break; }
+      if (pt.x >= b.x && pt.x <= b.x + b.w && pt.y >= b.y && pt.y <= b.y + b.h) { RD.audio && RD.audio.sfx("click"); b.onClick(); break; }
     }
   });
   addEventListener("pointerdown", (e) => {
     if (scene !== "play" || !run) return;
     if (e.target.closest && e.target.closest("button")) return; // 화면 밖 폭탄 버튼
     const pt = toGame(e);
+    if (e.target === canvas && soundHit(pt)) { RD.audio && RD.audio.toggle(); return; }
     if (run.choosing) {
       // 강화 카드 고르기 (선택 직후 실수로 눌리지 않게 0.35초 기다림)
       if (run.choosing.t < 0.35) return;
@@ -291,8 +301,10 @@
     RD.text(g, ch.desc.split(". ")[0], 145, 420, 15, "#fff");
     RD.text(g, `전용 · ${ch.sig.name}: ${ch.sig.desc}`, 145, 446, 12, "#ffd34d");
     RD.text(g, `궁극기 · ${ch.bomb.name}: ${ch.bomb.desc}`, 145, 470, 12, "#9fd0ff");
-    RD.text(g, `최고 점수 (${RD.MODES[mode].name} · ${D.name}) ${best.toLocaleString()}`, 145, 494, 12, "#cfc6e0");
-    if (owned[ch.id] > 1) RD.text(g, `각성 ★${owned[ch.id]}: 위력 +${Math.round(G.starDmg * 100 * (owned[ch.id] - 1))}%, 체력 +${G.starHp * (owned[ch.id] - 1)}`, 145, 516, 12, "#ffd34d");
+    let ly = 494;
+    if (ch.passive) { RD.text(g, `패시브 · ${ch.passive}`, 145, ly, 12, "#9fffb0"); ly += 22; }
+    const starTxt = owned[ch.id] > 1 ? `   각성 ★${owned[ch.id]}: 위력 +${Math.round(G.starDmg * 100 * (owned[ch.id] - 1))}%, 체력 +${G.starHp * (owned[ch.id] - 1)}` : "";
+    RD.text(g, `최고 점수 (${RD.MODES[mode].name} · ${D.name}) ${best.toLocaleString()}${starTxt}`, 145, ly, 12, "#cfc6e0");
     RD.text(g, `코인 ${coins.toLocaleString()}`, C.width - 318, 400, 14, "#ffd34d", "center");
     button(C.width - 384, 414, 132, 66, "뽑기", () => { scene = "gacha"; }, "#c58aff");
     button(C.width - 230, 414, 200, 66, "출격!", startRun);
@@ -419,6 +431,12 @@
     buttons = [];
     g.imageSmoothingEnabled = false;
     g.clearRect(0, 0, C.width, C.height);
+    if (RD.audio) {
+      let track = "menu";
+      if (scene === "play") track = run.over ? null : run.boss ? "boss" : "stage";
+      if (scene === "result") track = null;
+      RD.audio.music(track);
+    }
 
     if (scene === "loading") {
       g.fillStyle = "#120c1c";
@@ -426,6 +444,7 @@
       RD.text(g, "불러오는 중...", C.width / 2, C.height / 2, 28, "#fff", "center");
     } else if (scene === "select") {
       drawSelect();
+      RD.drawSoundButton(g);
     } else if (scene === "play") {
       run.update(dt);
       RD.drawRun(g, run);
@@ -435,6 +454,7 @@
       drawResult();
     } else if (scene === "gacha") {
       drawGacha();
+      RD.drawSoundButton(g);
     }
     requestAnimationFrame(frame);
   }
