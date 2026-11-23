@@ -115,6 +115,7 @@
       // 특별 모드는 전용 지역에서 한다
       if (mode === "raid") {
         this.raid = { type: opts.raidBoss || "boss_bat", lv: opts.raidLv || 1, dmg: 0, rage: 0, spawned: false };
+        this.brawl = { ammo: 3, charge: 0, aimAng: 0 }; // 브롤스타즈식: 탄환과 궁극기 게이지
         this.pendingLevels = 4; // 시작할 때 강화 4개
       }
       const raidStage = this.raid ? RD.RAID_BOSSES.find((r) => r[0] === this.raid.type)[1] : null;
@@ -177,6 +178,7 @@
     }
 
     upgradeInfo(u) {
+      if (u.brawl) return { name: u.name, desc: u.desc() };
       if (u.id === "sig") return { name: this.char.sig.name, desc: this.char.sig.desc };
       if (u.id === "multi") {
         const names = { fox: "베기 강화", rabbit: "단검 추가", bear: "망치 추가", owl: "회오리 추가", cat: "구슬 추가" };
@@ -187,7 +189,7 @@
 
     openChoice() {
       if (this.choosing || this.pendingLevels <= 0 || this.over) return;
-      const pool = RD.UPGRADES.filter((u) => this.lv(u.id) < u.max && (!u.only || u.only(this.char)));
+      const pool = (this.raid ? RD.BRAWL_UPS[this.charId] : RD.UPGRADES).filter((u) => this.lv(u.id) < u.max && (!u.only || u.only(this.char)));
       const options = [];
       while (options.length < 3 && pool.length) {
         // 이미 가진 강화가 조금 더 잘 나온다
@@ -198,7 +200,7 @@
         options.push(pool.splice(i, 1)[0]);
       }
       // 화력이 너무 안 오르지 않도록, 주무기나 전용 강화가 하나는 끼게 한다
-      const isMain = (u) => u.cat === "주무기" || u.cat === "전용";
+      const isMain = (u) => ["주무기", "전용", "일반 공격", "궁극기"].includes(u.cat);
       if (options.length === 3 && !options.some(isMain)) {
         const mains = pool.filter(isMain);
         if (mains.length) options[2] = pick(mains);
@@ -600,6 +602,7 @@
 
     // 주무기: 캐릭터마다 완전히 다른 방식
     shoot(dt) {
+      if (this.raid) return; // 레이드는 직접 조준해서 쏜다
       const p = this.player;
       p.shotCd -= dt;
       if (p.shotCd > 0 || p.dead > 0) return;
@@ -680,6 +683,104 @@
       }
     }
 
+    // ---------- 레이드: 브롤스타즈식 공격 ----------
+    bst(key) {
+      let v = 0;
+      for (const u of RD.BRAWL_UPS[this.charId]) if (u.fx[key]) v += u.fx[key] * this.lv(u.id);
+      return v;
+    }
+    get brawlMaxAmmo() { return RD.BRAWL[this.charId].ammo + this.bst("ammo"); }
+    get superReady() { return this.brawl && this.brawl.charge >= 1; }
+
+    gainCharge(n) {
+      if (!this.brawl) return;
+      const was = this.brawl.charge >= 1;
+      this.brawl.charge = Math.min(1, this.brawl.charge + n * (1 + this.bst("charge")));
+      if (!was && this.brawl.charge >= 1) { this.text("궁극기 준비!", "#ffd34d"); RD.audio && RD.audio.sfx("shield"); }
+    }
+
+    // 가장 가까운 적 쪽 각도 (자동 조준)
+    autoAim() {
+      const p = this.player;
+      let best = null, bd = 1e9;
+      for (const e of this.enemies) {
+        if (e.dead || e.delay > 0 || e.x > C.width + 20) continue;
+        const d = Math.hypot(e.x - p.x, e.y - p.y) - (RD.ENEMIES[e.type].boss ? 200 : 0);
+        if (d < bd) { bd = d; best = e; }
+      }
+      return best ? Math.atan2(best.y - p.y, best.x - p.x) : 0;
+    }
+
+    brawlAttack(ang) {
+      const B = this.brawl, p = this.player;
+      if (!B || this.over || this.choosing || p.dead > 0 || B.ammo < 1) return false;
+      if (ang == null) ang = this.autoAim();
+      B.ammo -= 1;
+      B.aimAng = ang;
+      const W = RD.BRAWL[this.charId];
+      const dmg = W.dmg * this.dmgMul * (1 + this.bst("dmg"));
+      const ch = W.charge;
+      RD.audio && RD.audio.sfx("shot_" + this.charId);
+      const base = { brawl: true, charge: ch, hit: [], t: 0, color: this.char.shot.color, main: true };
+      if (this.charId === "fox") {
+        // 부채꼴 베기 (조준 방향), 적 탄도 벤다
+        const range = W.range * (1 + this.bst("range")), arc = W.arc;
+        this.effects.push({ type: "arcslash", x: p.x, y: p.y, ang, range, arc, t: 0, life: 0.18 });
+        for (const e of this.enemies) {
+          if (e.dead || e.delay > 0) continue;
+          const def = RD.ENEMIES[e.type];
+          const d = Math.hypot(e.x - p.x, e.y - p.y) - Math.max(def.w, def.h) / 2;
+          let da = Math.atan2(e.y - p.y, e.x - p.x) - ang;
+          while (da > Math.PI) da -= Math.PI * 2;
+          while (da < -Math.PI) da += Math.PI * 2;
+          if (d < range && Math.abs(da) < arc + 0.25) { this.damage(e, dmg); this.gainCharge(ch); }
+        }
+        this.bullets = this.bullets.filter((b) => {
+          let da = Math.atan2(b.y - p.y, b.x - p.x) - ang;
+          while (da > Math.PI) da -= Math.PI * 2;
+          while (da < -Math.PI) da += Math.PI * 2;
+          return Math.hypot(b.x - p.x, b.y - p.y) > range || Math.abs(da) > arc;
+        });
+        const wave = this.bst("wave");
+        if (wave) this.addShot({ ...base, kind: "wave", x: p.x, y: p.y, vx: Math.cos(ang) * 820, vy: Math.sin(ang) * 820, w: 26, h: 44, dmg: dmg * 0.3 * wave, pierce: 99, charge: ch * 0.3 });
+      } else if (this.charId === "rabbit") {
+        const n = W.count + this.bst("count"), sp = W.speed * (1 + this.bst("range"));
+        for (let i = 0; i < n; i++) {
+          const a = ang + (i - (n - 1) / 2) * 0.16;
+          this.addShot({ ...base, kind: "boomerang", x: p.x + 10, y: p.y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, w: 26, h: 26, dmg, pierce: 99, back: false, crit: this.bst("crit") });
+        }
+      } else if (this.charId === "bear") {
+        // 조준 방향으로 포물선 투척 (조준 거리만큼)
+        const n = 1 + this.bst("count"), G = 1500;
+        for (let i = 0; i < n; i++) {
+          const dist = W.dist + i * 70;
+          const tx = p.x + Math.cos(ang) * dist, ty = Math.min(C.groundY - 10, p.y + Math.sin(ang) * dist);
+          const T = 0.7, sx = p.x + 10, sy = p.y - 10;
+          this.addShot({ ...base, kind: "lob", x: sx, y: sy, vx: (tx - sx) / T, vy: (ty - sy - 0.5 * G * T * T) / T, w: 28, h: 28, dmg, pierce: 0, radius: W.radius * (1 + this.bst("size")), boom: 1, gravity: G });
+        }
+      } else if (this.charId === "owl") {
+        const n = 1 + this.bst("count"), size = 1 + this.bst("size");
+        for (let i = 0; i < n; i++) {
+          const a = ang + (i - (n - 1) / 2) * 0.3;
+          this.addShot({ ...base, kind: "tornado", x: p.x + Math.cos(a) * 30, y: p.y + Math.sin(a) * 30, vx: Math.cos(a) * W.speed, vy: Math.sin(a) * W.speed, w: 54 * size, h: 96 * size, dmg, pierce: 99, life: W.life * (1 + this.bst("life")), tick: new Map() });
+        }
+      } else {
+        const n = W.count + this.bst("count");
+        for (let i = 0; i < n; i++) {
+          const a = ang + (i - (n - 1) / 2) * 0.2;
+          this.addShot({ ...base, kind: "orb", x: p.x + 20, y: p.y, vx: Math.cos(a) * 700, vy: Math.sin(a) * 700, w: 20, h: 20, dmg, pierce: 0, homing: true, splitLv: this.bst("split") });
+        }
+      }
+      return true;
+    }
+
+    brawlSuper() {
+      if (!this.superReady || this.bombT > 0 || this.player.dead > 0 || this.over || this.choosing) return;
+      this.brawl.charge = 0;
+      this.bomb(true);
+      if (this.bst("refill")) this.brawl.ammo = this.brawlMaxAmmo;
+    }
+
     // 여우 베기: 캐릭터 앞의 부채꼴. 적을 베고 적 탄을 없앤다
     updateSlashes(dt) {
       const p = this.player;
@@ -712,18 +813,29 @@
     }
 
     // 곰 망치 폭발
-    explode(x, y, r, dmg) {
+    explode(x, y, r, dmg, charge = 0) {
       this.effects.push({ type: "boom", x, y, t: 0, life: 0.35, r });
       this.shake = Math.max(this.shake, 0.08);
       for (const e of this.enemies) {
         if (e.dead || e.delay > 0) continue;
         const def = RD.ENEMIES[e.type];
-        if (Math.hypot(e.x - x, e.y - y) < r + Math.max(def.w, def.h) / 2) this.damage(e, dmg);
+        if (Math.hypot(e.x - x, e.y - y) < r + Math.max(def.w, def.h) / 2) { this.damage(e, dmg); if (charge) this.gainCharge(charge); }
       }
     }
 
     // 주무기가 적에게 맞았을 때 (토끼 급소, 고양이 분열)
     mainHit(s, e, spawned) {
+      if (s.brawl) {
+        let dmg = s.dmg;
+        if (s.crit && Math.random() < s.crit) { dmg *= 3; this.effects.push({ type: "text", x: e.x, y: e.y - 30, text: "급소!", color: "#ffd34d", t: 0, life: 0.4, size: 14 }); }
+        if (s.splitLv && !s.split) for (let k = 0; k <= s.splitLv; k++) {
+          const a = (k / (s.splitLv + 1)) * Math.PI * 2 + Math.random();
+          spawned.push({ kind: "orb", x: s.x, y: s.y, vx: Math.cos(a) * 500, vy: Math.sin(a) * 500, w: 12, h: 12, dmg: s.dmg * 0.4, homing: true, split: true, small: true, color: s.color, brawl: true, charge: s.charge * 0.3 });
+        }
+        this.gainCharge(s.charge);
+        this.damage(e, dmg);
+        return;
+      }
       let dmg = s.dmg;
       const sig = this.lv("sig");
       if (s.main && sig > 0) {
@@ -813,13 +925,15 @@
     }
 
     // ---------- 궁극기 (캐릭터마다 다름) ----------
-    bomb() {
-      if (this.over || this.choosing || this.bombs <= 0 || this.bombT > 0 || this.player.dead > 0) return;
+    bomb(fromSuper) {
+      if (this.raid && !fromSuper) return this.brawlSuper();
+      if (this.over || this.choosing || (!fromSuper && this.bombs <= 0) || this.bombT > 0 || this.player.dead > 0) return;
       const p = this.player;
-      this.bombs--;
-      const life = { fox: 1.0, rabbit: 3.0, bear: 1.5, owl: 2.8, cat: 3.0 }[this.charId];
+      if (!fromSuper) this.bombs--;
+      const sdur = this.raid ? this.bst("sdur") : 0;
+      const life = { fox: 1.0, rabbit: 3.0, bear: 1.5, owl: 2.8, cat: 3.0 }[this.charId] + (this.charId === "fox" ? 0 : this.charId === "bear" ? 0.3 * sdur : sdur);
       this.bombT = life;
-      this.ult = { kind: this.charId, t: 0, life, x0: p.x, y0: p.y, done: {}, spawnT: 0, mul: 1 + 0.3 * this.lv("bomb") };
+      this.ult = { kind: this.charId, t: 0, life, x0: p.x, y0: p.y, done: {}, spawnT: 0, mul: 1 + 0.3 * this.lv("bomb") + (this.raid ? this.bst("spow") : 0), sdur };
       p.invuln = Math.max(p.invuln, life + 0.6);
       this.banner = { text: this.char.bomb.name + "!", color: this.char.bomb.color, t: 0, life: 1.2, small: true };
       RD.audio && RD.audio.sfx("ult_" + this.charId);
@@ -886,7 +1000,7 @@
         }
         case "bear": {
           // 대지 강타: 바위 기둥이 앞쪽으로 차례차례 솟는다
-          const cols = 8;
+          const cols = 8 + 3 * (u.sdur || 0);
           for (let i = 0; i < cols; i++) {
             const at = 0.1 + i * 0.1;
             if (u.t < at || u.done[i]) continue;
@@ -1053,6 +1167,11 @@
         if (p.poison > 0) { p.poison -= dt; p.hp -= 4 * dt; if (p.hp <= 0 && p.invuln <= 0) this.die(); } // 독한 종기
       }
       p.invuln = Math.max(0, p.invuln - dt);
+      if (this.brawl) {
+        // 탄환 재장전 (한 칸씩)
+        const B = this.brawl, max = this.brawlMaxAmmo;
+        if (B.ammo < max) B.ammo = Math.min(max, B.ammo + dt / (RD.BRAWL[this.charId].reload * (1 - Math.min(0.6, this.bst("reload")))));
+      }
       p.hurt = Math.max(0, p.hurt - dt);
       // 패시브
       if (this.charId === "fox") this.parry = Math.min(RD.FOX_PARRY.max, this.parry + dt / RD.FOX_PARRY.regen);
@@ -1147,7 +1266,7 @@
           s.x += s.vx * dt; s.y += s.vy * dt;
           const target = this.enemies.find((e) => live(e) && boxHit(s, e));
           if (target || s.y > C.groundY - 8) {
-            this.explode(s.x, Math.min(s.y, C.groundY - 8), s.radius, s.dmg * s.boom);
+            this.explode(s.x, Math.min(s.y, C.groundY - 8), s.radius, s.dmg * s.boom, s.brawl ? s.charge : 0);
             s.gone = true;
           }
           continue;
@@ -1156,12 +1275,12 @@
         if (s.kind === "tornado") {
           // 천천히 나아가며 닿은 적을 0.15초마다 때리고, 적 탄을 날려 버린다
           s.x += s.vx * dt;
-          s.y += Math.sin(s.t * 3) * 30 * dt;
+          s.y += Math.sin(s.t * 3) * 30 * dt + (s.vy || 0) * dt;
           if (s.t > s.life) s.gone = true;
           for (const e of this.enemies) {
             if (!live(e) || !boxHit(s, e)) continue;
             const last = s.tick.get(e) || -1;
-            if (s.t - last >= 0.18) { s.tick.set(e, s.t); this.damage(e, s.dmg, true); }
+            if (s.t - last >= 0.18) { s.tick.set(e, s.t); this.damage(e, s.dmg, true); if (s.brawl) this.gainCharge(s.charge); }
           }
           // 회오리 하나가 지울 수 있는 탄 수에는 한도가 있다
           s.absorbed = s.absorbed || 0;

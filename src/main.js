@@ -198,7 +198,12 @@
       return;
     }
     if (scene === "play") {
-      if (e.code === "KeyX" || e.code === "Space" || e.code === "KeyK") run.bomb();
+      if (run.raid) {
+        // 레이드: Space/J 공격 (마우스 방향, 없으면 자동 조준), X/K/E 궁극기
+        const U = RD.brawlUI, p = run.player;
+        if (e.code === "Space" || e.code === "KeyJ") run.brawlAttack(U.mouse ? Math.atan2(U.mouse.y - p.y, U.mouse.x - p.x) : null);
+        if (e.code === "KeyX" || e.code === "KeyK" || e.code === "KeyE") run.brawlSuper();
+      } else if (e.code === "KeyX" || e.code === "Space" || e.code === "KeyK") run.bomb();
       if (e.code === "KeyB") RD.debug = !RD.debug;
     } else if (scene === "select") {
       if (e.code === "ArrowLeft") selected = (selected + 4) % 5;
@@ -269,10 +274,48 @@
       RD.cardRects.forEach((r, i) => { if (pt.x >= r.x && pt.x <= r.x + r.w && pt.y >= r.y && pt.y <= r.y + r.h) run.choose(i); });
       return;
     }
+    if (run.raid) { brawlDown(e, pt); return; }
     if (isTouch() && Math.hypot(pt.x - BOMB_BTN.x, pt.y - BOMB_BTN.y) < BOMB_BTN.r && e.target === canvas) { run.bomb(); return; }
     if (drag) return;
     drag = { id: e.pointerId, x: e.clientX, y: e.clientY };
   });
+  // ---------- 레이드: 브롤스타즈식 조작 ----------
+  // 마우스: 조준은 마우스, 왼쪽 클릭 공격, 오른쪽 클릭 궁극기 / 터치: 왼쪽 이동 스틱, 오른쪽 공격·궁극기 스틱
+  // (스틱을 끌어서 조준하고 떼면 발사, 짧게 톡 치면 자동 조준)
+  const U = RD.brawlUI;
+  canvas.addEventListener("contextmenu", (e) => { if (scene === "play" && run && run.raid) e.preventDefault(); });
+  function brawlDown(e, pt) {
+    const onCanvas = e.target === canvas;
+    if (e.pointerType === "mouse" && onCanvas) {
+      const p = run.player, ang = Math.atan2(pt.y - p.y, pt.x - p.x);
+      if (e.button === 2) run.brawlSuper(); else run.brawlAttack(ang);
+      return;
+    }
+    if (onCanvas && Math.hypot(pt.x - RD.SUP_BTN.x, pt.y - RD.SUP_BTN.y) < RD.SUP_BTN.r * 1.3) { U.sup = { id: e.pointerId, ang: 0, drag: 0 }; return; }
+    if (onCanvas && Math.hypot(pt.x - RD.ATK_BTN.x, pt.y - RD.ATK_BTN.y) < RD.ATK_BTN.r * 1.4) { U.atk = { id: e.pointerId, ang: 0, drag: 0 }; return; }
+    if (!U.move) U.move = { id: e.pointerId, ox: pt.x, oy: pt.y, cx: e.clientX, cy: e.clientY, dx: 0, dy: 0 };
+  }
+  function brawlMove(e) {
+    const pt = toGame(e);
+    if (e.pointerType === "mouse") U.mouse = pt;
+    for (const [s, btn] of [[U.atk, RD.ATK_BTN], [U.sup, RD.SUP_BTN]]) {
+      if (s && s.id === e.pointerId) { s.ang = Math.atan2(pt.y - btn.y, pt.x - btn.x); s.drag = Math.hypot(pt.x - btn.x, pt.y - btn.y); }
+    }
+    if (U.move && U.move.id === e.pointerId) {
+      let dx = (e.clientX - U.move.cx) / 45, dy = (e.clientY - U.move.cy) / 45;
+      const l = Math.hypot(dx, dy);
+      if (l > 1) { dx /= l; dy /= l; }
+      U.move.dx = dx; U.move.dy = dy;
+      run.input.dx = dx; run.input.dy = dy;
+    }
+  }
+  function brawlUp(e) {
+    if (U.atk && U.atk.id === e.pointerId) { run.brawlAttack(U.atk.drag > 14 ? U.atk.ang : null); U.atk = null; }
+    if (U.sup && U.sup.id === e.pointerId) { run.brawlSuper(); U.sup = null; }
+    if (U.move && U.move.id === e.pointerId) { U.move = null; run.input.dx = run.input.dy = 0; }
+  }
+  addEventListener("pointermove", (e) => { if (scene === "play" && run && run.raid) brawlMove(e); });
+
   addEventListener("pointermove", (e) => {
     if (!drag || e.pointerId !== drag.id || !run) return;
     const r = canvas.getBoundingClientRect();
@@ -285,6 +328,7 @@
   });
   const advPointers = new Map();
   const endDrag = (e) => {
+    if (scene === "play" && run && run.raid) brawlUp(e);
     if (drag && e.pointerId === drag.id) drag = null;
     const a = advPointers.get(e.pointerId);
     if (a && run && run.isAdv) {
@@ -605,7 +649,7 @@
     const reach = run.raid ? `준 피해 ${Math.round(run.raid.dmg).toLocaleString()} (${Math.round((100 * run.raid.dmg) / Math.max(1, (run.boss || { maxHp: run.raid.dmg }).maxHp))}%)` : run.mode === "trumpets" ? (run.tr >= 0 ? RD.TRUMPETS[run.tr].name : "시작") : run.mode === "dream" ? `${Math.floor(run.t)}초 동안 꿈꿈` : ["story", "hardcore", "stageselect"].includes(run.mode) ? `${run.stage.name}` : run.mode === "bossrush" ? `${run.loop}라운드` : `${Math.floor(run.t)}초 생존`;
     RD.text(g, `격추 ${run.kills}   Lv.${run.level}   ${reach}`, C.width / 2, 290, 20, "#ffd34d", "center");
     // 고른 강화 목록
-    const ups = RD.UPGRADES.filter((u) => run.lv(u.id)).map((u) => `${u.id === "sig" ? run.char.sig.name : u.name} ${run.lv(u.id)}`);
+    const ups = (run.raid ? RD.BRAWL_UPS[run.charId] : RD.UPGRADES).filter((u) => run.lv(u.id)).map((u) => `${u.id === "sig" ? run.char.sig.name : u.name} ${run.lv(u.id)}`);
     RD.text(g, ups.join(" · ") || "강화 없음", C.width / 2, 328, 13, "#cfd8ff", "center");
     RD.text(g, `코인 +${run.coins}  (보유 ${coins.toLocaleString()})`, C.width / 2, 356, 16, "#ffd34d", "center");
     button(C.width / 2 - 230, 390, 210, 66, "다시 출격", startRun);
@@ -619,6 +663,10 @@
       return;
     }
     if (run.choosing || run.cutscene) return;
+    if (run.raid) {
+      if (run.t < 7) RD.text(g, isTouch() ? "왼쪽: 이동 스틱 · 오른쪽 공격 스틱: 끌어서 조준, 떼면 발사 (톡 치면 자동 조준) · 맞히면 궁극기 충전" : "이동: WASD · 조준: 마우스 · 공격: 왼쪽 클릭/Space · 궁극기: 오른쪽 클릭/E · 맞히면 궁극기 충전", C.width / 2, C.height - 50, 13, "#ffffff", "center");
+      return;
+    }
     if (!isTouch()) {
       if (run.t < 6) RD.text(g, "이동: 방향키 / WASD    정밀 이동: Shift    궁극기: X    사격은 자동", C.width / 2, C.height - 50, 14, "rgba(255,255,255,0.8)", "center");
       return;
@@ -682,6 +730,7 @@
     }
     if (scene !== "play" || !run || !down) return;
     if (run.cutscene) { run.advanceCutscene(); return; }
+    if (run.raid) { run.brawlAttack(null); return; } // 세로 화면의 버튼 = 자동 조준 공격
     if (action === "bomb") run.bomb();
   };
   RD.debugState = () => ({ scene, run, coins, owned, pity });

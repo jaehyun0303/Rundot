@@ -534,6 +534,15 @@
         g.fillStyle = "#d8b48a";
         g.fillRect(e.x - 46, C.groundY - 4, 92, 10);
         g.globalAlpha = 1;
+      } else if (e.type === "arcslash") {
+        const k = e.t / e.life;
+        g.save(); g.globalAlpha = 1 - k * 0.7;
+        g.fillStyle = "rgba(191,228,255,0.35)";
+        g.beginPath(); g.moveTo(e.x, e.y); g.arc(e.x, e.y, e.range, e.ang - e.arc, e.ang + e.arc); g.closePath(); g.fill();
+        g.strokeStyle = "#ffffff"; g.lineWidth = 5;
+        const cur = e.ang - e.arc + (e.arc * 2) * Math.min(1, k * 1.6);
+        g.beginPath(); g.arc(e.x, e.y, e.range * 0.92, e.ang - e.arc, cur); g.stroke();
+        g.restore();
       } else if (e.type === "bolt") {
         // 번개: 하늘에서 지그재그로 떨어진다
         g.strokeStyle = `rgba(200,240,255,${1 - k})`;
@@ -733,6 +742,10 @@
     const head = RD.getCharacterFrame(run.charId, "jump", 0);
     for (let i = 0; i < Math.min(run.lives, 6); i++) g.drawImage(head, 6 + i * 26, C.height - 80, 34, 34);
     text(g, "궁극기", 12, C.height - 24, 12, "#9fd0ff");
+    if (run.brawl) {
+      bar(g, 60, C.height - 29, 110, 10, run.brawl.charge, run.superReady ? "#ffd34d" : "#c8a040");
+      if (run.superReady) text(g, "준비!", 178, C.height - 24, 12, "#ffd34d");
+    } else
     for (let i = 0; i < run.bombs; i++) {
       g.fillStyle = "#1d1622";
       g.beginPath(); g.arc(70 + i * 18, C.height - 24, 7, 0, Math.PI * 2); g.fill();
@@ -740,7 +753,7 @@
       g.beginPath(); g.arc(70 + i * 18, C.height - 24, 5, 0, Math.PI * 2); g.fill();
     }
     let ux = 190;
-    for (const u of RD.UPGRADES) {
+    for (const u of run.raid ? RD.BRAWL_UPS[run.charId] : RD.UPGRADES) {
       const lv = run.lv(u.id);
       if (!lv) continue;
       const name = u.id === "sig" ? run.char.sig.name : u.name;
@@ -1170,6 +1183,56 @@
     g.globalAlpha = 1;
   }
 
+  // ---------- 레이드: 브롤스타즈식 UI ----------
+  RD.ATK_BTN = { x: C.width - 105, y: C.height - 110, r: 62 };
+  RD.SUP_BTN = { x: C.width - 225, y: C.height - 70, r: 44 };
+  RD.brawlUI = { move: null, atk: null, sup: null, mouse: null };
+  function drawBrawl(g, run) {
+    const B = run.brawl, p = run.player, U = RD.brawlUI;
+    if (!B || p.dead > 0) return;
+    // 조준 미리보기 (조준 스틱을 끄는 중이거나 마우스)
+    const aiming = U.atk && U.atk.drag > 14 ? U.atk : U.sup && U.sup.drag > 14 ? U.sup : null;
+    let ang = aiming ? aiming.ang : U.mouse ? Math.atan2(U.mouse.y - p.y, U.mouse.x - p.x) : null;
+    if (ang != null) {
+      const sup = aiming === U.sup;
+      const W = RD.BRAWL[run.charId];
+      const len = run.charId === "fox" ? W.range * (1 + run.bst("range")) : run.charId === "bear" ? W.dist : 420;
+      g.save();
+      g.strokeStyle = sup ? "rgba(255,211,77,0.7)" : "rgba(255,255,255,0.55)";
+      g.fillStyle = sup ? "rgba(255,211,77,0.15)" : "rgba(255,255,255,0.12)";
+      g.lineWidth = 3; g.setLineDash([10, 8]);
+      if (run.charId === "fox" && !sup) { g.beginPath(); g.moveTo(p.x, p.y); g.arc(p.x, p.y, len, ang - W.arc, ang + W.arc); g.closePath(); g.fill(); g.stroke(); }
+      else { g.beginPath(); g.moveTo(p.x, p.y); g.lineTo(p.x + Math.cos(ang) * len, p.y + Math.sin(ang) * len); g.stroke();
+        if (run.charId === "bear" && !sup) { g.beginPath(); g.arc(p.x + Math.cos(ang) * len, Math.min(C.groundY - 10, p.y + Math.sin(ang) * len), W.radius * (1 + run.bst("size")), 0, Math.PI * 2); g.fill(); } }
+      g.restore();
+    }
+    // 탄환 칸 (캐릭터 아래)
+    const max = run.brawlMaxAmmo, w = 20;
+    for (let i = 0; i < max; i++) {
+      const x = p.x - (max * (w + 3)) / 2 + i * (w + 3), y = p.y + 40;
+      g.fillStyle = "#1d1622"; g.fillRect(x - 1, y - 1, w + 2, 8);
+      const f = Math.max(0, Math.min(1, B.ammo - i));
+      g.fillStyle = f >= 1 ? "#ff8a3d" : "#7a4a2a"; g.fillRect(x, y, w * f, 6);
+    }
+    // 터치 조이스틱과 버튼
+    if (matchMedia("(pointer: coarse)").matches) {
+      const stick = (cx, cy, r, s, col, label, ready) => {
+        g.globalAlpha = 0.45; g.fillStyle = "#1d1622"; g.beginPath(); g.arc(cx, cy, r, 0, Math.PI * 2); g.fill(); g.globalAlpha = 1;
+        g.strokeStyle = col; g.lineWidth = ready ? 4 : 2; g.beginPath(); g.arc(cx, cy, r, 0, Math.PI * 2); g.stroke();
+        const kx = s ? cx + Math.cos(s.ang) * Math.min(r * 0.6, s.drag) : cx, ky = s ? cy + Math.sin(s.ang) * Math.min(r * 0.6, s.drag) : cy;
+        g.fillStyle = col; g.beginPath(); g.arc(kx, ky, r * 0.36, 0, Math.PI * 2); g.fill();
+        text(g, label, cx, cy + r + 12, 12, "#fff", "center");
+      };
+      if (U.move) {
+        g.globalAlpha = 0.35; g.fillStyle = "#1d1622"; g.beginPath(); g.arc(U.move.ox, U.move.oy, 60, 0, Math.PI * 2); g.fill(); g.globalAlpha = 1;
+        g.fillStyle = "#9fd0ff"; g.beginPath(); g.arc(U.move.ox + U.move.dx * 50, U.move.oy + U.move.dy * 50, 22, 0, Math.PI * 2); g.fill();
+      }
+      stick(RD.ATK_BTN.x, RD.ATK_BTN.y, RD.ATK_BTN.r, U.atk, B.ammo >= 1 ? "#ff8a3d" : "#7a4a2a", "공격", false);
+      const ready = run.superReady;
+      stick(RD.SUP_BTN.x, RD.SUP_BTN.y, RD.SUP_BTN.r, U.sup, ready ? "#ffd34d" : "#5a4a30", ready ? "궁극기!" : `궁극기 ${Math.floor(B.charge * 100)}%`, ready);
+    }
+  }
+
   RD.drawRun = function (g, run) {
     g.save();
     if (run.shake > 0) g.translate((Math.random() - 0.5) * 12 * run.shake * 2, (Math.random() - 0.5) * 10 * run.shake * 2);
@@ -1185,6 +1248,7 @@
     drawHazards(g, run);
     drawBullets(g, run);
     drawWeather(g, run);
+    drawBrawl(g, run);
     g.restore();
     drawIntro(g, run);
     drawHud(g, run);

@@ -56,7 +56,7 @@ RD.MODES = {
   // 특별 모드
   dream: { name: "달콤한 꿈", special: "dream", lives: 1, desc: "사탕 나라의 꿈. 사탕을 모아 슈가 러시! 꿈 게이지가 바닥나면 잠에서 깬다" },
   adventure: { name: "어드벤처 런", special: "adventure", desc: "쿠키런처럼 자동으로 달린다! 점프(오른쪽/Space)와 슬라이드(왼쪽/↓)로 장애물을 피하고 젤리를 모아라" },
-  raid: { name: "레이드", special: "raid", time: 180, desc: "보스 하나에 3분! 쓰러뜨리면 레이드 레벨이 오르고 보상이 커진다. 시간이 갈수록 보스가 광폭해진다" },
+  raid: { name: "레이드", special: "raid", time: 180, desc: "브롤스타즈식 조작! 직접 조준해서 쏘고(탄환), 맞히면 궁극기가 찬다. 보스 하나에 3분" },
   trumpets: { name: "일곱 나팔", special: "judgment", scoreMul: 2, desc: "일곱 나팔이 차례로 울리며 재앙이 내린다. 마지막엔 큰 붉은 용. 점수 x2" },
 };
 
@@ -394,6 +394,80 @@ RD.RAID_BOSSES = [
   ["boss_chaos", "judgment", "혼돈의 심판 드래곤"],
 ];
 RD.RAID = { baseHp: 6500, lvHp: 0.45, rageEvery: 40, reward: 120, lvReward: 60 };
+
+// ---------- 레이드 전용: 브롤스타즈식 조작 ----------
+// 일반 공격은 직접 조준해서 쏘고 탄환(ammo)을 쓴다. 탄환은 시간이 지나면 다시 찬다.
+// 일반 공격을 적에게 맞히면 궁극기 게이지가 찬다. (charge = 한 번 맞힐 때 차는 양, 1이면 가득)
+RD.BRAWL = {
+  fox: { name: "검 베기", ammo: 3, reload: 1.1, charge: 0.14, dmg: 34, range: 150, arc: 0.65 },
+  rabbit: { name: "부메랑 단검 3개", ammo: 3, reload: 1.2, charge: 0.05, dmg: 7, count: 3, speed: 1100 },
+  bear: { name: "망치 투척", ammo: 3, reload: 1.5, charge: 0.14, dmg: 50, radius: 80, dist: 380 },
+  owl: { name: "회오리", ammo: 3, reload: 1.4, charge: 0.025, dmg: 9, size: 1, life: 1.8, speed: 300 },
+  cat: { name: "유도 구슬 3개", ammo: 3, reload: 1.1, charge: 0.05, dmg: 21, count: 3 },
+};
+
+// 레벨업 강화 (캐릭터마다 다르다). fx: 단계마다 더해지는 효과
+//   dmg 위력, reload 재장전 단축, ammo 탄환 수, charge 궁극기 충전, spow 궁극기 위력, sdur 궁극기 지속/규모,
+//   count 발사 수, range 사거리/범위, size 크기, life 지속, crit 급소 확률, wave 검기, split 분열, refill 궁극기 뒤 탄환 충전
+const BC = { atk: ["일반 공격", "#ff5a5a"], sup: ["궁극기", "#ffd34d"], com: ["공통", "#9fffb0"] };
+const bu = (id, c, name, max, fx, desc) => ({ id, cat: BC[c][0], color: BC[c][1], name, max, fx, desc: () => desc, brawl: true });
+const BRAWL_COMMON = [
+  bu("hp", "com", "최대 체력", 4, {}, "최대 체력 +25, 체력 모두 회복"),
+  bu("speed", "com", "날개", 3, {}, "이동 속도 +12%"),
+  bu("ammo_up", "com", "탄창 확장", 2, { ammo: 1 }, "탄환 칸 +1"),
+];
+RD.BRAWL_UPS = {
+  fox: [
+    bu("f_wide", "atk", "넓은 베기", 3, { range: 0.2 }, "베기 범위 +20%"),
+    bu("f_sharp", "atk", "날카로운 검", 4, { dmg: 0.2 }, "베기 위력 +20%"),
+    bu("f_wave", "atk", "검기 날리기", 2, { wave: 1 }, "벨 때마다 앞으로 검기가 날아간다"),
+    bu("f_quick", "atk", "재빠른 손놀림", 3, { reload: 0.15 }, "재장전 -15%"),
+    bu("f_flash", "sup", "일섬 강화", 3, { spow: 0.35 }, "일섬 위력 +35%"),
+    bu("f_spirit", "sup", "투지", 3, { charge: 0.25 }, "궁극기 충전 +25%"),
+    bu("f_after", "sup", "잔상", 1, { refill: 1 }, "일섬을 쓰면 탄환이 모두 찬다"),
+    ...BRAWL_COMMON,
+  ],
+  rabbit: [
+    bu("r_more", "atk", "단검 추가", 3, { count: 1 }, "한 번에 던지는 단검 +1"),
+    bu("r_crit", "atk", "급소 찌르기", 3, { crit: 0.12 }, "단검이 12% 확률로 3배 피해"),
+    bu("r_far", "atk", "먼 투척", 2, { range: 0.15 }, "단검 속도와 사거리 +15%"),
+    bu("r_quick", "atk", "빠른 손", 3, { reload: 0.15 }, "재장전 -15%"),
+    bu("r_shadow", "sup", "그림자 강화", 3, { spow: 0.35 }, "그림자 단검 위력 +35%"),
+    bu("r_stay", "sup", "분신 유지", 2, { sdur: 1 }, "분신이 1초 더 남는다"),
+    bu("r_absorb", "sup", "그림자 흡수", 3, { charge: 0.25 }, "궁극기 충전 +25%"),
+    ...BRAWL_COMMON,
+  ],
+  bear: [
+    bu("b_big", "atk", "큰 망치", 3, { size: 0.25 }, "폭발 범위 +25%"),
+    bu("b_twin", "atk", "쌍망치", 2, { count: 1 }, "한 번에 던지는 망치 +1"),
+    bu("b_arm", "atk", "단련된 팔", 4, { dmg: 0.2 }, "망치 위력 +20%"),
+    bu("b_rhythm", "atk", "대장장이의 리듬", 3, { reload: 0.15 }, "재장전 -15%"),
+    bu("b_slam", "sup", "대지 강타 강화", 3, { spow: 0.35 }, "대지 강타 위력 +35%"),
+    bu("b_after", "sup", "여진", 2, { sdur: 1 }, "바위 기둥 +3개"),
+    bu("b_rage", "sup", "분노의 망치질", 3, { charge: 0.25 }, "궁극기 충전 +25%"),
+    ...BRAWL_COMMON,
+  ],
+  owl: [
+    bu("o_big", "atk", "큰 회오리", 3, { size: 0.25 }, "회오리 크기 +25%"),
+    bu("o_long", "atk", "긴 회오리", 3, { life: 0.3 }, "회오리 지속 +30%"),
+    bu("o_twin", "atk", "쌍둥이 회오리", 2, { count: 1 }, "한 번에 만드는 회오리 +1"),
+    bu("o_breath", "atk", "바람 숨결", 3, { reload: 0.15 }, "재장전 -15%"),
+    bu("o_storm", "sup", "회오리 바람 강화", 3, { spow: 0.35 }, "회오리 바람 위력 +35%"),
+    bu("o_eye", "sup", "태풍의 눈", 2, { sdur: 1 }, "회오리 바람이 1초 더 분다"),
+    bu("o_gather", "sup", "바람 모으기", 3, { charge: 0.25 }, "궁극기 충전 +25%"),
+    ...BRAWL_COMMON,
+  ],
+  cat: [
+    bu("c_more", "atk", "구슬 추가", 3, { count: 1 }, "한 번에 쏘는 구슬 +1"),
+    bu("c_split", "atk", "분열 구슬", 2, { split: 1 }, "구슬이 맞으면 작은 구슬로 갈라진다"),
+    bu("c_amp", "atk", "마력 증폭", 4, { dmg: 0.2 }, "구슬 위력 +20%"),
+    bu("c_chant", "atk", "빠른 영창", 3, { reload: 0.15 }, "재장전 -15%"),
+    bu("c_star", "sup", "별빛 강화", 3, { spow: 0.35 }, "별똥별 위력 +35%"),
+    bu("c_rain", "sup", "유성우", 2, { sdur: 1 }, "별똥별이 1초 더 떨어진다"),
+    bu("c_cycle", "sup", "마력 순환", 3, { charge: 0.25 }, "궁극기 충전 +25%"),
+    ...BRAWL_COMMON,
+  ],
+};
 
 // 어드벤처 런 (쿠키런 오븐브레이크 방식) 설정
 RD.ADV = {
