@@ -63,13 +63,23 @@
     return (layerCache[st.id] = { far, mid, ground: gt });
   }
 
+  // 이미지를 좌우로 뒤집어 번갈아 이어 붙인다 (이음새가 안 보이게)
+  function tileMirrored(g, im, offset, y, h) {
+    const w = (im.width / im.height) * h;
+    const start = Math.floor(offset / w);
+    let x = -(offset - start * w);
+    for (let i = start; x < C.width; i++, x += w) {
+      if (i % 2) {
+        g.save(); g.translate(Math.floor(x) + Math.ceil(w), y); g.scale(-1, 1);
+        g.drawImage(im, 0, 0, Math.ceil(w) + 1, h); g.restore();
+      } else g.drawImage(im, Math.floor(x), y, Math.ceil(w) + 1, h);
+    }
+  }
+
   function drawBackground(g, scroll, stage) {
     const st = stage || RD.STAGES[0];
     if (hasImg(st.bg)) {
-      const bg = RD.img(st.bg);
-      const h = C.height, w = (bg.width / bg.height) * h;
-      let x = -((scroll * 0.4) % w);
-      for (; x < C.width; x += w) g.drawImage(bg, Math.floor(x), 0, Math.ceil(w) + 1, h);
+      tileMirrored(g, RD.img(st.bg), scroll * 0.4, 0, C.height);
     } else {
       const L = stageLayers(st);
       const grad = g.createLinearGradient(0, 0, 0, C.height);
@@ -83,9 +93,9 @@
     g.fillRect(0, 0, C.width, C.height);
     if (hasImg(st.ground)) {
       const tile = RD.img(st.ground);
-      const th = 100, tw = (tile.width / tile.height) * th;
-      let gx = -(scroll % tw);
-      for (; gx < C.width; gx += tw) g.drawImage(tile, Math.floor(gx), C.groundY - 8, Math.ceil(tw) + 1, th);
+      // 새 땅 이미지는 위쪽 경계가 이미지 맨 위라 조금 위로 올려 그린다
+      const th = st.ground === "ground" ? 100 : 92;
+      tileMirrored(g, tile, scroll, C.groundY - (st.ground === "ground" ? 8 : 18), th);
     } else {
       const t = stageLayers(st).ground;
       let gx = -(scroll % 256);
@@ -101,6 +111,20 @@
       const sc = def.scale;
       const size = RD.MONSTER_SIZE * sc;
       const f = Math.floor(e.t * (def.sprite === "bat" || def.sprite === "batking" ? 10 : 5)) % 2;
+      if (def.img && hasImg(def.img[0])) {
+        // 이미지 보스: 날개짓은 시간, 마그마 슬라임은 점프 중일 때 두 번째 프레임
+        let fi = Math.floor(e.t * (def.style === "crystal" ? 1.5 : 4)) % 2;
+        if (def.style === "fire") fi = e.air ? 1 : 0;
+        const im = RD.img(def.img[fi]);
+        const h = def.drawH, w = (im.width / im.height) * h;
+        const top = def.ground ? e.y + def.h / 2 - h + 6 : e.y - h / 2;
+        g.imageSmoothingEnabled = true;
+        g.drawImage(im, Math.round(e.x - w / 2), Math.round(top), w, h);
+        if (e.flash > 0) { g.globalCompositeOperation = "lighter"; g.globalAlpha = 0.5; g.drawImage(im, Math.round(e.x - w / 2), Math.round(top), w, h); g.globalAlpha = 1; g.globalCompositeOperation = "source-over"; }
+        g.imageSmoothingEnabled = false;
+        if (RD.debug) { const b = run.enemyBox(e); g.strokeStyle = "orange"; g.strokeRect(b.x, b.y, b.w, b.h); }
+        continue;
+      }
       const spr = RD.getMonsterFrame(def.sprite, f, e.flash > 0, e.variant);
       // 특성 표시
       if (e.type === "eye" && e.aiming && e.fireT > 0) {
@@ -735,6 +759,8 @@
     };
     const p = run.player;
     if (p.dead <= 0) hole(p.x + 40, p.y, 250);
+    const boss = run.boss; // 보스는 어둠 속에서도 어렴풋이 보인다
+    if (boss) hole(boss.x, boss.y, 190);
     for (const e of run.effects) if (e.type === "boom") hole(e.x, e.y, 90 * (1 - e.t / e.life) + 20);
     if (run.ult) hole(C.width / 2, C.height / 2, 700);
     g.drawImage(darkCv, 0, 0);

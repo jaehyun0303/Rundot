@@ -40,8 +40,37 @@ def checker_mask(rgb: np.ndarray) -> np.ndarray:
 
 def magenta_mask(rgb: np.ndarray) -> np.ndarray:
     r, g, b = (rgb[..., i].astype(int) for i in range(3))
-    candidate = (r > 200) & (b > 200) & (g < 80)
-    return flood_from_border(candidate)
+    # 순수 마젠타뿐 아니라 가장자리의 분홍빛 섞인 픽셀까지
+    candidate = (r > 140) & (b > 140) & (g < np.minimum(r, b) * 0.55)
+    # 테두리에서 이어진 배경 + 그림 안에 갇힌 진한 마젠타 (날개 사이 빈틈 등)
+    enclosed = (r > 190) & (b > 190) & (g < 90)
+    return flood_from_border(candidate) | enclosed
+
+
+def keep_big_parts(alpha: np.ndarray, min_ratio: float = 0.02) -> np.ndarray:
+    """가장 큰 덩어리에 비해 너무 작은 조각(워터마크, 잡티)은 지운다."""
+    h, w = alpha.shape
+    seen = np.zeros_like(alpha, dtype=bool)
+    parts = []
+    for y0 in range(h):
+        for x0 in range(w):
+            if alpha[y0, x0] and not seen[y0, x0]:
+                q = deque([(y0, x0)]); seen[y0, x0] = True; pix = []
+                while q:
+                    y, x = q.popleft(); pix.append((y, x))
+                    for ny, nx in ((y + 1, x), (y - 1, x), (y, x + 1), (y, x - 1)):
+                        if 0 <= ny < h and 0 <= nx < w and alpha[ny, nx] and not seen[ny, nx]:
+                            seen[ny, nx] = True; q.append((ny, nx))
+                parts.append(pix)
+    if not parts:
+        return alpha
+    big = max(len(p) for p in parts)
+    out = np.zeros_like(alpha)
+    for p in parts:
+        if len(p) >= big * min_ratio:
+            ys, xs = zip(*p)
+            out[list(ys), list(xs)] = 255
+    return out
 
 
 def white_mask(rgb: np.ndarray) -> np.ndarray:
@@ -82,6 +111,8 @@ def cut(src: str, box, mode: str, out: str, size=None):
     else:
         bg = checker_mask(rgb) if mode == "checker" else white_mask(rgb) if mode == "white" else magenta_mask(rgb)
         alpha = np.where(bg, 0, 255).astype(np.uint8)
+        if mode == "magenta":
+            alpha = keep_big_parts(alpha)
     rgba = Image.fromarray(np.dstack([rgb, alpha]), "RGBA")
     if mode != "none":
         bbox = rgba.getbbox()
@@ -114,6 +145,27 @@ CROPS = [
     ("pet_slime.png", (290, 385, 520, 565), "checker", "pet_1.png", None),
     ("pet_slime.png", (525, 515, 770, 650), "checker", "pet_2.png", None),
     ("pet_slime.png", (760, 345, 960, 540), "checker", "pet_3.png", None),
+    # 새 지역 배경: 아래쪽(워터마크와 땅에 가려지는 부분)은 잘라 낸다
+    ("bg_cave.png", (0, 0, 1024, 455), "none", "bg_cave.png", None),
+    ("bg_volcano.png", (0, 0, 1024, 455), "none", "bg_volcano.png", None),
+    ("bg_snow.png", (0, 0, 1024, 455), "none", "bg_snow.png", None),
+    ("bg_sky.png", (0, 0, 1024, 455), "none", "bg_sky.png", None),
+    # 새 지역 땅 (마젠타 위쪽 제거, 아래쪽 워터마크 줄은 잘라 냄)
+    ("ground_cave.png", (0, 0, 1024, 185), "magenta", "ground_cave.png", None),
+    ("ground_volcano.png", (0, 0, 1024, 185), "magenta", "ground_volcano.png", None),
+    ("ground_snow.png", (0, 0, 1024, 185), "magenta", "ground_snow.png", None),
+    ("ground_sky.png", (0, 0, 1024, 185), "magenta", "ground_sky.png", None),
+    # 지역 보스 2프레임 (왼쪽, 오른쪽)
+    ("boss_bat.png", (0, 0, 504, 572), "magenta", "boss_bat_0.png", None),
+    ("boss_bat.png", (520, 0, 1024, 572), "magenta", "boss_bat_1.png", None),
+    ("boss_crystal.png", (0, 0, 512, 572), "magenta", "boss_crystal_0.png", None),
+    ("boss_crystal.png", (512, 0, 1024, 572), "magenta", "boss_crystal_1.png", None),
+    ("boss_fire.png", (0, 0, 560, 572), "magenta", "boss_fire_0.png", None),
+    ("boss_fire.png", (560, 0, 1024, 572), "magenta", "boss_fire_1.png", None),
+    ("boss_frost.png", (0, 0, 540, 572), "magenta", "boss_frost_0.png", None),
+    ("boss_frost.png", (540, 0, 1024, 572), "magenta", "boss_frost_1.png", None),
+    ("boss_storm.png", (0, 0, 500, 572), "magenta", "boss_storm_0.png", None),
+    ("boss_storm.png", (500, 0, 1024, 572), "magenta", "boss_storm_1.png", None),
     # 배경 / 바닥 (불투명)
     ("bg_forest.png", (0, 0, 1024, 572), "none", "bg_forest.png", None),
     ("ground.png", (0, 0, 1024, 495), "checker", "ground.png", None),

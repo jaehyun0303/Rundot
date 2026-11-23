@@ -229,11 +229,11 @@ RD.ENEMIES = {
   shard: { sprite: "shard", exp: 2, hp: 60, w: 26, h: 40, score: 800, scale: 1.6, desc: "수정 갑옷: 살아 있는 동안 수정 거인이 받는 피해 65% 감소" },
   golem: { sprite: "golem", exp: 25, hp: 360, w: 90, h: 100, score: 5000, scale: 3.6, ground: true, midboss: true },
   // 지역 보스 (지역마다 공격 패턴이 다르다)
-  boss_bat: { sprite: "batking", exp: 60, hp: 1700, w: 200, h: 150, score: 50000, scale: 6, boss: true, style: "bat" },
-  boss_crystal: { sprite: "golem", variant: "crystal", exp: 70, hp: 2000, w: 150, h: 160, score: 60000, scale: 5.6, boss: true, ground: true, style: "crystal" },
-  boss_fire: { sprite: "slime", variant: "fire", exp: 80, hp: 2100, w: 200, h: 130, score: 70000, scale: 7, boss: true, ground: true, style: "fire" },
-  boss_frost: { sprite: "batking", variant: "ice", exp: 90, hp: 2300, w: 200, h: 150, score: 80000, scale: 6, boss: true, style: "frost" },
-  boss_storm: { sprite: "wisp", variant: "storm", exp: 100, hp: 2600, w: 170, h: 170, score: 100000, scale: 6.5, boss: true, style: "storm" },
+  boss_bat: { img: ["boss_bat_0", "boss_bat_1"], drawH: 250, sprite: "batking", exp: 60, hp: 1700, w: 200, h: 150, score: 50000, scale: 6, boss: true, style: "bat" },
+  boss_crystal: { img: ["boss_crystal_0", "boss_crystal_1"], drawH: 270, sprite: "golem", variant: "crystal", exp: 70, hp: 2000, w: 150, h: 160, score: 60000, scale: 5.6, boss: true, ground: true, style: "crystal" },
+  boss_fire: { img: ["boss_fire_0", "boss_fire_1"], drawH: 210, sprite: "slime", variant: "fire", exp: 80, hp: 2100, w: 200, h: 130, score: 70000, scale: 7, boss: true, ground: true, style: "fire" },
+  boss_frost: { img: ["boss_frost_0", "boss_frost_1"], drawH: 250, sprite: "batking", variant: "ice", exp: 90, hp: 2300, w: 200, h: 150, score: 80000, scale: 6, boss: true, style: "frost" },
+  boss_storm: { img: ["boss_storm_0", "boss_storm_1"], drawH: 250, sprite: "wisp", variant: "storm", exp: 100, hp: 2600, w: 170, h: 170, score: 100000, scale: 6.5, boss: true, style: "storm" },
 };
 
 // 적 탄
@@ -269,6 +269,9 @@ RD.IMAGES = [
   "bg_forest", "ground",
   // 새 지역 이미지 (없으면 코드로 그린 배경을 쓴다)
   "bg_cave", "ground_cave", "bg_volcano", "ground_volcano", "bg_snow", "ground_snow", "bg_sky", "ground_sky",
+  // 지역 보스 이미지 (2프레임)
+  "boss_bat_0", "boss_bat_1", "boss_crystal_0", "boss_crystal_1", "boss_fire_0", "boss_fire_1",
+  "boss_frost_0", "boss_frost_1", "boss_storm_0", "boss_storm_1",
   "item_gem", "item_star", "item_coin", "item_heart",
   "pet_0", "pet_1", "pet_2", "pet_3",
 ];
