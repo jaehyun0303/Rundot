@@ -711,6 +711,7 @@
       }
       text(g, run.tr >= 0 ? RD.TRUMPETS[run.tr].name : "나팔을 불 준비", C.width / 2, 112, 12, "#ffd34d", "center");
     }
+    if (p.burn > 0) text(g, "화상!", p.x, p.y - 58, 13, "#ff8a3d", "center");
     if (p.poison > 0) text(g, `독한 종기 ${p.poison.toFixed(1)}`, p.x, p.y - 44, 13, "#9fff6a", "center");
     if (p.inverted > 0) text(g, `조작 반전 ${p.inverted.toFixed(1)}`, p.x, p.y - 60, 14, "#c58aff", "center");
     // 패시브 표시
@@ -1004,6 +1005,25 @@
           g.stroke();
           g.strokeStyle = "#ffffff"; g.lineWidth = h.w / 3; g.stroke();
         }
+      } else if (h.type === "flame") {
+        // 심판의 불꽃이 붙은 땅
+        const k = warn ? 0.2 + 0.15 * (Math.floor(h.t * 8) % 2) : on ? 0.55 : 0;
+        g.fillStyle = `rgba(255,70,10,${k * 0.6})`; g.fillRect(h.x - h.w / 2, h.top, h.w, C.groundY - h.top);
+        if (on) for (let i = 0; i < 10; i++) {
+          const fx = h.x - h.w / 2 + ((i * 29) % h.w), fh = 30 + ((i * 17 + Math.floor(h.t * 12) * 13) % 50);
+          g.fillStyle = i % 2 ? "#ffb347" : "#ff4d1a"; g.fillRect(fx, C.groundY - fh, 10, fh);
+          g.fillStyle = "#ffe14d"; g.fillRect(fx + 3, C.groundY - fh * 0.5, 4, fh * 0.5);
+        }
+      } else if (h.type === "flood") {
+        // 범람하는 피바다
+        const k = warn ? 0 : Math.min(1, (h.t - h.warn) / 0.6) * (h.t > h.warn + h.active - 0.4 ? (h.warn + h.active - h.t) / 0.4 : 1);
+        if (warn) { g.fillStyle = `rgba(80,140,255,${0.15 + 0.1 * (Math.floor(h.t * 8) % 2)})`; g.fillRect(0, C.groundY - h.level, C.width, h.level); text(g, "범람!", C.width / 2, C.groundY - h.level - 20, 22, "#9fd0ff", "center"); }
+        else if (on || k > 0) {
+          const top = C.groundY - h.level * Math.max(0, k);
+          g.fillStyle = "rgba(120,10,30,0.6)"; g.fillRect(0, top, C.width, C.height - top);
+          g.fillStyle = "rgba(255,120,140,0.5)";
+          for (let x = 0; x < C.width; x += 24) g.fillRect(x, top + Math.sin(x * 0.05 + h.t * 6) * 5, 16, 4);
+        }
       } else if (h.type === "zone") {
         // 독 연기 (셋째 나팔)
         const k = warn ? 0.15 + 0.1 * (Math.floor(h.t * 8) % 2) : on ? 0.45 : 0;
@@ -1093,6 +1113,17 @@
         g.fillRect(0, 0, C.width, C.height);
         g.strokeStyle = "rgba(200,140,255,0.25)"; g.lineWidth = 2;
         for (let y = 20; y < C.height; y += 40) { g.beginPath(); for (let x = 0; x <= C.width; x += 40) g.lineTo(x, y + Math.sin(x * 0.02 + run.t * 4) * 10); g.stroke(); }
+      }
+      if (run.judgFire > 0) {
+        g.fillStyle = `rgba(255,70,10,${0.14 + 0.06 * Math.sin(run.t * 8)})`;
+        g.fillRect(0, 0, C.width, C.height);
+        text(g, `심판의 불꽃 ${Math.ceil(run.judgFire)}초 · 받는 피해 +30% · 회복 불가`, C.width / 2, 130, 12, "#ffb347", "center");
+      }
+      if (run.darkWind) {
+        g.fillStyle = "rgba(20,0,30,0.3)"; g.fillRect(0, 0, C.width, C.height);
+        g.fillStyle = "rgba(160,80,220,0.45)";
+        for (let i = 0; i < 22; i++) g.fillRect(((i * 211 + run.t * run.darkWind.dir * 1100) % C.width + C.width) % C.width, (i * 29) % C.height, 110, 3);
+        text(g, run.darkWind.dir > 0 ? "어두운 바람 →" : "← 어두운 바람", C.width / 2, 160, 22, "#c890ff", "center");
       }
       if (run.tr === 6) {
         // 세상의 종말: 하늘이 갈라지고 금이 간다 (천사를 쓰러뜨릴수록 더)

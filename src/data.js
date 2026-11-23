@@ -55,6 +55,7 @@ RD.MODES = {
   chaos: { name: "혼돈", desc: "30초마다 지역과 지형 효과가 무작위로 바뀐다. 점수 x1.5", scoreMul: 1.5, shiftEvery: 30 },
   // 특별 모드
   dream: { name: "달콤한 꿈", special: "dream", lives: 1, desc: "사탕 나라의 꿈. 사탕을 모아 슈가 러시! 꿈 게이지가 바닥나면 잠에서 깬다" },
+  adventure: { name: "어드벤처 런", special: "adventure", desc: "쿠키런처럼 자동으로 달린다! 점프(오른쪽/Space)와 슬라이드(왼쪽/↓)로 장애물을 피하고 젤리를 모아라" },
   trumpets: { name: "일곱 나팔", special: "judgment", scoreMul: 2, desc: "일곱 나팔이 차례로 울리며 재앙이 내린다. 마지막엔 큰 붉은 용. 점수 x2" },
 };
 
@@ -380,7 +381,40 @@ RD.UPGRADES = [
   { id: "luck", cat: "능력", name: "행운", max: 3, color: "#9fffb0", desc: () => "하트가 더 자주 나오고 점수 +15%" },
 ];
 
+// 어드벤처 런 (쿠키런 오븐브레이크 방식) 설정
+RD.ADV = {
+  CONFIG: {
+    width: 960, height: 540,
+    groundY: 440, // 캐릭터 발이 닿는 높이
+    playerScreenX: 200,
+    gravity: 2600, jumpVelocity: 900, doubleJumpVelocity: 820,
+    startSpeed: 360, maxSpeed: 680, speedGain: 5,
+    maxHp: 100, hpDrain: 2.2, hpDrainGain: 0.012, // 체력이 계속 줄어든다
+    hitDamage: 25, hitInvuln: 1.2,
+    skillCharge: 12, skillDuration: 5,
+    spriteScale: 3,
+  },
+  ITEMS: {
+    gem: { img: "item_gem", size: 30, score: 10 },
+    star: { img: "item_star", size: 34, score: 30 },
+    coin: { img: "item_coin", size: 30, score: 5, coins: 1 },
+    bigcoin: { img: "item_coin_big", size: 52, score: 50, coins: 10 },
+    heart: { img: "item_heart", size: 44, score: 0, heal: 30 },
+    boost: { img: "item_star_rainbow", size: 46, score: 100, effect: "boost" },
+    magnet: { img: "item_orb", size: 46, score: 50, effect: "magnet" },
+  },
+  OBSTACLES: {
+    stone: { img: "obs_stone_pillar", kind: "ground", h: 92 },
+    totem: { img: "obs_totem", kind: "ground", h: 104 },
+    crystal: { img: "obs_crystal_pillar", kind: "ground", h: 112 },
+    log: { img: "obs_log_hanging", kind: "hanging", w: 210 },
+  },
+  // 캐릭터별 스킬 (게이지가 차면 자동 발동)
+  SKILLS: { fox: "돌진", cat: "자석 마법", bear: "거대화", rabbit: "3단 점프", owl: "비행" },
+};
+
 RD.IMAGES = [
+  "item_coin_big", "item_star_rainbow", "item_orb", "obs_stone_pillar", "obs_totem", "obs_crystal_pillar", "obs_log_hanging",
   "bg_forest", "ground",
   // 새 지역 이미지 (없으면 코드로 그린 배경을 쓴다)
   "bg_cave", "ground_cave", "bg_volcano", "ground_volcano", "bg_snow", "ground_snow", "bg_sky", "ground_sky",

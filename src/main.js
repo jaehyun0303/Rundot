@@ -64,6 +64,13 @@
 
   function startRun() {
     const id = RD.CHARACTERS[selected].id;
+    if (mode === "adventure") {
+      // 어드벤처 런: 오븐브레이크 방식 러너
+      run = new RD.AdvRun(id);
+      Object.assign(run, { isAdv: true, mode, D: RD.DIFFICULTY[diff], M: RD.MODES.adventure, stage: RD.STAGES[0] });
+      scene = "play";
+      return;
+    }
     run = new RD.Run(id, mode, diff, { stars: starsOf(id) || 1, stage: mode === "stageselect" ? pickStage : 0 });
     scene = "play";
   }
@@ -167,6 +174,12 @@
     held.add(e.code);
     syncKeys();
     if (e.repeat) return;
+    if (scene === "play" && run.isAdv) {
+      if (e.repeat) return;
+      if (["Space", "ArrowUp", "KeyW"].includes(e.code)) { run.input.jumpHeld = true; run.jump(); }
+      if (["ArrowDown", "KeyS"].includes(e.code)) run.input.slideHeld = true;
+      return;
+    }
     if (scene === "play" && run.cutscene) {
       // 컷씬: Space/Enter/X 넘기기, Esc 건너뛰기
       if (["Space", "Enter", "KeyX", "KeyZ"].includes(e.code)) run.advanceCutscene();
@@ -201,7 +214,13 @@
       else if (e.code === "Escape") scene = "select";
     }
   });
-  addEventListener("keyup", (e) => { held.delete(e.code); syncKeys(); });
+  addEventListener("keyup", (e) => {
+    held.delete(e.code); syncKeys();
+    if (scene === "play" && run && run.isAdv) {
+      if (["Space", "ArrowUp", "KeyW"].includes(e.code)) run.input.jumpHeld = false;
+      if (["ArrowDown", "KeyS"].includes(e.code)) run.input.slideHeld = false;
+    }
+  });
   addEventListener("blur", () => { held.clear(); syncKeys(); });
 
   function toGame(e) {
@@ -228,6 +247,13 @@
     if (e.target.closest && e.target.closest("button")) return; // 화면 밖 폭탄 버튼
     const pt = toGame(e);
     if (e.target === canvas && soundHit(pt)) { RD.audio && RD.audio.toggle(); return; }
+    if (run.isAdv) {
+      const pad = e.target.closest && e.target.closest(".touchpad");
+      const action = pad || (e.target === canvas && pt.x < C.width / 2) ? "slide" : "jump";
+      advPointers.set(e.pointerId, action);
+      if (action === "jump") { run.input.jumpHeld = true; run.jump(); } else run.input.slideHeld = true;
+      return;
+    }
     if (run.cutscene) {
       const sk = RD.cutSkip;
       if (e.target === canvas && pt.x >= sk.x && pt.x <= sk.x + sk.w && pt.y >= sk.y && pt.y <= sk.y + sk.h) run.endCutscene();
@@ -254,7 +280,15 @@
     drag.x = e.clientX;
     drag.y = e.clientY;
   });
-  const endDrag = (e) => { if (drag && e.pointerId === drag.id) drag = null; };
+  const advPointers = new Map();
+  const endDrag = (e) => {
+    if (drag && e.pointerId === drag.id) drag = null;
+    const a = advPointers.get(e.pointerId);
+    if (a && run && run.isAdv) {
+      advPointers.delete(e.pointerId);
+      if (![...advPointers.values()].includes(a)) { if (a === "jump") run.input.jumpHeld = false; else run.input.slideHeld = false; }
+    }
+  };
   addEventListener("pointerup", endDrag);
   addEventListener("pointercancel", endDrag);
 
@@ -275,7 +309,7 @@
     g.fillRect(x - 2, y - 2, w + 4, h + 4);
     g.fillStyle = active ? color : "#2b2140";
     g.fillRect(x, y, w, h);
-    RD.text(g, label, x + w / 2, y + h / 2 + 1, 15, active ? "#1d1622" : "#cfc6e0", "center", active ? color : "#1d1622");
+    RD.text(g, label, x + w / 2, y + h / 2 + 1, Math.min(15, (w - 6) / (label.length * 0.92)), active ? "#1d1622" : "#cfc6e0", "center", active ? color : "#1d1622");
     buttons.push({ x, y, w, h, onClick });
   }
 
@@ -293,12 +327,13 @@
     RD.text(g, "모드", 200, 34, 14, "#9fd0ff");
     MODE_IDS.filter((id) => !RD.MODES[id].special).forEach((id, i) => tab(234 + i * 96, 20, 90, 30, RD.MODES[id].name, id === mode, "#7fe6ff", () => { mode = id; save.set("mode", id); loadBest(); }));
     // 특별 모드 (난이도 줄 오른쪽)
-    MODE_IDS.filter((id) => RD.MODES[id].special).forEach((id, i) => tab(626 + i * 152, 62, 144, 30, (id === "trumpets" ? "🎺 " : "🍬 ") + RD.MODES[id].name, id === mode, id === "trumpets" ? "#ffd34d" : "#ff9ad8", () => { mode = id; save.set("mode", id); loadBest(); }));
+    const SPECIAL = { dream: ["🍬 달콤한 꿈", "#ff9ad8"], adventure: ["🏃 어드벤처", "#7fe08a"], trumpets: ["🎺 일곱 나팔", "#ffd34d"] };
+    MODE_IDS.filter((id) => RD.MODES[id].special).forEach((id, i) => tab(586 + i * 106, 62, 102, 30, SPECIAL[id][0], id === mode, SPECIAL[id][1], () => { mode = id; save.set("mode", id); loadBest(); }));
     // 난이도
     RD.text(g, "난이도", 186, 76, 14, "#9fd0ff");
     DIFF_IDS.forEach((id, i) => {
       const D = RD.DIFFICULTY[id];
-      tab(234 + i * 96, 62, 90, 30, D.name, id === diff, D.color, () => { diff = id; save.set("diff", id); loadBest(); });
+      tab(234 + i * 86, 62, 82, 30, D.name, id === diff, D.color, () => { diff = id; save.set("diff", id); loadBest(); });
     });
     const D = RD.DIFFICULTY[diff];
     if (mode === "stageselect") {
@@ -308,7 +343,8 @@
         tab(120 + i * 146, 104, 138, 26, open ? `${i + 1}. ${st.name}` : `${i + 1}. 🔒`, i === pickStage, "#ffd34d", () => { if (open) { pickStage = i; save.set("pickStage", i); loadBest(); } });
       });
     } else {
-      RD.text(g, `${RD.MODES[mode].desc}  ·  잔기 ${RD.MODES[mode].lives || D.lives}  ·  적 체력 x${D.enemyHp}  ·  받는 피해 x${D.damage}  ·  점수 x${D.score * (RD.MODES[mode].scoreMul || 1)}`, C.width / 2, 116, 13, "#e8e0f5", "center");
+      if (mode === "adventure") RD.text(g, RD.MODES[mode].desc, C.width / 2, 116, 13, "#e8e0f5", "center");
+      else RD.text(g, `${RD.MODES[mode].desc}  ·  잔기 ${RD.MODES[mode].lives || D.lives}  ·  적 체력 x${D.enemyHp}  ·  받는 피해 x${D.damage}  ·  점수 x${D.score * (RD.MODES[mode].scoreMul || 1)}`, C.width / 2, 116, 13, "#e8e0f5", "center");
     }
 
     // 캐릭터
@@ -535,6 +571,18 @@
   }
 
   function drawResult() {
+    if (run.isAdv) {
+      RD.drawAdv(g, run);
+      g.fillStyle = "rgba(10,8,20,0.72)"; g.fillRect(0, 0, C.width, C.height);
+      RD.text(g, "어드벤처 런 결과", C.width / 2, 100, 40, "#ffd34d", "center");
+      RD.text(g, run.score.toLocaleString() + " 점", C.width / 2, 190, 52, "#fff", "center");
+      if (run.newBest) RD.text(g, "최고 기록!", C.width / 2, 240, 22, "#ff8a3d", "center");
+      RD.text(g, `달린 거리 ${Math.floor(run.player.x / 100)}m   ${Math.floor(run.t)}초`, C.width / 2, 290, 20, "#ffd34d", "center");
+      RD.text(g, `코인 +${run.coins}  (보유 ${coins.toLocaleString()})`, C.width / 2, 330, 16, "#ffd34d", "center");
+      button(C.width / 2 - 230, 390, 210, 66, "다시 달리기", startRun);
+      button(C.width / 2 + 20, 390, 210, 66, "메뉴로", () => { scene = "select"; }, "#5b8ff0");
+      return;
+    }
     RD.drawRun(g, run);
     g.fillStyle = "rgba(10,8,20,0.72)";
     g.fillRect(0, 0, C.width, C.height);
@@ -556,6 +604,11 @@
   }
 
   function drawTouchHints() {
+    if (run.isAdv) {
+      if (run.t > 6) return;
+      RD.text(g, isTouch() ? "왼쪽 누르기: 슬라이드   오른쪽 누르기: 점프 (두 번 = 2단 점프)" : "점프: Space / ↑ (두 번 = 2단 점프)    슬라이드: ↓ (누르고 있기)", C.width / 2, C.height - 50, 15, "#ffffff", "center");
+      return;
+    }
     if (run.choosing || run.cutscene) return;
     if (!isTouch()) {
       if (run.t < 6) RD.text(g, "이동: 방향키 / WASD    정밀 이동: Shift    궁극기: X    사격은 자동", C.width / 2, C.height - 50, 14, "rgba(255,255,255,0.8)", "center");
@@ -596,7 +649,7 @@
       RD.drawSoundButton(g);
     } else if (scene === "play") {
       run.update(dt);
-      RD.drawRun(g, run);
+      if (run.isAdv) { RD.drawAdv(g, run); RD.drawSoundButton(g); } else RD.drawRun(g, run);
       drawTouchHints();
       if (run.over && run.overTimer > (run.win ? 3 : 1.5)) endRun();
     } else if (scene === "result") {
@@ -612,6 +665,12 @@
   requestAnimationFrame(frame);
   // 화면 밖 버튼(세로 화면용 폭탄 버튼)에서 쓰는 입력
   RD.press = (action, down) => {
+    if (scene === "play" && run && run.isAdv) {
+      // 세로 화면의 궁극기 버튼 = 점프
+      run.input.jumpHeld = down;
+      if (down) run.jump();
+      return;
+    }
     if (scene !== "play" || !run || !down) return;
     if (run.cutscene) { run.advanceCutscene(); return; }
     if (action === "bomb") run.bomb();

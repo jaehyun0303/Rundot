@@ -435,6 +435,8 @@
         }
       }
       // 나팔이 끝나면 다음 나팔 (일곱째는 용을 쓰러뜨려야 끝)
+      // 둘째 나팔의 드래곤은 보통 난이도부터 나온다
+      if (i === 1 && this.trT > 5 && !E.chaos && this.diff === "easy") E.chaos = true;
       if (i === 1 && this.trT > 5 && !E.chaos) {
         // 둘째 나팔: 피바다에서 깨어난 혼돈의 심판 드래곤
         E.chaos = true;
@@ -465,6 +467,24 @@
         }
         if (every("fT", 4.5)) this.hazards.push({ type: "zone", fire: true, x: p.x + rand(-60, 60), w: 140, top: C.groundY - 130, t: 0, warn: 0.9, active: 2.5, dmg: 16 });
         if (every("rT", 3.2)) { const sx = rand(300, C.width), a = Math.atan2(p.y + 10, p.x - sx); for (let q = -2; q <= 2; q++) this.shot(sx, -10, a + q * 0.12, 260, "fireball", { color: "#ff7a1a", r: 7 }); }
+      }
+      if (i === 1 && this.ev.chaosDead && ["hard", "hell"].includes(this.diff)) {
+        // 바다 범람
+        if (every("flT", 7)) this.hazards.push({ type: "flood", t: 0, warn: 1.3, active: 3, level: 170 + rand(0, 60), dmg: 18 });
+        // 치솟는 불꽃
+        if (every("lvT", 2.4)) this.hazards.push({ type: "lava", x: p.x + rand(-90, 90), t: 0, warn: 0.9, active: 0.7, w: 64 });
+        // 번개
+        if (every("btT", 2)) this.strike(Math.random() < 0.6 ? p.x + rand(-40, 40) : rand(60, C.width - 60), 0.8);
+        // 어두운 바람: 플레이어와 탄을 옆으로 민다
+        if (!this.darkWind && every("dwT", 6)) this.darkWind = { dir: Math.random() < 0.5 ? -1 : 1, t: 0, life: 2.6 };
+        // 악에 물든 별: 떨어지다 터진다
+        if (every("csT", 1.1)) this.shot(rand(80, C.width), -10, Math.PI / 2 + rand(-0.3, 0.3), rand(120, 170), "star", { color: "#a040ff", r: 9, fuse: rand(1.4, 2.4), burst: 6 });
+      }
+      if (this.darkWind) {
+        const w = this.darkWind;
+        if (p.dead <= 0) p.x = Math.max(30, Math.min(C.width - 40, p.x + w.dir * 170 * dt));
+        for (const b of this.bullets) b.x += w.dir * 90 * dt;
+        if ((w.t += dt) > w.life) this.darkWind = null;
       }
       if (i === 1 && every("pT", 6.5)) {
         // 불붙은 큰 산이 던져진다
@@ -904,7 +924,7 @@
         return;
       }
       RD.audio && RD.audio.sfx("hurt");
-      p.hp -= amount * this.D.damage * this.armor;
+      p.hp -= amount * this.D.damage * this.armor * (this.judgFire > 0 ? 1.3 : 1);
       p.invuln = C.hitInvuln;
       p.hurt = 0.3;
       this.shake = Math.max(this.shake, 0.15);
@@ -987,6 +1007,8 @@
         p.x = Math.max(30, Math.min(C.width - 40, p.x));
         p.y = Math.max(50, Math.min(C.groundY - 20, p.y));
         if (this.tr !== 6) p.hp = Math.min(this.maxHp, p.hp + this.lv("regen") * dt); // 종말: 자연 회복 없음
+        if (this.judgFire > 0) this.judgFire -= dt;
+        if (p.burn > 0) { p.burn -= dt; p.hp -= 6 * dt; if (p.hp <= 0 && p.invuln <= 0) this.die(); } // 화상
         if (p.poison > 0) { p.poison -= dt; p.hp -= 4 * dt; if (p.hp <= 0 && p.invuln <= 0) this.die(); } // 독한 종기
       }
       p.invuln = Math.max(0, p.invuln - dt);
@@ -1195,6 +1217,12 @@
           return;
         }
         if (def.style === "chaos") {
+          this.ev.chaosDead = true;
+          this.judgFire = 0;
+          if (["hard", "hell"].includes(this.diff)) {
+            this.banner = { text: "재앙이 멈추지 않는다", sub: "바다가 범람하고 불꽃이 치솟고 번개와 어두운 바람, 악에 물든 별이 떨어진다", sub2: "셋째 나팔이 울릴 때까지 버텨라", color: "#ff4d5e", t: 0, life: 4 };
+            return;
+          }
           this.banner = { text: "혼돈이 가라앉았다", sub: "그러나 나팔 소리는 아직 끝나지 않았다", color: "#ffd34d", t: 0, life: 3 };
           return;
         }
@@ -1709,6 +1737,14 @@
         }
         case "chaos": {
           // 혼돈의 심판 드래곤
+          if (e.n % 5 === 2) {
+            // 불 숨결: 필드가 심판의 불꽃으로 변한다 (받는 피해 증가, 회복 불가) + 불타는 땅
+            this.judgFire = 7;
+            this.banner = { text: "심판의 불꽃", sub: "받는 피해 +30% · 회복 불가 · 불타는 땅에 서면 화상", color: "#ff6a1a", t: 0, life: 2 };
+            for (let q = 0; q < 10; q++) this.shot(e.x - 80, e.y - 20, aim + (q - 4.5) * 0.09, bs * 1.2, "fireball", { color: "#ff6a1a", r: 9 });
+            for (let q = 0; q < 3; q++) this.hazards.push({ type: "flame", x: q === 0 ? p.x : rand(120, C.width - 160), w: 150, top: C.groundY - (q === 0 ? 200 : 140), t: 0, warn: 0.8, active: 6 });
+            RD.audio && RD.audio.sfx("ult_bear");
+          }
           if (ph === 1) {
             // 불붙은 산을 던진다
             e.fireT = 1.4 / fr;
@@ -1855,8 +1891,11 @@
         const inside = h.type === "meteor" ? Math.hypot(p.x - h.x, p.y - h.y) < h.r :
           h.type === "beam" ? segDist(h.x, h.y, h.x2, h.y2) < h.w / 2
           : h.type === "line" ? segDist(h.x1, h.y1, h.x2, h.y2) < h.w / 2
-          : h.type === "zone" ? Math.abs(p.x - h.x) < h.w / 2 && p.y > h.top
+          : h.type === "zone" || h.type === "flame" ? Math.abs(p.x - h.x) < h.w / 2 && p.y > h.top
+          : h.type === "flood" ? p.y > C.groundY - h.level * Math.min(1, (h.t - h.warn) / 0.6)
           : Math.abs(p.x - h.x) < h.w / 2;
+        if (h.type === "flame") { if (on && inside && p.dead <= 0) p.burn = 1.5; continue; }
+        if (h.type === "flood" && on && inside) p.slow = Math.max(p.slow || 0, 0.3);
         if (on && !h.hit && p.dead <= 0 && p.invuln <= 0 && inside) {
           h.hit = true;
           this.hurt(h.dmg || (h.type === "lava" ? 24 : 22));
@@ -1936,7 +1975,7 @@
       this.addScore(def.score * this.loop);
       if (def.exp) this.gainExp(def.exp);
       if (def.heal) {
-        const heal = this.tr === 6 ? Math.ceil(def.heal / 2) : def.heal; // 종말: 회복 절반
+        const heal = this.judgFire > 0 ? 0 : this.tr === 6 ? Math.ceil(def.heal / 2) : def.heal; // 종말: 회복 절반, 심판의 불꽃: 회복 불가
         this.player.hp = Math.min(this.maxHp, this.player.hp + heal);
         this.text("+" + heal, "#ff8aa8");
       }
