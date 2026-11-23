@@ -120,6 +120,24 @@ RD.TRUMPETS = [
   { name: "일곱째 나팔", line: "번개와 음성과 우레와 지진과 큰 우박, 그리고 하늘의 큰 이적", tint: "rgba(255,255,255,0.06)" },
 ];
 
+// 일곱째 나팔의 일곱 천사 (요한계시록 15~16장의 일곱 대접 재앙을 바탕으로)
+RD.ANGELS = [
+  { name: "나팔의 천사", weapon: "금 나팔", color: "#ffd34d", trait: "나팔을 불면 빈틈 있는 음파 고리와 음파 광선이 퍼진다",
+    lines: ["나팔 소리가 하늘을 찢는다. 첫째 천사가 금 대접을 들고 내려온다.", "\"가서 하나님의 진노의 일곱 대접을 땅에 쏟으라.\""] },
+  { name: "채찍의 천사", weapon: "불의 채찍", color: "#9fff6a", trait: "채찍을 휘두르고, 맞으면 독한 종기(지속 피해)가 생긴다",
+    lines: ["첫째 대접이 땅에 쏟아지니, 짐승의 표를 받은 자들에게 악하고 독한 종기가 났다.", "천사가 불의 채찍을 휘두른다."] },
+  { name: "바다의 천사", weapon: "핏빛 대접", color: "#ff3048", trait: "피바다의 물결이 아래에서 솟구치고 옆에서 넘실댄다",
+    lines: ["둘째 대접이 바다에 쏟아지니, 바다가 죽은 자의 피같이 되었다.", "바다 가운데 모든 생물이 죽었다."] },
+  { name: "강의 천사", weapon: "물의 대접", color: "#4aa8ff", trait: "강과 물샘이 피가 되어 하늘에서 줄기로 쏟아진다",
+    lines: ["셋째 대접이 강과 물 근원에 쏟아지니, 피가 되었다.", "물을 차지한 천사가 말한다. \"주의 심판은 의롭고 참되시도다.\""] },
+  { name: "해의 천사", weapon: "태양의 대접", color: "#ff8a1a", trait: "해가 불로 태운다. 하늘에서 휩쓰는 햇빛 광선",
+    lines: ["넷째 대접이 해에 쏟아지니, 해가 권세를 받아 불로 사람들을 태웠다.", "크게 태움에 태워져도, 그들은 회개하지 않았다."] },
+  { name: "어둠의 천사", weapon: "어둠의 대접", color: "#a070ff", trait: "짐승의 왕좌에 쏟아진 어둠. 화면이 캄캄해지고 그림자 탄이 덮쳐 온다",
+    lines: ["다섯째 대접이 짐승의 왕좌에 쏟아지니, 그 나라가 곧 어두워졌다.", "사람들이 아파서 자기 혀를 깨물었다."] },
+  { name: "진노의 마지막 천사", weapon: "일곱째 대접", color: "#ffffff", trait: "큰 우박과 번개, 큰 지진. 모든 재앙이 한꺼번에 내린다",
+    lines: ["일곱째 대접이 공중에 쏟아지니, 성전 보좌로부터 큰 음성이 났다.", "\"되었다.\"", "번개와 음성과 우레가 있고, 사람이 땅에 있어 온 이래로 없던 큰 지진이 있었다.", "무게가 한 달란트나 되는 큰 우박이 하늘에서 내린다."] },
+];
+
 // 나팔 컷씬 대사 (요한계시록 8~12장 내용을 풀어 쓴 것)
 // who: 말하는 이, blow: 이 줄에서 천사가 나팔을 분다
 RD.TRUMPET_SCENES = {
@@ -324,8 +342,10 @@ RD.ENEMIES = {
   boss_abaddon: { sprite: "batking", variant: "locust", exp: 90, hp: 2600, w: 210, h: 160, score: 100000, scale: 6.5, boss: true, style: "abaddon" },
   boss_chaos: { img: ["boss_chaos_0", "boss_chaos_1"], drawH: 270, sprite: "batking", variant: "chaos", exp: 120, hp: 4200, w: 230, h: 170, score: 200000, scale: 7.2, boss: true, style: "chaos" },
   boss_dragon: { sprite: "batking", variant: "crimson", exp: 150, hp: 5600, w: 240, h: 180, score: 300000, scale: 7.5, boss: true, style: "dragon" },
+  // 일곱째 나팔의 보스: 일곱 대접을 가진 일곱 천사 (요한계시록 15~16장)
+  boss_angel: { img: ["cut_angel_0", "cut_angel_1"], drawH: 230, sprite: "wisp", variant: "holy", exp: 40, hp: 5000, w: 90, h: 190, score: 60000, scale: 5, boss: true, style: "angel" },
   boss_bat: { img: ["boss_bat_0", "boss_bat_1"], drawH: 250, sprite: "batking", exp: 60, hp: 1700, w: 200, h: 150, score: 50000, scale: 6, boss: true, style: "bat" },
-  boss_crystal: { img: ["boss_crystal_0", "boss_crystal_1"], drawH: 270, sprite: "golem", variant: "crystal", exp: 70, hp: 2000, w: 150, h: 160, score: 60000, scale: 5.6, boss: true, ground: true, style: "crystal" },
+  boss_crystal: { flip: true, img: ["boss_crystal_0", "boss_crystal_1"], drawH: 270, sprite: "golem", variant: "crystal", exp: 70, hp: 2000, w: 150, h: 160, score: 60000, scale: 5.6, boss: true, ground: true, style: "crystal" },
   boss_fire: { img: ["boss_fire_0", "boss_fire_1"], drawH: 210, sprite: "slime", variant: "fire", exp: 80, hp: 2100, w: 200, h: 130, score: 70000, scale: 7, boss: true, ground: true, style: "fire" },
   boss_frost: { img: ["boss_frost_0", "boss_frost_1"], drawH: 250, sprite: "batking", variant: "ice", exp: 90, hp: 2300, w: 200, h: 150, score: 80000, scale: 6, boss: true, style: "frost" },
   boss_storm: { img: ["boss_storm_0", "boss_storm_1"], drawH: 250, sprite: "wisp", variant: "storm", exp: 100, hp: 2600, w: 170, h: 170, score: 100000, scale: 6.5, boss: true, style: "storm" },

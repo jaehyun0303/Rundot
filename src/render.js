@@ -128,6 +128,13 @@
         // 이미지 보스: 날개짓은 시간, 마그마 슬라임은 점프 중일 때 두 번째 프레임
         let fi = Math.floor(e.t * (def.fps || (def.style === "crystal" ? 1.5 : 4))) % def.img.length;
         if (def.style === "fire") fi = e.air ? 1 : 0;
+        if (def.style === "angel") {
+          fi = e.blowAt != null && e.t - e.blowAt < 1 ? 1 : 0;
+          const col = RD.ANGELS[e.no || 0].color;
+          const gl = g.createRadialGradient(e.x, e.y, 20, e.x, e.y, 170);
+          gl.addColorStop(0, col + "88"); gl.addColorStop(1, col + "00");
+          g.fillStyle = gl; g.fillRect(e.x - 170, e.y - 170, 340, 340);
+        }
         if (e.type === "bomber") fi = Math.hypot(e.x - run.player.x, e.y - run.player.y) < 160 ? 1 : 0; // 가까우면 눈이 빨개진다
         if (e.type === "beetle" && (e.wind || e.dashing)) fi = 3;
         // 보스는 고유 색, 나머지는 지역 색으로
@@ -704,6 +711,7 @@
       }
       text(g, run.tr >= 0 ? RD.TRUMPETS[run.tr].name : "나팔을 불 준비", C.width / 2, 112, 12, "#ffd34d", "center");
     }
+    if (p.poison > 0) text(g, `독한 종기 ${p.poison.toFixed(1)}`, p.x, p.y - 44, 13, "#9fff6a", "center");
     if (p.inverted > 0) text(g, `조작 반전 ${p.inverted.toFixed(1)}`, p.x, p.y - 60, 14, "#c58aff", "center");
     // 패시브 표시
     if (run.charId === "fox") {
@@ -846,6 +854,13 @@
     const ay = -260 + (90 + 260) * (1 - Math.pow(1 - drop, 3));
     const blowing = c.blowAt != null && c.t - c.blowAt < 2.5 && line.blow;
     if (line.who === "독수리") drawEagle(g, 640, 120, 5, c.t);
+    else if (c.angel >= 7) {
+      const col = RD.ANGELS[c.angel - 7].color;
+      const gl = g.createRadialGradient(712, 230, 30, 712, 230, 260);
+      gl.addColorStop(0, col + "99"); gl.addColorStop(1, col + "00");
+      g.fillStyle = gl; g.fillRect(450, 0, 520, 500);
+      drawAngel(g, 600, ay, 7, c.t, blowing, c.angel);
+    }
     else if (c.angel >= 0) drawAngel(g, 600, ay, 7, c.t, blowing, c.angel);
     else {
       // 처음 장면: 일곱 천사가 나란히 선다
@@ -953,6 +968,11 @@
           g.lineWidth = h.r * 2; g.globalAlpha = 0.25;
           g.beginPath(); g.moveTo(h.sx, h.sy); g.lineTo(h.ex, h.ey); g.stroke(); g.globalAlpha = 1;
           text(g, "!", h.ex, h.ey - 40, 34, "#ffd34d", "center");
+        } else if (!h.landed && h.x != null && h.hail) {
+          g.fillStyle = "rgba(220,240,255,0.4)"; g.beginPath(); g.arc(h.x, h.y, h.r * 1.3, 0, Math.PI * 2); g.fill();
+          g.fillStyle = "#dff4ff"; g.beginPath(); g.arc(h.x, h.y, h.r, 0, Math.PI * 2); g.fill();
+          g.fillStyle = "#9fc8e8"; g.beginPath(); g.arc(h.x + h.r * 0.25, h.y + h.r * 0.25, h.r * 0.55, 0, Math.PI * 2); g.fill();
+          g.fillStyle = "#ffffff"; g.fillRect(h.x - h.r * 0.5, h.y - h.r * 0.5, h.r * 0.4, h.r * 0.4);
         } else if (!h.landed && h.x != null) {
           g.fillStyle = "rgba(255,120,20,0.4)"; g.beginPath(); g.arc(h.x + 40, h.y - 40, h.r * 1.3, 0, Math.PI * 2); g.fill();
           g.fillStyle = "#3a2018"; g.beginPath(); g.moveTo(h.x - h.r, h.y + h.r * 0.6); g.lineTo(h.x - h.r * 0.2, h.y - h.r); g.lineTo(h.x + h.r * 0.3, h.y - h.r * 0.5); g.lineTo(h.x + h.r, h.y + h.r * 0.6); g.closePath(); g.fill();
@@ -1015,7 +1035,7 @@
   // 수정 동굴: 어둠 (캐릭터 주변만 밝다)
   let darkCv = null;
   function drawDarkness(g, run) {
-    if (run.terrain !== "dark" && run.terrain !== "t4") return;
+    if (run.terrain !== "dark" && run.terrain !== "t4" && !(run.blackout > 0)) return;
     if (!darkCv) { darkCv = document.createElement("canvas"); darkCv.width = C.width; darkCv.height = C.height; }
     const d = darkCv.getContext("2d");
     d.globalCompositeOperation = "source-over";
@@ -1073,6 +1093,22 @@
         g.fillRect(0, 0, C.width, C.height);
         g.strokeStyle = "rgba(200,140,255,0.25)"; g.lineWidth = 2;
         for (let y = 20; y < C.height; y += 40) { g.beginPath(); for (let x = 0; x <= C.width; x += 40) g.lineTo(x, y + Math.sin(x * 0.02 + run.t * 4) * 10); g.stroke(); }
+      }
+      if (run.tr === 6) {
+        // 세상의 종말: 하늘이 갈라지고 금이 간다 (천사를 쓰러뜨릴수록 더)
+        const no = run.ev.angelNo || 0;
+        g.fillStyle = `rgba(40,0,0,${0.25 + no * 0.04 + 0.05 * Math.sin(run.t * 3)})`;
+        g.fillRect(0, 0, C.width, C.height);
+        g.strokeStyle = "rgba(255,220,180,0.55)"; g.lineWidth = 2;
+        for (let k = 0; k < 4 + no * 2; k++) {
+          let x = (k * 211) % C.width, y = 0;
+          g.beginPath(); g.moveTo(x, y);
+          for (let q = 0; q < 6; q++) { x += ((k * 37 + q * 53) % 60) - 30; y += 40 + ((k + q) % 3) * 15; g.lineTo(x, y); }
+          g.stroke();
+        }
+        g.fillStyle = "rgba(255,120,60,0.8)";
+        for (let k = 0; k < 20; k++) g.fillRect(((k * 97 + run.t * 30) % C.width), ((k * 53 + run.t * (80 + k * 5)) % C.height), 3, 3);
+        text(g, "종말: 회복 절반 · 자연 회복 없음", C.width / 2, 130, 12, "#ff8a8a", "center");
       }
       if (run.tr === 4) { // 무저갱의 연기
         g.fillStyle = "rgba(40,30,20,0.35)";

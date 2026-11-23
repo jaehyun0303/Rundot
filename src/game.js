@@ -416,10 +416,23 @@
         this.banner = { text: "네 천사", sub: "큰 강 유브라데에 결박된 네 천사가 풀려났다", color: "#ffe9a0", t: 0, life: 3 };
         [100, 200, 300, 400].forEach((y, k) => this.addEnemy("angel", C.width + 40 + k * 30, y, { path: "hover", stopX: 700 + (k % 2) * 140, fireT: 1 + k * 0.3, stay: true }));
       }
-      if (i === 6 && this.trT > 10 && !E.dragon) {
-        E.dragon = true;
-        this.warning();
-        this.spawnBoss();
+      // 일곱째 나팔: 일곱 천사가 한 명씩 보스로 내려온다
+      if (i === 6) {
+        if (!E.doom) {
+          E.doom = true;
+          this.banner = { text: "세상의 종말", sub: "회복 절반 · 자연 회복 없음 · 땅이 무너지고 별이 떨어진다", color: "#ff4d5e", t: 0, life: 3.5 };
+        }
+        const no = E.angelNo || 0;
+        if (no < 7 && !this.bossAlive && !this.cutscene && this.trT > (E.nextAngel || 6)) {
+          const A = RD.ANGELS[no];
+          this.startCutscene(A.lines.map((text, k) => ({ who: k === 0 ? A.name : "", text, blow: k === 0 })), 7 + no, () => {
+            this.banner = { text: A.name, sub: `${no + 1} / 7 · ${A.weapon}`, sub2: "특성 · " + A.trait, color: A.color, t: 0, life: 3 };
+            this.addEnemy("boss_angel", C.width + 120, 240, { path: "boss", phase: 1, name: `${A.name} (${no + 1}/7)`, no });
+            const b = this.enemies[this.enemies.length - 1];
+            b.maxHp = b.hp = b.hp * (1 + 0.2 * no);
+          });
+          E.nextAngel = 1e9;
+        }
       }
       // 나팔이 끝나면 다음 나팔 (일곱째는 용을 쓰러뜨려야 끝)
       if (i === 1 && this.trT > 5 && !E.chaos) {
@@ -498,9 +511,11 @@
       }
       if (i === 6) {
         // 번개, 음성, 우레, 지진, 큰 우박
-        if (every("pT", 2)) this.strike(p.x + rand(-80, 80), 0.9);
-        if (every("qT", 6)) { this.shake = 0.7; for (let k = -1; k <= 1; k++) this.hazards.push({ type: "lava", quake: true, x: p.x + k * 140 + rand(-30, 30), t: 0, warn: 1.0, active: 0.6, w: 70 }); }
-        if (every("hT", 0.55)) this.shot(rand(100, C.width + 60), -14, Math.PI / 2 + 0.15, rand(150, 210), "shard", { color: "#ffffff", r: 11 });
+        const slow = this.bossAlive ? 1.8 : 1;
+        if (every("pT", 2 * slow)) this.strike(p.x + rand(-80, 80), 0.9);
+        if (every("sT", 0.4 * slow)) this.shot(rand(0, C.width), -10, Math.PI / 2 + rand(-0.3, 0.3), rand(90, 140), "star", { color: "#ffe9a0", r: 6 });
+        if (every("qT", 6 * slow)) { this.shake = 0.7; for (let k = -1; k <= 1; k++) this.hazards.push({ type: "lava", quake: true, x: p.x + k * 140 + rand(-30, 30), t: 0, warn: 1.0, active: 0.6, w: 70 }); }
+        if (every("hT", 0.55 * slow)) this.shot(rand(100, C.width + 60), -14, Math.PI / 2 + 0.15, rand(150, 210), "shard", { color: "#ffffff", r: 11 });
       }
       if (this.blackout) this.blackout = Math.max(0, this.blackout - dt);
     }
@@ -971,7 +986,8 @@
         inp.moveX = inp.moveY = 0;
         p.x = Math.max(30, Math.min(C.width - 40, p.x));
         p.y = Math.max(50, Math.min(C.groundY - 20, p.y));
-        p.hp = Math.min(this.maxHp, p.hp + this.lv("regen") * dt);
+        if (this.tr !== 6) p.hp = Math.min(this.maxHp, p.hp + this.lv("regen") * dt); // 종말: 자연 회복 없음
+        if (p.poison > 0) { p.poison -= dt; p.hp -= 4 * dt; if (p.hp <= 0 && p.invuln <= 0) this.die(); } // 독한 종기
       }
       p.invuln = Math.max(0, p.invuln - dt);
       p.hurt = Math.max(0, p.hurt - dt);
@@ -1011,6 +1027,7 @@
             const bo = this.enemies.find((e) => !e.dead && RD.ENEMIES[e.type].style === "bat");
             if (b.boss && bo) { bo.hp = Math.min(bo.maxHp, bo.hp + bo.maxHp * 0.02); this.effects.push({ type: "text", x: bo.x, y: bo.y - 90, text: "흡혈", color: "#ff4d5e", t: 0, life: 0.8, size: 16 }); }
             if (b.freeze) { p.slow = 1.6; this.text("빙결!", "#bfe8ff"); }
+            if (b.poison) { p.poison = 4; this.text("독한 종기!", "#9fff6a"); }
           }
         } else {
           const hitE = this.enemies.find((e) => !e.dead && e.t > 0 && this.inBox(p, e, -6));
@@ -1181,12 +1198,18 @@
           this.banner = { text: "혼돈이 가라앉았다", sub: "그러나 나팔 소리는 아직 끝나지 않았다", color: "#ffd34d", t: 0, life: 3 };
           return;
         }
-        if (def.style === "nightmare" || def.style === "dragon") {
+        if (def.style === "angel" && e.no < 6) {
+          this.ev.angelNo = e.no + 1;
+          this.ev.nextAngel = this.trT + 3;
+          this.banner = { text: `${RD.ANGELS[e.no].name} 퇴장`, sub: `남은 천사 ${6 - e.no}명`, color: "#ffd34d", t: 0, life: 2.5 };
+          return;
+        }
+        if (def.style === "nightmare" || def.style === "dragon" || def.style === "angel") {
           this.over = true;
           this.win = true;
           this.coins += def.style === "dragon" ? 300 : 150;
-          this.banner = def.style === "dragon"
-            ? { text: "심판 완료", sub: "큰 붉은 용이 쫓겨났다. 세상 나라가 이루어졌다", color: "#ffd34d", t: 0, life: 99 }
+          this.banner = def.style === "dragon" || def.style === "angel"
+            ? { text: "심판 완료", sub: "일곱 대접이 다 쏟아졌다. \"되었다.\"", color: "#ffd34d", t: 0, life: 99 }
             : { text: "좋은 꿈 꿨어!", sub: "악몽을 물리치고 달콤하게 잠들었다", color: "#ff9ad8", t: 0, life: 99 };
           return;
         }
@@ -1611,6 +1634,79 @@
             for (let q = 0; q < 12; q++) this.shot(e.x - 30 - q * 10, e.y + (q - 6) * 20, Math.PI + rand(-0.2, 0.2), bs, "minibat", { wob: { amp: 30, f: 7, ph: q }, color: "#c8a030" });
           }
           break;
+        case "angel": {
+          const no = e.no || 0, col = RD.ANGELS[no].color;
+          if (no === 0) {
+            // 나팔의 천사: 나팔을 불면 음파 고리 / 음파 광선
+            e.blowAt = e.t;
+            e.fireT = (ph === 3 ? 1.1 : 1.5) / fr;
+            const gap = aim + rand(-0.5, 0.5), n = 26 + ph * 4;
+            for (let q = 0; q < n; q++) {
+              const a = (q / n) * Math.PI * 2;
+              if (Math.abs(((a - gap + Math.PI * 3) % (Math.PI * 2)) - Math.PI) < 0.4) continue;
+              this.shot(e.x - 50, e.y - 60, a, bs * 0.75, "wave", { color: col, r: 8 });
+            }
+            if (ph >= 2 && e.n % 2) this.beam(e, aim, ph === 3 ? rand(-0.4, 0.4) : 0, 0.9, 1.0, 30);
+          } else if (no === 1) {
+            // 채찍의 천사: 불의 채찍 (호를 그리는 연쇄 줄기) + 독한 종기 탄
+            e.fireT = (ph === 3 ? 1.2 : 1.6) / fr;
+            const lashes = ph === 3 ? 2 : 1;
+            for (let l = 0; l < lashes; l++) {
+              const base = aim + (l ? 0.5 : -0.2) * (e.n % 2 ? 1 : -1), R = 520;
+              let px = e.x - 40, py = e.y - 40;
+              for (let q = 1; q <= 5; q++) {
+                const a = base + (q - 3) * 0.16 * (l ? -1 : 1), d = (q / 5) * R;
+                const nx = e.x - 40 + Math.cos(a) * d, ny = e.y - 40 + Math.sin(a) * d;
+                this.lineStrike(px, py, nx, ny, 0.65);
+                px = nx; py = ny;
+              }
+            }
+            for (let q = -2; q <= 2; q++) this.shot(e.x - 40, e.y, aim + q * 0.2, bs * 0.8, "drop", { poison: true, color: col, r: 7 });
+          } else if (no === 2) {
+            // 바다의 천사: 아래에서 솟구치는 피바다 (빈틈 하나) + 넘실대는 물결
+            e.fireT = 1.5 / fr;
+            if (e.n % 2) {
+              const gap = Math.max(80, Math.min(C.width - 80, p.x + rand(-100, 100)));
+              for (let x = 30; x < C.width; x += 34) if (Math.abs(x - gap) > 60) this.shot(x, C.height + 10, -Math.PI / 2, bs * (0.55 + ph * 0.05), "blood", { color: col });
+            } else {
+              for (let q = 0; q < 14 + ph * 2; q++) this.shot(e.x - 40, 40 + q * 26, Math.PI, bs * 0.7, "drop", { wob: { amp: 40, f: 3, ph: q * 0.5 }, color: "#b01020" });
+            }
+          } else if (no === 3) {
+            // 강의 천사: 하늘에서 피의 줄기가 기둥처럼 쏟아진다
+            e.fireT = (ph === 3 ? 0.9 : 1.2) / fr;
+            const cols = 3 + ph;
+            for (let c = 0; c < cols; c++) {
+              const x = c === 0 ? p.x + rand(-30, 30) : rand(60, C.width - 60);
+              for (let q = 0; q < 6; q++) this.shot(x, -10 - q * 26, Math.PI / 2, bs * 0.9, "drop", { color: q % 2 ? "#ff3048" : "#4aa8ff", r: 7 });
+            }
+            this.fan(e, 5, 0.18, bs, col);
+          } else if (no === 4) {
+            // 해의 천사: 하늘에서 휩쓰는 햇빛 광선 + 불꽃 고리
+            e.fireT = (ph === 3 ? 1.4 : 1.9) / fr;
+            for (let q = 0; q < (ph === 3 ? 3 : 2); q++) {
+              const x = rand(150, C.width - 150);
+              this.hazards.push({ type: "beam", x, y: -20, ang: Math.PI / 2 + (x > p.x ? 0.35 : -0.35), angVel: x > p.x ? -0.3 : 0.3, t: 0, warn: 1.0, active: 1.4, w: 34, len: 1400 });
+            }
+            for (let q = 0; q < 16; q++) this.shot(e.x, e.y, (q / 16) * Math.PI * 2 + e.n, bs * 0.65, "fireball", { color: col, r: 7 });
+          } else if (no === 5) {
+            // 어둠의 천사: 캄캄해지고, 그림자 탄이 멈췄다 덮쳐 온다
+            e.fireT = 1.4 / fr;
+            if (e.n % 3 === 1) this.blackout = 2.5;
+            for (let q = 0; q < 10 + ph * 2; q++) {
+              const a = (q / (10 + ph * 2)) * Math.PI * 2;
+              this.shot(e.x, e.y, a, bs * 0.9, "smoke", { decel: 2.5, redirect: 0.9, rspeed: bs * 1.1, color: "#3a2060", r: 11 });
+            }
+          } else {
+            // 진노의 마지막 천사: 한 달란트 우박, 번개, 지진
+            e.fireT = 1.2 / fr;
+            const roll = e.n % 3;
+            if (roll === 0) for (let q = 0; q < 2 + ph; q++) this.hazards.push({ type: "meteor", hail: true, sx: rand(100, C.width), sy: -80, ex: q === 0 ? p.x : rand(80, C.width - 80), ey: Math.min(C.groundY - 40, q === 0 ? p.y : rand(100, 420)), t: 0, warn: 1.0, active: 0.5, w: 90, r: 42, dmg: 26 });
+            else if (roll === 1) { let x = p.x - 160, y = 60; for (let q = 0; q < 3; q++) { const nx = p.x + rand(-120, 160), ny = Math.min(C.groundY - 20, y + rand(100, 170)); this.lineStrike(x, y, nx, ny, 0.7); x = nx; y = ny; } }
+            else { this.shake = 0.8; for (let k = -2; k <= 2; k++) this.hazards.push({ type: "lava", quake: true, x: p.x + k * 120, t: 0, warn: 0.9, active: 0.6, w: 70 }); }
+            for (let q = 0; q < 12; q++) this.shot(e.x, e.y, (q / 12) * Math.PI * 2 + e.n * 0.3, bs * 0.8, "star", { color: "#ffffff", r: 7 });
+          }
+          break;
+        }
         case "chaos": {
           // 혼돈의 심판 드래곤
           if (ph === 1) {
@@ -1840,8 +1936,9 @@
       this.addScore(def.score * this.loop);
       if (def.exp) this.gainExp(def.exp);
       if (def.heal) {
-        this.player.hp = Math.min(this.maxHp, this.player.hp + def.heal);
-        this.text("+" + def.heal, "#ff8aa8");
+        const heal = this.tr === 6 ? Math.ceil(def.heal / 2) : def.heal; // 종말: 회복 절반
+        this.player.hp = Math.min(this.maxHp, this.player.hp + heal);
+        this.text("+" + heal, "#ff8aa8");
       }
       if (def.sugar && this.rush <= 0) {
         this.sugar += def.sugar;
