@@ -52,18 +52,25 @@
   let mode = MODE_IDS.includes(save.get("mode")) ? save.get("mode") : "story";
   let diff = DIFF_IDS.includes(save.get("diff")) ? save.get("diff") : "normal";
   // 최고 점수는 모드와 난이도마다 따로
-  const bestKey = () => `best_${mode}_${diff}`;
+  let maxStage = save.get("maxStage", 0); // 스토리에서 도달한 지역 (스테이지 선택에서 고를 수 있다)
+  let pickStage = Math.min(save.get("pickStage", 0), maxStage);
+  const bestKey = () => `best_${mode}_${diff}` + (mode === "stageselect" ? "_" + pickStage : "");
   const loadBest = () => { best = save.get(bestKey(), 0); RD.best = best; };
   loadBest();
 
+
   function startRun() {
     const id = RD.CHARACTERS[selected].id;
-    run = new RD.Run(id, mode, diff, { stars: owned[id] || 1 });
+    run = new RD.Run(id, mode, diff, { stars: owned[id] || 1, stage: mode === "stageselect" ? pickStage : 0 });
     scene = "play";
   }
 
   function endRun() {
     scene = "result";
+    if (["story", "hardcore"].includes(run.mode) && run.reached > maxStage) {
+      maxStage = Math.min(RD.STAGES.length - 1, run.reached);
+      save.set("maxStage", maxStage);
+    }
     coins += run.coins;
     save.set("coins", coins);
     run.newBest = run.score > best;
@@ -240,15 +247,23 @@
 
     // 모드
     RD.text(g, "모드", 200, 34, 14, "#9fd0ff");
-    MODE_IDS.forEach((id, i) => tab(240 + i * 118, 20, 110, 30, RD.MODES[id].name, id === mode, "#7fe6ff", () => { mode = id; save.set("mode", id); loadBest(); }));
+    MODE_IDS.forEach((id, i) => tab(234 + i * 96, 20, 90, 30, RD.MODES[id].name, id === mode, "#7fe6ff", () => { mode = id; save.set("mode", id); loadBest(); }));
     // 난이도
     RD.text(g, "난이도", 186, 76, 14, "#9fd0ff");
     DIFF_IDS.forEach((id, i) => {
       const D = RD.DIFFICULTY[id];
-      tab(240 + i * 118, 62, 110, 30, D.name, id === diff, D.color, () => { diff = id; save.set("diff", id); loadBest(); });
+      tab(234 + i * 96, 62, 90, 30, D.name, id === diff, D.color, () => { diff = id; save.set("diff", id); loadBest(); });
     });
     const D = RD.DIFFICULTY[diff];
-    RD.text(g, `${RD.MODES[mode].desc}  ·  잔기 ${D.lives}  ·  적 체력 x${D.enemyHp}  ·  받는 피해 x${D.damage}  ·  점수 x${D.score}`, C.width / 2, 116, 13, "#e8e0f5", "center");
+    if (mode === "stageselect") {
+      // 지역 고르기 (스토리에서 도달한 곳까지)
+      RD.STAGES.forEach((st, i) => {
+        const open = i <= maxStage;
+        tab(120 + i * 146, 104, 138, 26, open ? `${i + 1}. ${st.name}` : `${i + 1}. 🔒`, i === pickStage, "#ffd34d", () => { if (open) { pickStage = i; save.set("pickStage", i); loadBest(); } });
+      });
+    } else {
+      RD.text(g, `${RD.MODES[mode].desc}  ·  잔기 ${RD.MODES[mode].lives || D.lives}  ·  적 체력 x${D.enemyHp}  ·  받는 피해 x${D.damage}  ·  점수 x${D.score * (RD.MODES[mode].scoreMul || 1)}`, C.width / 2, 116, 13, "#e8e0f5", "center");
+    }
 
     // 캐릭터
     const cw = 172, chh = 232, gap = 12;
@@ -391,12 +406,12 @@
     RD.drawRun(g, run);
     g.fillStyle = "rgba(10,8,20,0.72)";
     g.fillRect(0, 0, C.width, C.height);
-    const title = run.win ? (run.mode === "timeattack" ? "TIME UP" : "ALL CLEAR!") : "GAME OVER";
+    const title = run.win ? (run.mode === "timeattack" ? "TIME UP" : run.mode === "stageselect" ? "STAGE CLEAR!" : "ALL CLEAR!") : "GAME OVER";
     RD.text(g, title, C.width / 2, 96, 48, run.win ? "#ffd34d" : "#ff4d5e", "center");
     RD.text(g, `${RD.MODES[run.mode].name} · ${run.D.name}`, C.width / 2, 140, 18, run.D.color, "center");
     RD.text(g, run.score.toLocaleString() + " 점", C.width / 2, 200, 52, "#fff", "center");
     if (run.newBest) RD.text(g, "최고 기록!", C.width / 2, 248, 22, "#ff8a3d", "center");
-    const reach = run.mode === "story" ? `스테이지 ${run.loop}` : run.mode === "bossrush" ? `${run.loop}라운드` : `${Math.floor(run.t)}초 생존`;
+    const reach = ["story", "hardcore", "stageselect"].includes(run.mode) ? `${run.stage.name}` : run.mode === "bossrush" ? `${run.loop}라운드` : `${Math.floor(run.t)}초 생존`;
     RD.text(g, `격추 ${run.kills}   Lv.${run.level}   ${reach}`, C.width / 2, 290, 20, "#ffd34d", "center");
     // 고른 강화 목록
     const ups = RD.UPGRADES.filter((u) => run.lv(u.id)).map((u) => `${u.id === "sig" ? run.char.sig.name : u.name} ${run.lv(u.id)}`);
@@ -433,7 +448,7 @@
     g.clearRect(0, 0, C.width, C.height);
     if (RD.audio) {
       let track = "menu";
-      if (scene === "play") track = run.over ? null : run.boss ? "boss" : "stage";
+      if (scene === "play") track = run.over ? null : (run.boss ? "boss" : "stage") + ":" + run.stage.transpose;
       if (scene === "result") track = null;
       RD.audio.music(track);
     }

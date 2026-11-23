@@ -16,18 +16,81 @@
   }
   RD.text = text;
 
-  // 배경: 숲 그림이 천천히, 땅이 빠르게 흘러간다
-  function drawBackground(g, scroll) {
-    const bg = RD.img("bg_forest");
-    const h = C.height, w = (bg.width / bg.height) * h;
-    let x = -((scroll * 0.4) % w);
-    for (; x < C.width; x += w) g.drawImage(bg, Math.floor(x), 0, Math.ceil(w) + 1, h);
+  // ---------- 배경 ----------
+  // 지역 이미지(bg, ground)가 있으면 그 이미지를, 없으면 코드로 그린 임시 배경을 쓴다
+  const hasImg = (name) => { const im = RD.img(name); return im && im.complete && im.naturalWidth > 0; };
+  const layerCache = {};
+  function rng(seed) { return () => ((seed = (seed * 16807) % 2147483647) / 2147483647); }
+
+  // 좌우가 이어지는 임시 배경 레이어 (먼 산, 가까운 풍경)
+  function stageLayers(st) {
+    if (layerCache[st.id]) return layerCache[st.id];
+    const W = C.width, H = C.height;
+    const mk = () => { const c = document.createElement("canvas"); c.width = W; c.height = H; return c; };
+    const far = mk(), mid = mk();
+    const f = far.getContext("2d"), m = mid.getContext("2d");
+    const r = rng(st.id.length * 999 + 7);
+    const both = (ctx, draw) => { draw(ctx, 0); ctx.save(); ctx.translate(-W, 0); draw(ctx, 0); ctx.restore(); ctx.save(); ctx.translate(W, 0); draw(ctx, 0); ctx.restore(); };
+    const tri = (ctx, x, y, w, h, col) => { ctx.fillStyle = col; ctx.beginPath(); ctx.moveTo(x - w / 2, y); ctx.lineTo(x, y - h); ctx.lineTo(x + w / 2, y); ctx.fill(); };
+    const items = [];
+    for (let i = 0; i < 9; i++) items.push({ x: (i / 9) * W + r() * 60, w: 160 + r() * 160, h: 120 + r() * 160, k: r() });
+    const items2 = [];
+    for (let i = 0; i < 14; i++) items2.push({ x: (i / 14) * W + r() * 40, w: 40 + r() * 60, h: 90 + r() * 170, k: r() });
+    both(f, (ctx) => items.forEach((it) => {
+      if (st.shape === "crystals") { tri(ctx, it.x, 0, it.w * 0.5, -it.h * 0.9, st.far); tri(ctx, it.x + 60, H - 60, it.w * 0.5, it.h * 0.8, st.far); }
+      else if (st.shape === "clouds") { ctx.fillStyle = st.far; for (let k = 0; k < 4; k++) { ctx.beginPath(); ctx.arc(it.x + k * 40, 330 - it.k * 140, 50 + k * 8, 0, Math.PI * 2); ctx.fill(); } }
+      else {
+        tri(ctx, it.x, H - 70, it.w * 1.6, it.h + 40, st.far);
+        if (st.shape === "pines") tri(ctx, it.x, H - 70 - (it.h + 40) * 0.72, it.w * 1.6 * 0.28, (it.h + 40) * 0.28, "#f4f8fc");
+        if (st.shape === "volcano" && it.k > 0.6) { tri(ctx, it.x, H - 70 - (it.h + 40) * 0.8, 50, 30, "#ff6a1a"); ctx.fillStyle = "rgba(255,106,26,0.5)"; ctx.fillRect(it.x - 4, H - 70 - (it.h + 40) * 0.8, 8, (it.h + 40) * 0.8); }
+      }
+    }));
+    both(m, (ctx) => items2.forEach((it) => {
+      const base = H - 60;
+      if (st.shape === "trees") { ctx.fillStyle = "#2a1c12"; ctx.fillRect(it.x - 6, base - it.h * 0.5, 12, it.h * 0.5); ctx.fillStyle = st.mid; ctx.beginPath(); ctx.arc(it.x, base - it.h * 0.6, it.w * 0.7, 0, Math.PI * 2); ctx.fill(); }
+      else if (st.shape === "pines") { for (let k = 0; k < 3; k++) tri(ctx, it.x, base - k * it.h * 0.25, it.w * (1.1 - k * 0.25), it.h * 0.45, k % 2 ? "#3e5e7a" : st.mid); tri(ctx, it.x, base - it.h * 0.75, it.w * 0.3, it.h * 0.18, "#ffffff"); }
+      else if (st.shape === "crystals") { const c = it.k > 0.5 ? "#7f6fe0" : "#4fb8e8"; ctx.globalAlpha = 0.85; tri(ctx, it.x, base, it.w * 0.6, it.h * 0.9, c); tri(ctx, it.x + it.w * 0.3, base, it.w * 0.4, it.h * 0.55, "#b8a8ff"); ctx.globalAlpha = 1; }
+      else if (st.shape === "volcano") { tri(ctx, it.x, base, it.w * 1.2, it.h * 0.5, st.mid); ctx.fillStyle = "rgba(255,90,20,0.6)"; ctx.fillRect(it.x - 2, base - 6, 4, 6); }
+      else { ctx.fillStyle = "rgba(220,220,255,0.35)"; for (let k = 0; k < 3; k++) { ctx.beginPath(); ctx.arc(it.x + k * 26, base - it.h * 0.6, 26 + k * 6, 0, Math.PI * 2); ctx.fill(); } }
+    }));
+    // 땅 타일
+    const gt = document.createElement("canvas"); gt.width = 256; gt.height = 100;
+    const gg = gt.getContext("2d");
+    gg.fillStyle = st.groundCol[1]; gg.fillRect(0, 0, 256, 100);
+    gg.fillStyle = st.groundCol[0]; gg.fillRect(0, 0, 256, 16);
+    for (let i = 0; i < 140; i++) { gg.fillStyle = i % 3 ? "rgba(0,0,0,0.18)" : "rgba(255,255,255,0.12)"; gg.fillRect(Math.floor(r() * 64) * 4, 16 + Math.floor(r() * 21) * 4, 4, 4); }
+    for (let x = 0; x < 256; x += 8) { gg.fillStyle = st.groundCol[0]; gg.fillRect(x, 16, 8, 4 + Math.floor(r() * 3) * 4); }
+    return (layerCache[st.id] = { far, mid, ground: gt });
+  }
+
+  function drawBackground(g, scroll, stage) {
+    const st = stage || RD.STAGES[0];
+    if (hasImg(st.bg)) {
+      const bg = RD.img(st.bg);
+      const h = C.height, w = (bg.width / bg.height) * h;
+      let x = -((scroll * 0.4) % w);
+      for (; x < C.width; x += w) g.drawImage(bg, Math.floor(x), 0, Math.ceil(w) + 1, h);
+    } else {
+      const L = stageLayers(st);
+      const grad = g.createLinearGradient(0, 0, 0, C.height);
+      grad.addColorStop(0, st.sky[0]); grad.addColorStop(1, st.sky[1]);
+      g.fillStyle = grad; g.fillRect(0, 0, C.width, C.height);
+      const fx = -((scroll * 0.15) % C.width), mx = -((scroll * 0.45) % C.width);
+      g.drawImage(L.far, Math.floor(fx), 0); g.drawImage(L.far, Math.floor(fx) + C.width, 0);
+      g.drawImage(L.mid, Math.floor(mx), 0); g.drawImage(L.mid, Math.floor(mx) + C.width, 0);
+    }
     g.fillStyle = "rgba(8,6,20,0.18)"; // 탄이 잘 보이도록 살짝 어둡게
     g.fillRect(0, 0, C.width, C.height);
-    const tile = RD.img("ground");
-    const th = 100, tw = (tile.width / tile.height) * th;
-    let gx = -(scroll % tw);
-    for (; gx < C.width; gx += tw) g.drawImage(tile, Math.floor(gx), C.groundY - 8, Math.ceil(tw) + 1, th);
+    if (hasImg(st.ground)) {
+      const tile = RD.img(st.ground);
+      const th = 100, tw = (tile.width / tile.height) * th;
+      let gx = -(scroll % tw);
+      for (; gx < C.width; gx += tw) g.drawImage(tile, Math.floor(gx), C.groundY - 8, Math.ceil(tw) + 1, th);
+    } else {
+      const t = stageLayers(st).ground;
+      let gx = -(scroll % 256);
+      for (; gx < C.width; gx += 256) g.drawImage(t, Math.floor(gx), C.groundY - 8);
+    }
   }
   RD.drawBackground = drawBackground;
 
@@ -38,7 +101,20 @@
       const sc = def.scale;
       const size = RD.MONSTER_SIZE * sc;
       const f = Math.floor(e.t * (def.sprite === "bat" || def.sprite === "batking" ? 10 : 5)) % 2;
-      const spr = RD.getMonsterFrame(def.sprite, f, e.flash > 0);
+      const spr = RD.getMonsterFrame(def.sprite, f, e.flash > 0, e.variant);
+      // 특성 표시
+      if (e.type === "eye" && e.aiming && e.fireT > 0) {
+        // 저격 조준선
+        g.strokeStyle = `rgba(255,48,72,${0.3 + 0.5 * (Math.floor(run.t * 12) % 2)})`;
+        g.lineWidth = 2;
+        g.beginPath(); g.moveTo(e.x, e.y); g.lineTo(e.x + Math.cos(e.aimA) * 1200, e.y + Math.sin(e.aimA) * 1200); g.stroke();
+      }
+      if (e.type === "fairy") {
+        g.strokeStyle = "rgba(127,224,138,0.35)"; g.lineWidth = 2;
+        g.beginPath(); g.arc(e.x, e.y, 170, 0, Math.PI * 2); g.stroke();
+      }
+      if (e.healed) { g.fillStyle = "rgba(127,224,138,0.35)"; g.beginPath(); g.arc(e.x, e.y, def.w * 0.7, 0, Math.PI * 2); g.fill(); }
+      if (e.type === "beetle" && e.wind) text(g, "!", e.x, e.y - 34, 24, "#ff4d5e", "center");
       const top = def.ground ? e.y + def.h / 2 - 30 * sc : e.y - 15 * sc;
       g.drawImage(spr, Math.round(e.x - size / 2), Math.round(top), size, size);
       // 단단한 적은 체력바
@@ -224,6 +300,10 @@
       g.fillStyle = "#fff"; g.fillRect(ox - 4, oy - 4, 6, 6);
     }
 
+    if (p.slow > 0) {
+      g.fillStyle = "rgba(160,220,255,0.35)";
+      g.beginPath(); g.arc(p.x, p.y, 34, 0, Math.PI * 2); g.fill();
+    }
     if (p.shielded) {
       g.strokeStyle = `rgba(197,138,255,${0.6 + Math.sin(run.t * 6) * 0.25})`;
       g.lineWidth = 3;
@@ -452,9 +532,9 @@
     const D = run.D, M = RD.MODES[run.mode];
     const right = run.mode === "timeattack"
       ? `남은 시간 ${Math.ceil(run.timeLeft)}`
-      : run.mode === "story" ? `스테이지 ${run.loop}` : run.mode === "bossrush" ? `${run.loop}라운드` : `${Math.floor(run.t)}초`;
+      : `${run.stage.name}` + (run.mode === "bossrush" || run.mode === "endless" ? ` · ${run.loop}라운드` : "");
     text(g, right, C.width - 18, 22, 16, run.mode === "timeattack" && run.timeLeft < 20 ? "#ff4d5e" : "#9fd0ff", "right");
-    text(g, `${M.name} · ${D.name}`, C.width - 18, 44, 12, D.color, "right");
+    text(g, `${M.name} · ${D.name} · ${run.stage.effectName}`, C.width - 18, 44, 12, D.color, "right");
 
     // 체력
     const hpK = Math.max(0, p.hp) / run.maxHp;
@@ -513,7 +593,7 @@
       const def = RD.ENEMIES[boss.type];
       const w = 440, x = (C.width - w) / 2;
       bar(g, x, 40, w, 10, boss.hp / boss.maxHp, def.boss ? "#ff4d5e" : "#ffb347");
-      text(g, def.boss ? "박쥐 왕" : "돌 골렘", x, 62, 12, "#fff");
+      text(g, boss.name || (def.boss ? "보스" : "골렘"), x, 62, 12, "#fff");
     }
 
     // WARNING / STAGE CLEAR 등
@@ -526,6 +606,7 @@
       }
       if (blink) text(g, b.text, C.width / 2, C.height / 2 - (b.sub ? 14 : 0), b.small ? 34 : 60, b.color, "center");
       if (b.sub) text(g, b.sub, C.width / 2, C.height / 2 + 32, 20, "#fff", "center");
+      if (b.sub2) text(g, b.sub2, C.width / 2, C.height / 2 + 62, 15, "#ffc49a", "center");
     }
     if (run.choosing) drawChoice(g, run);
     RD.drawSoundButton(g);
@@ -594,10 +675,111 @@
     });
   }
 
+  // ---------- 지형 효과 그리기 ----------
+  function drawHazards(g, run) {
+    for (const h of run.hazards) {
+      const warn = h.t < h.warn, on = !warn && h.t < h.warn + h.active;
+      if (h.type === "lava") {
+        if (warn) {
+          const blink = Math.floor(h.t * 8) % 2;
+          g.fillStyle = `rgba(255,80,20,${0.12 + 0.1 * blink})`;
+          g.fillRect(h.x - h.w / 2, 0, h.w, C.groundY);
+          g.fillStyle = blink ? "#ff4d1a" : "#ffb347";
+          g.fillRect(h.x - h.w / 2, C.groundY - 6, h.w, 8);
+          text(g, "!", h.x, C.groundY - 30, 26, "#ffd34d", "center");
+        } else if (on) {
+          const k = Math.min(1, (h.t - h.warn) / 0.12);
+          const top = C.groundY - (C.groundY + 20) * k;
+          g.fillStyle = "#c2200a"; g.fillRect(h.x - h.w / 2, top, h.w, C.groundY - top);
+          g.fillStyle = "#ff6a1a"; g.fillRect(h.x - h.w / 2 + 10, top, h.w - 20, C.groundY - top);
+          g.fillStyle = "#ffd34d"; g.fillRect(h.x - 8, top, 16, C.groundY - top);
+          for (let i = 0; i < 6; i++) { g.fillStyle = "#ffb347"; g.fillRect(h.x - h.w / 2 + ((i * 23 + h.t * 300) % h.w), top + ((i * 71 + h.t * 500) % (C.groundY - top + 1)), 6, 6); }
+        }
+      } else if (h.type === "bolt") {
+        if (warn) {
+          g.strokeStyle = `rgba(255,230,107,${0.35 + 0.35 * (Math.floor(h.t * 10) % 2)})`;
+          g.lineWidth = 2;
+          g.setLineDash([10, 8]);
+          g.beginPath(); g.moveTo(h.x, 0); g.lineTo(h.x, C.groundY); g.stroke();
+          g.setLineDash([]);
+          g.fillStyle = "rgba(255,230,107,0.12)";
+          g.fillRect(h.x - h.w / 2, 0, h.w, C.groundY);
+        } else if (on) {
+          g.fillStyle = "rgba(255,255,220,0.25)";
+          g.fillRect(0, 0, C.width, C.height);
+          g.strokeStyle = "#ffe66b"; g.lineWidth = 12;
+          g.beginPath(); g.moveTo(h.x, 0);
+          for (let y = 30; y < C.groundY; y += 30) g.lineTo(h.x + ((y / 30) % 2 ? 16 : -16), y);
+          g.lineTo(h.x, C.groundY); g.stroke();
+          g.strokeStyle = "#ffffff"; g.lineWidth = 4; g.stroke();
+        }
+      }
+    }
+  }
+
+  // 수정 동굴: 어둠 (캐릭터 주변만 밝다)
+  let darkCv = null;
+  function drawDarkness(g, run) {
+    if (run.terrain !== "dark") return;
+    if (!darkCv) { darkCv = document.createElement("canvas"); darkCv.width = C.width; darkCv.height = C.height; }
+    const d = darkCv.getContext("2d");
+    d.globalCompositeOperation = "source-over";
+    d.clearRect(0, 0, C.width, C.height);
+    d.fillStyle = "rgba(4,2,12,0.93)";
+    d.fillRect(0, 0, C.width, C.height);
+    d.globalCompositeOperation = "destination-out";
+    const hole = (x, y, r) => {
+      const gr = d.createRadialGradient(x, y, r * 0.3, x, y, r);
+      gr.addColorStop(0, "rgba(0,0,0,1)"); gr.addColorStop(1, "rgba(0,0,0,0)");
+      d.fillStyle = gr; d.beginPath(); d.arc(x, y, r, 0, Math.PI * 2); d.fill();
+    };
+    const p = run.player;
+    if (p.dead <= 0) hole(p.x + 40, p.y, 250);
+    for (const e of run.effects) if (e.type === "boom") hole(e.x, e.y, 90 * (1 - e.t / e.life) + 20);
+    if (run.ult) hole(C.width / 2, C.height / 2, 700);
+    g.drawImage(darkCv, 0, 0);
+  }
+
+  // 설원: 눈, 강풍
+  function drawWeather(g, run) {
+    if (run.terrain === "ice") {
+      const w = run.wind;
+      const drift = w ? w.dir * 500 : -80;
+      g.fillStyle = "rgba(255,255,255,0.85)";
+      for (let i = 0; i < 70; i++) {
+        const x = ((i * 137 + run.t * drift) % C.width + C.width) % C.width;
+        const y = ((i * 53 + run.t * (60 + (i % 5) * 20)) % C.height);
+        g.fillRect(x, y, i % 3 ? 3 : 5, i % 3 ? 3 : 5);
+      }
+      if (w) {
+        g.fillStyle = "rgba(255,255,255,0.35)";
+        for (let i = 0; i < 18; i++) g.fillRect(((i * 211 + run.t * w.dir * 1200) % C.width + C.width) % C.width, (i * 31) % C.height, 90, 2);
+        text(g, w.dir > 0 ? "강풍 →" : "← 강풍", C.width / 2, 120, 24, "#dff4ff", "center");
+      }
+    }
+    if (run.terrain === "lava") {
+      g.fillStyle = "rgba(255,120,40,0.08)";
+      g.fillRect(0, 0, C.width, C.height);
+    }
+  }
+
+  // 지역 시작 안내
+  function drawIntro(g, run) {
+    const it = run.intro;
+    if (!it || it.t < it.delay) return;
+    const k = (it.t - it.delay) / it.life;
+    g.globalAlpha = Math.min(1, k * 5, (1 - k) * 4);
+    g.fillStyle = "rgba(10,6,20,0.6)";
+    g.fillRect(0, 150, C.width, 110);
+    text(g, it.name, C.width / 2, 186, 38, "#ffd34d", "center");
+    text(g, it.effect, C.width / 2, 230, 17, "#fff", "center");
+    g.globalAlpha = 1;
+  }
+
   RD.drawRun = function (g, run) {
     g.save();
     if (run.shake > 0) g.translate((Math.random() - 0.5) * 12 * run.shake * 2, (Math.random() - 0.5) * 10 * run.shake * 2);
-    drawBackground(g, run.scroll);
+    drawBackground(g, run.scroll, run.stage);
     drawUltBack(g, run);
     drawItems(g, run);
     drawEnemies(g, run);
@@ -605,8 +787,12 @@
     drawPlayer(g, run);
     drawEffects(g, run);
     drawUltFront(g, run);
+    drawDarkness(g, run);
+    drawHazards(g, run);
     drawBullets(g, run);
+    drawWeather(g, run);
     g.restore();
+    drawIntro(g, run);
     drawHud(g, run);
   };
 })();

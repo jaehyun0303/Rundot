@@ -10,26 +10,33 @@
     [2, (r) => r.batLine(120, 5, "sine")],
     [5, (r) => r.batLine(380, 5, "sine")],
     [8.5, (r) => r.ground("slime", 3)],
+    [9.5, (r) => r.special(1)],
     [11, (r) => r.batLine(240, 6, "dive")],
     [14, (r) => r.wisp(150)],
     [17, (r) => { r.batLine(110, 5, "sine"); r.batLine(390, 5, "sine"); }],
+    [19, (r) => r.special(2)],
     [21, (r) => r.ground("mushroom", 2)],
     [23, (r) => r.batV(250)],
     [27, (r) => { r.wisp(130); r.wisp(360); }],
+    [29, (r) => r.special(2)],
     [31, (r) => r.ground("slime", 4)],
     [33, (r) => r.batLine(200, 7, "dive")],
     [37, (r) => r.midboss()],
     [39, (r) => r.batV(170)],
     [42, (r) => { r.ground("mushroom", 3); r.batLine(140, 5, "sine"); }],
+    [44, (r) => r.special(2)],
     [46, (r) => { r.wisp(120); r.wisp(250); r.wisp(380); }],
+    [53, (r) => r.special(3)],
     [51, (r) => { r.batV(140); r.batV(360); }],
     [55, (r) => { r.ground("slime", 5); r.batLine(300, 6, "dive"); }],
     [59, (r) => { r.batLine(100, 6, "sine"); r.batLine(250, 6, "sine"); r.batLine(400, 6, "sine"); }],
+    [62, (r) => r.special(3)],
     [64, (r) => { r.wisp(180); r.wisp(330); r.ground("mushroom", 3); }],
     [70, (r) => r.warning()],
     [73, (r) => r.spawnBoss()],
   ];
-  const STORY_STAGES = 3;
+  const STORY_STAGES = RD.STAGES.length;
+  const STORYLIKE = ["story", "hardcore", "stageselect"]; // 진행표대로 가는 모드
 
   // 무한 / 타임 어택 모드에서 무작위로 고르는 적 등장 패턴 (k = 강도 1~4)
   const PATTERNS = [
@@ -38,6 +45,8 @@
     (r, k) => { for (let i = 0; i < Math.ceil(k / 2); i++) r.wisp(rand(90, 400)); },
     (r, k) => r.ground(pick(["slime", "mushroom"]), 1 + Math.ceil(k)),
     (r, k) => { r.batLine(rand(80, 200), 3 + k, "sine"); r.batLine(rand(300, 420), 3 + k, "sine"); },
+    (r, k) => r.special(1 + Math.ceil(k / 2)),
+    (r, k) => r.special(1 + Math.ceil(k / 2)),
   ];
 
   class Run {
@@ -55,10 +64,15 @@
       this.t = 0;
       this.stageT = 0;
       this.stageIdx = 0;
-      this.loop = 1; // 스테이지 번호 (또는 보스 러시 라운드)
+      this.loop = 1; // 난이도 단계 (스토리는 지역 번호, 무한/보스 러시는 라운드)
+      this.M = RD.MODES[mode];
+      this.hazards = []; // 지형 위험 (용암 기둥, 낙뢰)
+      this.wind = null; // 설원 강풍
+      this.terrainT = 0;
+      this.reached = 0; // 스토리에서 도달한 지역 번호 (저장용)
       this.score = 0;
       this.nextExtend = C.extendEvery;
-      this.lives = this.D.lives;
+      this.lives = this.M.lives || this.D.lives;
       this.bombs = C.bombs;
       this.kills = 0;
       this.over = false;
@@ -74,7 +88,7 @@
       this.pendingLevels = 0;
       this.choosing = null; // 레벨업 카드 선택 중이면 { options }
 
-      this.player = { x: 160, y: 260, hp: C.maxHp + RD.GACHA.starHp * (this.stars - 1), invuln: C.respawnInvuln, hurt: 0, dead: 0, animT: 0, shotCd: 0, tilt: 0 };
+      this.player = { vx: 0, vy: 0, x: 160, y: 260, hp: C.maxHp + RD.GACHA.starHp * (this.stars - 1), invuln: C.respawnInvuln, hurt: 0, dead: 0, animT: 0, shotCd: 0, tilt: 0 };
       this.pet = { x: 100, y: 260, t: 0, cd: 0 };
       this.sub = { missile: 1, laser: 2, rear: 0.5, lightning: 1.5, laserOn: 0 };
       this.shots = [];
@@ -98,7 +112,25 @@
         this.pendingLevels = 3;
         this.rushState = { wait: 2.5, next: "golem" };
       }
+      this.setStage(opts.stage || 0, true);
+      if (mode === "stageselect") {
+        // 뒤쪽 지역을 고르면 따라잡을 수 있도록 강화를 미리 고른다 (지역마다 2개)
+        this.loop = 1 + 0.5 * (opts.stage || 0);
+        this.pendingLevels += 2 * (opts.stage || 0);
+      }
       this.openChoice();
+    }
+
+    // ---------- 지역 ----------
+    setStage(idx, first) {
+      this.stageNo = idx;
+      this.stage = RD.STAGES[idx];
+      this.terrain = this.stage.effect;
+      this.hazards = [];
+      this.wind = null;
+      this.terrainT = 0;
+      this.reached = Math.max(this.reached, idx);
+      this.intro = { name: this.stage.name, effect: `${this.stage.effectName}: ${this.stage.effectDesc}`, t: 0, life: first ? 3.5 : 4.5, delay: first ? 0 : 1.5 };
     }
 
     // ---------- 능력치 (강화 단계에서 계산) ----------
@@ -108,7 +140,7 @@
     get maxHp() { return C.maxHp + 25 * this.lv("hp") + RD.GACHA.starHp * (this.stars - 1); }
     get armor() { return 1 - 0.15 * this.lv("armor"); }
     get magnetR() { return 100 * (1 + 0.6 * this.lv("magnet")); }
-    get scoreMul() { return this.D.score * (1 + 0.15 * this.lv("luck")); }
+    get scoreMul() { return this.D.score * (this.M.scoreMul || 1) * (1 + 0.15 * this.lv("luck")); }
     get bossAlive() { return this.enemies.some((e) => !e.dead && (RD.ENEMIES[e.type].boss || RD.ENEMIES[e.type].midboss)); }
     get boss() { return this.enemies.find((e) => !e.dead && (RD.ENEMIES[e.type].boss || RD.ENEMIES[e.type].midboss)); }
     get bulletSpeed() { return RD.BULLET.speed * (1 + 0.12 * (this.loop - 1)) * this.D.bulletSpeed; }
@@ -181,7 +213,7 @@
       const def = RD.ENEMIES[type];
       const timeScale = this.mode === "endless" || this.mode === "timeattack" ? 1 + this.t / 120 : 1;
       const hp = def.hp * (1 + 0.6 * (this.loop - 1)) * this.D.enemyHp * timeScale;
-      const e = { type, x, y, hp, maxHp: hp, t: 0, flash: 0, dead: false, fireT: rand(0.6, 1.6) / this.D.fireRate, ...extra };
+      const e = { type, x, y, hp, maxHp: hp, t: 0, flash: 0, dead: false, fireT: rand(0.6, 1.6) / this.D.fireRate, variant: def.variant || this.stage.variant, ...extra };
       this.enemies.push(e);
       return e;
     }
@@ -207,6 +239,19 @@
 
     wisp(y) { this.addEnemy("wisp", C.width + 50, y, { path: "hover", stopX: rand(640, 800) }); }
 
+    // 지역마다 나오는 특수 몬스터
+    special(n) {
+      for (let i = 0; i < n; i++) {
+        const type = pick(this.stage.mobs);
+        const y = rand(80, C.groundY - 60);
+        const x = C.width + 40 + i * 70;
+        if (type === "eye") this.addEnemy("eye", x, y, { path: "snipe", stopX: rand(780, 900), fireT: 1.2 });
+        if (type === "beetle") this.addEnemy("beetle", x, y, { path: "charge" });
+        if (type === "fairy") this.addEnemy("fairy", x, y, { path: "hover", stopX: rand(760, 880), fireT: 2.5 });
+        if (type === "bomber") this.addEnemy("bomber", x, y, { path: "homing", vx: -160, vy: 0 });
+      }
+    }
+
     ground(type, n) {
       const def = RD.ENEMIES[type];
       for (let i = 0; i < n; i++) this.addEnemy(type, C.width + 40 + i * 110, C.groundY - def.h / 2, { path: "ground" });
@@ -214,16 +259,32 @@
 
     midboss() {
       const def = RD.ENEMIES.golem;
-      this.addEnemy("golem", C.width + 80, C.groundY - def.h / 2, { path: "midboss", stopX: 780, life: 30 });
+      this.addEnemy("golem", C.width + 80, C.groundY - def.h / 2, { path: "midboss", stopX: 780, life: 30, name: this.stage.midName });
     }
 
-    warning() { RD.audio && RD.audio.sfx("warning"); this.banner = { text: "WARNING", sub: "박쥐 왕이 다가온다", color: "#ff4d5e", t: 0, life: 3 }; }
-    spawnBoss() { this.addEnemy("boss", C.width + 160, 240, { path: "boss", phase: 1 }); }
+    warning() { RD.audio && RD.audio.sfx("warning"); this.banner = { text: "WARNING", sub: `${this.stage.bossName} 등장`, sub2: "특성 · " + this.stage.bossTrait, color: "#ff4d5e", t: 0, life: 3.5 }; }
+    spawnBoss() {
+      const type = this.stage.boss, def = RD.ENEMIES[type];
+      const y = def.ground ? C.groundY - def.h / 2 : 240;
+      const b = this.addEnemy(type, C.width + 160, y, { path: "boss", phase: 1, name: this.stage.bossName, baseY: y });
+      if (def.style === "crystal") this.spawnShards(b);
+    }
+
+    spawnShards(b) {
+      for (let i = 0; i < 4; i++) this.addEnemy("shard", b.x, b.y, { path: "orbit", parent: b, ang: (i / 4) * Math.PI * 2, variant: null });
+    }
 
     // ---------- 모드별 진행 ----------
     direct(dt) {
       const M = this.mode;
-      if (M === "story") {
+      // 혼돈 모드: 일정 시간마다 지역이 무작위로 바뀐다
+      if (M === "chaos" && !this.bossAlive && (this.shiftT = (this.shiftT || 0) + dt) >= this.M.shiftEvery) {
+        this.shiftT = 0;
+        let n = this.stageNo;
+        while (n === this.stageNo) n = Math.floor(Math.random() * RD.STAGES.length);
+        this.setStage(n);
+      }
+      if (STORYLIKE.includes(M)) {
         if (!this.bossAlive) this.stageT += dt;
         while (this.stageIdx < STAGE.length && this.stageT >= STAGE[this.stageIdx][0]) STAGE[this.stageIdx++][1](this);
         return;
@@ -234,6 +295,7 @@
         rs.wait -= dt;
         if (rs.wait > 0) return;
         if (rs.next === "golem") { this.midboss(); rs.next = "boss"; }
+        // (보스를 잡으면 다음 지역으로 넘어간다)
         else { this.warning(); this.spawnBoss(); rs.next = "golem"; }
         rs.wait = 3;
         return;
@@ -241,11 +303,11 @@
       // 무한 / 타임 어택: 무작위 패턴 + 주기적인 보스
       if (this.bossAlive) return;
       this.bossClock += dt;
-      const bossEvery = M === "timeattack" ? 70 : 80;
+      const bossEvery = M === "timeattack" ? 70 : M === "chaos" ? 75 : 80;
       if (this.bossClock >= bossEvery) {
         this.bossClock = 0;
         this.bossCount++;
-        if (M === "endless" && this.bossCount % 2 === 0) { this.warning(); this.spawnBoss(); }
+        if (M !== "timeattack" && this.bossCount % 2 === 0) { this.warning(); this.spawnBoss(); }
         else this.midboss();
         return;
       }
@@ -500,7 +562,7 @@
       if (this.over || this.choosing || this.bombs <= 0 || this.bombT > 0 || this.player.dead > 0) return;
       const p = this.player;
       this.bombs--;
-      const life = { fox: 1.0, rabbit: 3.0, bear: 1.5, owl: 3.5, cat: 3.0 }[this.charId];
+      const life = { fox: 1.0, rabbit: 3.0, bear: 1.5, owl: 2.8, cat: 3.0 }[this.charId];
       this.bombT = life;
       this.ult = { kind: this.charId, t: 0, life, x0: p.x, y0: p.y, done: {}, spawnT: 0, mul: 1 + 0.3 * this.lv("bomb") };
       p.invuln = Math.max(p.invuln, life + 0.6);
@@ -664,7 +726,7 @@
 
     addScore(n) {
       this.score += Math.round(n * this.scoreMul);
-      while (this.score >= this.nextExtend) {
+      while (!this.M.noHeal && this.score >= this.nextExtend) {
         this.nextExtend += C.extendEvery;
         this.lives++;
         this.banner = { text: "1UP!", color: "#9fffb0", t: 0, life: 1.2, small: true };
@@ -694,6 +756,8 @@
       }
 
       this.direct(dt);
+      this.updateTerrain(dt);
+      if (this.intro) { this.intro.t += dt; if (this.intro.t > this.intro.delay + this.intro.life) this.intro = null; }
 
       // 이동 (키보드: dx/dy, 터치: moveX/moveY 만큼 바로 이동)
       const inp = this.input;
@@ -702,9 +766,18 @@
         if (p.dead <= 0) { p.x = 120; p.y = 260; p.hp = this.maxHp; p.invuln = C.respawnInvuln; }
         inp.moveX = inp.moveY = 0;
       } else {
-        const sp = (inp.focus ? C.focusSpeed : C.moveSpeed) * (1 + 0.12 * this.lv("speed"));
-        const my = inp.dy * sp * dt + inp.moveY;
-        p.x += inp.dx * sp * dt + inp.moveX;
+        p.slow = Math.max(0, (p.slow || 0) - dt);
+        const sp = (inp.focus ? C.focusSpeed : C.moveSpeed) * (1 + 0.12 * this.lv("speed")) * (p.slow > 0 ? 0.5 : 1);
+        let mx = inp.dx * sp * dt + inp.moveX;
+        let my = inp.dy * sp * dt + inp.moveY;
+        if (this.terrain === "ice") {
+          // 빙판: 바로 멈추거나 꺾지 못하고 미끄러진다
+          const k = Math.min(1, dt * 3.5);
+          p.vx += (mx / Math.max(dt, 0.001) - p.vx) * k;
+          p.vy += (my / Math.max(dt, 0.001) - p.vy) * k;
+          mx = p.vx * dt; my = p.vy * dt;
+        } else { p.vx = p.vy = 0; }
+        p.x += mx;
         p.y += my;
         p.tilt += (Math.max(-1, Math.min(1, my / Math.max(1, sp * dt))) - p.tilt) * Math.min(1, dt * 10);
         inp.moveX = inp.moveY = 0;
@@ -743,10 +816,20 @@
       if (p.dead <= 0 && p.invuln <= 0) {
         const bi = this.bullets.findIndex((b) => Math.hypot(b.x - p.x, b.y - p.y) < b.r + C.hitRadius);
         if (bi >= 0) {
-          this.bullets.splice(bi, 1);
+          const b = this.bullets.splice(bi, 1)[0];
+          const shielded = p.shielded;
           this.hurt(C.bulletDamage);
-        } else if (this.enemies.some((e) => !e.dead && e.t > 0 && this.inBox(p, e, -6))) {
-          this.hurt(C.contactDamage);
+          if (!shielded) {
+            const bo = this.enemies.find((e) => !e.dead && RD.ENEMIES[e.type].style === "bat");
+            if (b.boss && bo) { bo.hp = Math.min(bo.maxHp, bo.hp + bo.maxHp * 0.02); this.effects.push({ type: "text", x: bo.x, y: bo.y - 90, text: "흡혈", color: "#ff4d5e", t: 0, life: 0.8, size: 16 }); }
+            if (b.freeze) { p.slow = 1.6; this.text("빙결!", "#bfe8ff"); }
+          }
+        } else {
+          const hitE = this.enemies.find((e) => !e.dead && e.t > 0 && this.inBox(p, e, -6));
+          if (hitE) {
+            this.hurt(C.contactDamage);
+            if (hitE.type === "bomber") this.damage(hitE, 999); // 자폭
+          }
         }
       }
     }
@@ -810,9 +893,15 @@
           for (const e of this.enemies) {
             if (!live(e) || !boxHit(s, e)) continue;
             const last = s.tick.get(e) || -1;
-            if (s.t - last >= 0.15) { s.tick.set(e, s.t); this.damage(e, s.dmg, true); }
+            if (s.t - last >= 0.18) { s.tick.set(e, s.t); this.damage(e, s.dmg, true); }
           }
-          this.bullets = this.bullets.filter((b) => b.boss || Math.abs(b.x - s.x) > s.w / 2 + b.r || Math.abs(b.y - s.y) > s.h / 2 + b.r);
+          // 회오리 하나가 지울 수 있는 탄 수에는 한도가 있다
+          s.absorbed = s.absorbed || 0;
+          this.bullets = this.bullets.filter((b) => {
+            if (s.absorbed >= RD.OWL_ABSORB || b.boss || Math.abs(b.x - s.x) > s.w / 2 + b.r || Math.abs(b.y - s.y) > s.h / 2 + b.r) return true;
+            s.absorbed++;
+            return false;
+          });
           continue;
         }
 
@@ -851,6 +940,11 @@
 
     damage(e, dmg, quiet) {
       if (e.dead) return;
+      const D0 = RD.ENEMIES[e.type];
+      if (!this.ult) {
+        if (D0.armor && !e.dashing) dmg *= D0.armor; // 딱정벌레 갑옷 (돌진 중에는 없음)
+        if (D0.style === "crystal" && this.enemies.some((o) => o.type === "shard" && !o.dead)) dmg *= 0.35; // 수정 갑옷
+      }
       e.hp -= dmg;
       if (!quiet) RD.audio && RD.audio.sfx("hit");
       if (!quiet || e.flash <= 0) e.flash = 0.06;
@@ -863,10 +957,17 @@
       this.gainExp(def.exp);
       this.effects.push({ type: "boom", x: e.x, y: e.y, t: 0, life: def.boss ? 2 : def.midboss ? 1 : 0.5, big: def.boss || def.midboss });
       const drop = (type, n = 1) => {
+        if (this.M.noHeal && (type === "heal" || type === "life")) return; // 하드코어
         for (let i = 0; i < n; i++) this.items.push({ type, x: e.x + rand(-20, 20), y: e.y + rand(-20, 20), vx: rand(-40, 80), vy: rand(-220, -80) });
       };
-      const heartChance = 0.03 * (1 + this.lv("luck"));
+      const heartChance = 0.03 * (1 + this.lv("luck")) * (this.terrain === "bless" ? 2 : 1);
       if (Math.random() < heartChance) drop("heal");
+      // 죽을 때 특성
+      this._firing = e;
+      if (e.type === "slime") for (let i = 0; i < 2; i++) this.addEnemy("slimelet", e.x + i * 24, C.groundY - 8, { path: "ground", variant: e.variant });
+      if (e.type === "mushroom") this.ring(e, 8, this.bulletSpeed * 0.45, rand(0, 1), "#c8ff6a"); // 포자
+      if (e.type === "bomber") this.ring(e, 8, this.bulletSpeed * 0.6, rand(0, 1), "#ff8a3d");
+      this._firing = null;
       if (e.type === "bat") drop("coin");
       if (e.type === "slime") drop("coin", 2);
       if (e.type === "mushroom") drop("gem", 2);
@@ -880,22 +981,25 @@
         drop("life");
         this.shake = 1;
         this.bullets = [];
-        if (this.mode === "story") {
-          if (this.loop >= STORY_STAGES) {
-            this.over = true;
-            this.win = true;
-            RD.audio && RD.audio.sfx("clear");
-            this.banner = { text: "ALL CLEAR!", sub: "박쥐 왕을 완전히 쓰러뜨렸다", color: "#ffd34d", t: 0, life: 99 };
-          } else {
-            RD.audio && RD.audio.sfx("clear");
-            this.banner = { text: `STAGE ${this.loop} CLEAR`, sub: `더 어려운 스테이지 ${this.loop + 1}로`, color: "#ffd34d", t: 0, life: 4 };
-            this.loop++;
-            this.stageT = -5;
-            this.stageIdx = 0;
-          }
-        } else {
+        const M = this.mode;
+        RD.audio && RD.audio.sfx("clear");
+        if (M === "stageselect" || (STORYLIKE.includes(M) && this.stageNo >= STORY_STAGES - 1)) {
+          // 마지막 지역(또는 스테이지 선택의 한 판) 클리어
+          this.over = true;
+          this.win = true;
+          this.reached = Math.max(this.reached, this.stageNo + 1);
+          this.banner = { text: M === "stageselect" ? "STAGE CLEAR!" : "ALL CLEAR!", sub: `${this.stage.bossName}을(를) 쓰러뜨렸다`, color: "#ffd34d", t: 0, life: 99 };
+        } else if (STORYLIKE.includes(M)) {
+          this.banner = { text: `${this.stage.name} 클리어`, sub: `다음 지역: ${RD.STAGES[this.stageNo + 1].name}`, color: "#ffd34d", t: 0, life: 3.5 };
           this.loop++;
-          this.banner = { text: "BOSS DOWN", sub: this.mode === "bossrush" ? `${this.loop}라운드 시작` : "적이 더 강해진다", color: "#ffd34d", t: 0, life: 3 };
+          this.stageT = -6;
+          this.stageIdx = 0;
+          this.setStage(this.stageNo + 1);
+        } else {
+          // 무한 / 보스 러시 / 혼돈 / 타임 어택: 다음 지역으로, 적이 더 강해진다
+          this.loop++;
+          this.banner = { text: "BOSS DOWN", sub: M === "bossrush" ? `${this.loop}라운드` : "적이 더 강해진다", color: "#ffd34d", t: 0, life: 3 };
+          if (M !== "chaos") this.setStage((this.stageNo + 1) % RD.STAGES.length);
         }
       }
       if (e.group) {
@@ -936,14 +1040,71 @@
             e.x -= (C.scrollSpeed + (e.type === "slime" ? 30 : 0)) * dt;
             if (e.type === "slime") e.y = C.groundY - RD.ENEMIES.slime.h / 2 - Math.abs(Math.sin(e.t * 3.2)) * 70;
             break;
+          case "snipe":
+            // 저격 눈알: 오른쪽 뒤에 자리 잡고, 시간이 지나면 떠난다
+            if (e.t < 10) e.x += (e.stopX - e.x) * Math.min(1, dt * 2);
+            else e.x += 120 * dt;
+            e.y += Math.sin(e.t * 1.5) * 15 * dt;
+            break;
+          case "charge": {
+            // 딱정벌레: 천천히 오다가 같은 높이가 되면 몸을 떨고 돌진
+            const p = this.player;
+            if (!e.dashing && !e.wind) {
+              e.x -= 70 * dt;
+              e.y += Math.sign(p.y - e.y) * Math.min(Math.abs(p.y - e.y), 40 * dt);
+              if (Math.abs(p.y - e.y) < 50 && e.x - p.x > 120 && e.x < C.width - 30) e.wind = 0.6;
+            } else if (e.wind) {
+              e.wind -= dt;
+              e.x += Math.sin(e.t * 60) * 2;
+              if (e.wind <= 0) { e.wind = 0; e.dashing = true; }
+            } else e.x -= 560 * dt;
+            break;
+          }
+          case "homing": {
+            // 자폭 가시공: 플레이어 쪽으로 방향을 튼다
+            const p = this.player;
+            const a = Math.atan2(p.y - e.y, p.x - e.x);
+            e.vx += Math.cos(a) * 420 * dt; e.vy += Math.sin(a) * 420 * dt;
+            const sp = Math.hypot(e.vx, e.vy), max = 230;
+            if (sp > max) { e.vx *= max / sp; e.vy *= max / sp; }
+            e.x += e.vx * dt; e.y += e.vy * dt;
+            if (e.t > 9) e.vy -= 600 * dt; // 오래되면 날아가 버린다
+            break;
+          }
+          case "orbit": {
+            // 수정 거인 주위를 도는 수정
+            const b = e.parent;
+            if (!b || b.dead) { e.dead = true; break; }
+            e.ang += dt * 1.4;
+            e.x = b.x + Math.cos(e.ang) * 120;
+            e.y = b.y + Math.sin(e.ang) * 110;
+            break;
+          }
           case "midboss":
             if (e.t < e.life) e.x += (e.stopX - e.x) * Math.min(1, dt * 1.2);
             else e.x -= C.scrollSpeed * dt; // 시간이 지나면 떠난다
             break;
-          case "boss":
-            e.x += (760 - e.x) * Math.min(1, dt * 0.8);
-            e.y = 240 + Math.sin(e.t * 0.9) * 110;
+          case "boss": {
+            const def = RD.ENEMIES[e.type];
+            if (!(def.style === "storm" && e.lastPh >= 2)) e.x += (760 - e.x) * Math.min(1, dt * 0.8);
+            if (def.style === "fire") {
+              // 마그마 슬라임 왕: 크게 뛰었다가 착지할 때 탄을 뿌린다
+              const hop = Math.abs(Math.sin(e.t * 1.6));
+              const wasUp = e.air;
+              e.air = hop > 0.08;
+              e.y = e.baseY - hop * 170;
+              if (wasUp && !e.air && e.x < C.width - 40) {
+                this._firing = e; this.ring(e, 14 + 2 * this.loop, bs * 0.7, rand(0, 1), "#ff7a3d"); this.shake = 0.2; this._firing = null;
+                // 용암 자국: 플레이어 근처 땅에서 용암이 솟는다
+                this.hazards.push({ type: "lava", x: this.player.x + rand(-50, 50), t: 0, warn: 0.8, active: 0.7, w: 60 });
+              }
+            } else if (def.ground) {
+              e.y = e.baseY;
+            } else if (!(def.style === "storm" && e.lastPh >= 2)) {
+              e.y = 240 + Math.sin(e.t * 0.9) * 110;
+            }
             break;
+          }
         }
 
         if (e.x > C.width - 20 || e.x < 20) continue;
@@ -968,35 +1129,39 @@
             e.fireT = 1.4 / fr;
             this.ring(e, 8 + 2 * L, bs * 0.75, e.t, "#7fd0ff");
             break;
+          case "eye":
+            // 1초 동안 조준선을 보여 준 뒤 그 방향으로 빠른 탄
+            if (!e.aiming) { e.aiming = 1.0; e.aimA = this.aimAt(e); e.fireT = 1.0; }
+            else { this.fire(e.x - 16, e.y, e.aimA, bs * 2.3, 7, "#ff3048"); e.aiming = 0; e.fireT = 2.2 / fr; }
+            break;
+          case "fairy":
+            e.fireT = 3 / fr;
+            this.ring(e, 6, bs * 0.6, e.t, "#9fffb0");
+            break;
+          case "beetle": case "bomber": case "slimelet": case "shard":
+            e.fireT = 99;
+            break;
           case "golem":
             e.fireT = 1.15 / fr;
             e.volley = (e.volley || 0) + 1;
             if (e.volley % 2) this.fan(e, 4 + L, 0.17, bs, "#ffb347");
             else for (let i = 0; i < 6; i++) this.fire(e.x - 30, e.y - 40, -Math.PI / 2 - 0.9 - i * 0.12, bs * 1.1, 8, "#c4945c");
             break;
-          case "boss": {
-            const k = e.hp / e.maxHp;
-            e.phase = k > 0.6 ? 1 : k > 0.3 ? 2 : 3;
-            if (e.phase === 1) {
-              e.fireT = 1.0 / fr;
-              this.fan(e, 7, 0.14, bs, "#ff5aa8");
-              if ((e.summon = (e.summon || 0) + 1) % 4 === 0) this.batLine(rand(100, 400), 4, "dive");
-            } else if (e.phase === 2) {
-              e.fireT = 0.1 / Math.sqrt(fr);
-              e.spin = (e.spin || 0) + 0.33;
-              this.fire(e.x - 20, e.y, e.spin, bs * 0.8, 6, "#c58aff");
-              this.fire(e.x - 20, e.y, e.spin + Math.PI, bs * 0.8, 6, "#c58aff");
-            } else {
-              e.fireT = 0.9 / fr;
-              e.ringN = (e.ringN || 0) + 1;
-              this.ring(e, 18, bs * 0.7, e.ringN * 0.17, "#ff4d5e");
-              if (e.ringN % 2) this.fan(e, 3, 0.1, bs * 1.25, "#ffd34d");
-            }
-            break;
-          }
+          default:
+            if (RD.ENEMIES[e.type].boss) this.bossAttack(e, bs, fr);
         }
       }
       this._firing = null;
+      for (const f of this.enemies) {
+        if (f.dead || f.type !== "fairy" || f.delay > 0) continue;
+        for (const o of this.enemies) {
+          if (o === f || o.dead || Math.hypot(o.x - f.x, o.y - f.y) > 170) continue;
+          o.hp = Math.min(o.maxHp, o.hp + (RD.ENEMIES[o.type].boss ? 3 : 6) * dt);
+          o.healed = 0.2;
+        }
+      }
+      for (const e of this.enemies) if (e.healed) e.healed = Math.max(0, e.healed - dt);
+      this.bossTraits(dt);
       for (const e of this.enemies) {
         if (!e.dead && (e.x < -120 || e.y < -150 || e.y > C.height + 150)) {
           e.gone = true;
@@ -1006,8 +1171,181 @@
       this.enemies = this.enemies.filter((e) => !e.gone && !e.dead);
     }
 
+    // ---------- 보스 특성 ----------
+    bossTraits(dt) {
+      const b = this.enemies.find((e) => !e.dead && RD.ENEMIES[e.type].boss);
+      if (!b) return;
+      const style = RD.ENEMIES[b.type].style;
+      const k = b.hp / b.maxHp;
+      const ph = k > 0.6 ? 1 : k > 0.3 ? 2 : 3;
+      if (ph !== b.lastPh) {
+        if (b.lastPh) {
+          if (style === "crystal") this.spawnShards(b);
+          if (style === "fire") for (let i = 0; i < 3; i++) this.addEnemy("slime", b.x - 60 - i * 50, C.groundY - 15, { path: "ground", variant: "fire" });
+          this.banner = { text: ph === 3 ? "보스 분노!" : "보스 패턴 변화", color: "#ff8a3d", t: 0, life: 1.2, small: true };
+        }
+        b.lastPh = ph;
+      }
+      if (style === "storm" && ph >= 2 && (b.tp = (b.tp || 3) - dt) <= 0) {
+        // 순간이동
+        b.tp = ph === 3 ? 2.6 : 3.6;
+        this.effects.push({ type: "boom", x: b.x, y: b.y, t: 0, life: 0.3, r: 60 });
+        b.x = rand(560, 880); b.baseY = rand(110, 360);
+        this.effects.push({ type: "ring", x: b.x, y: b.baseY, t: 0, life: 0.4 });
+      }
+      if (style === "storm" && ph >= 2 && b.baseY != null) b.y += (b.baseY - b.y) * Math.min(1, dt * 6);
+      if (style === "bat" && ph === 3) b.y = 240 + Math.sin(b.t * 2.2) * 150; // 분노: 빨라진다
+    }
+
+    // ---------- 지역 보스 공격 (체력에 따라 3단계) ----------
+    bossAttack(e, bs, fr) {
+      const def = RD.ENEMIES[e.type];
+      const k = e.hp / e.maxHp;
+      e.phase = k > 0.6 ? 1 : k > 0.3 ? 2 : 3;
+      const ph = e.phase;
+      e.n = (e.n || 0) + 1;
+      switch (def.style) {
+        case "bat": // 박쥐 왕: 부채꼴 + 소환 → 나선 → 원형
+          if (ph === 1) {
+            e.fireT = 1.0 / fr;
+            this.fan(e, 7, 0.14, bs, "#ff5aa8");
+            if (e.n % 4 === 0) this.batLine(rand(100, 400), 4, "dive");
+          } else if (ph === 2) {
+            e.fireT = 0.1 / Math.sqrt(fr);
+            e.spin = (e.spin || 0) + 0.33;
+            this.fire(e.x - 20, e.y, e.spin, bs * 0.8, 6, "#c58aff");
+            this.fire(e.x - 20, e.y, e.spin + Math.PI, bs * 0.8, 6, "#c58aff");
+          } else {
+            e.fireT = 0.9 / fr;
+            this.ring(e, 18, bs * 0.7, e.n * 0.17, "#ff4d5e");
+            if (e.n % 2) this.fan(e, 3, 0.1, bs * 1.25, "#ffd34d");
+          }
+          break;
+        case "crystal": // 수정 거인: 수정 비 → 회전 십자 → 원형 + 비
+          if (ph === 1 || ph === 3) {
+            e.fireT = (ph === 1 ? 0.9 : 0.7) / fr;
+            for (let i = 0; i < 5; i++) this.fire(rand(120, C.width - 60), -10, Math.PI / 2 + rand(0.1, 0.4), bs * 0.6, 7, "#9fe8ff");
+            if (ph === 1) this.fan(e, 3, 0.2, bs, "#c58aff");
+            else if (e.n % 2) this.ring(e, 20, bs * 0.65, e.n * 0.2, "#c58aff");
+          } else {
+            e.fireT = 0.11 / Math.sqrt(fr);
+            e.spin = (e.spin || 0) + 0.12;
+            for (let i = 0; i < 4; i++) this.fire(e.x, e.y - 40, e.spin + (i * Math.PI) / 2, bs * 0.85, 6, "#9fe8ff");
+          }
+          break;
+        case "fire": // 마그마 슬라임 왕: (착지 탄은 이동에서) 터지는 불덩이 → 불꽃 나선
+          if (ph === 1) {
+            e.fireT = 1.6 / fr;
+            this.fan(e, 5, 0.18, bs * 0.9, "#ffb347");
+          } else if (ph === 2) {
+            e.fireT = 1.2 / fr;
+            // 불덩이: 날아가다 터져서 원형 탄이 된다
+            for (let i = -1; i <= 1; i++) {
+              const a = this.aimAt(e) + i * 0.35;
+              this.bullets.push({ x: e.x - 40, y: e.y - 30, vx: Math.cos(a) * bs * 0.6, vy: Math.sin(a) * bs * 0.6, r: 13, color: "#ff5a1a", boss: true, fuse: 0.9, burst: 10 });
+            }
+          } else {
+            e.fireT = 0.09 / Math.sqrt(fr);
+            e.spin = (e.spin || 0) + 0.27;
+            for (let i = 0; i < 3; i++) this.fire(e.x - 20, e.y - 40, e.spin + (i * Math.PI * 2) / 3, bs * 0.75, 6, "#ff7a3d");
+          }
+          break;
+        case "frost": // 서리 여왕: 눈꽃 → 고드름 벽 → 둘 다
+          if (ph === 1 || (ph === 3 && e.n % 2)) {
+            e.fireT = (ph === 1 ? 0.55 : 0.5) / fr;
+            e.spin = (e.spin || 0) + 0.21;
+            for (let i = 0; i < 6; i++) {
+              const a = e.spin + (i * Math.PI) / 3;
+              this.fire(e.x, e.y, a, bs * 0.75, 6, "#dff4ff");
+              this.fire(e.x, e.y, a + 0.12, bs * 0.6, 5, "#9fd0ff");
+              this.bullets[this.bullets.length - 1].freeze = this.bullets[this.bullets.length - 2].freeze = true;
+            }
+          } else {
+            e.fireT = 1.7 / fr;
+            // 고드름 벽: 오른쪽에서 세로 줄로 밀려오고, 빈틈이 하나 있다
+            const gap = Math.max(90, Math.min(C.groundY - 60, this.player.y + rand(-80, 80)));
+            for (let y = 40; y < C.groundY; y += 34) if (Math.abs(y - gap) > 55) { this.fire(C.width + 10, y, Math.PI, bs * 0.7, 7, "#bfe8ff"); this.bullets[this.bullets.length - 1].freeze = true; }
+            if (ph === 3) this.fan(e, 3, 0.15, bs, "#ffffff");
+          }
+          break;
+        case "storm": // 폭풍 군주: 고속 연속탄 → 흩뿌리기 + 소환 → 낙뢰 + 원형
+          if (ph === 1) {
+            e.fireT = 1.1 / fr;
+            const a = this.aimAt(e);
+            for (let i = 0; i < 6; i++) this.fire(e.x - 20 - i * 18, e.y, a, bs * (1.2 + i * 0.05), 6, "#ffe66b");
+          } else if (ph === 2) {
+            e.fireT = 0.6 / fr;
+            for (let i = 0; i < 10; i++) this.fire(e.x, e.y, Math.PI + rand(-1.1, 1.1), bs * rand(0.5, 1.0), 6, "#c8a0ff");
+            if (e.n % 5 === 0) this.batLine(rand(100, 400), 5, "dive");
+          } else {
+            e.fireT = 0.8 / fr;
+            this.ring(e, 16, bs * 0.75, e.n * 0.2, "#ffe66b");
+            this.strike(this.player.x + rand(-60, 60), 0.8);
+          }
+          break;
+      }
+    }
+
+    // ---------- 지형 효과 ----------
+    strike(x, warn = 1.0) { this.hazards.push({ type: "bolt", x: Math.max(30, Math.min(C.width - 30, x)), t: 0, warn, active: 0.25, w: 46 }); }
+
+    updateTerrain(dt) {
+      const p = this.player;
+      this.terrainT += dt;
+      const tr = this.terrain;
+      if (tr === "lava") {
+        // 용암 기둥 (예고 후 분출) + 떨어지는 불똥
+        if ((this.lavaT = (this.lavaT || 2) - dt) <= 0) {
+          this.lavaT = rand(2.6, 4) / Math.sqrt(this.D.fireRate);
+          const x = Math.random() < 0.6 ? p.x + rand(-40, 40) : rand(80, C.width - 80);
+          this.hazards.push({ type: "lava", x, t: 0, warn: 1.2, active: 0.9, w: 70 });
+        }
+        if ((this.emberT = (this.emberT || 1) - dt) <= 0) {
+          this.emberT = rand(0.5, 0.9);
+          this.bullets.push({ x: rand(100, C.width), y: -10, vx: rand(-60, -20), vy: rand(110, 160), r: 5, color: "#ff8a3d" });
+        }
+      }
+      if (tr === "storm") {
+        if ((this.boltT = (this.boltT || 2.5) - dt) <= 0) {
+          this.boltT = rand(2.2, 3.4) / Math.sqrt(this.D.fireRate);
+          this.strike(Math.random() < 0.7 ? p.x + rand(-30, 30) : rand(60, C.width - 60));
+        }
+      }
+      if (tr === "ice") {
+        // 강풍: 몇 초마다 옆으로 민다
+        if (!this.wind && (this.windT = (this.windT || 5) - dt) <= 0) {
+          this.wind = { dir: Math.random() < 0.5 ? -1 : 1, t: 0, life: 2.2 };
+          this.windT = rand(5, 8);
+        }
+        if (this.wind) {
+          if (p.dead <= 0) p.x = Math.max(30, Math.min(C.width - 40, p.x + this.wind.dir * 150 * dt));
+          if ((this.wind.t += dt) > this.wind.life) this.wind = null;
+        }
+      }
+      for (const h of this.hazards) {
+        h.t += dt;
+        const on = h.t > h.warn && h.t < h.warn + h.active;
+        if (on && !h.hit && p.dead <= 0 && p.invuln <= 0 && Math.abs(p.x - h.x) < h.w / 2) {
+          h.hit = true;
+          this.hurt(h.type === "lava" ? 24 : 22);
+        }
+        if (on && !h.boomed) { h.boomed = true; this.shake = Math.max(this.shake, 0.15); RD.audio && RD.audio.sfx(h.type === "lava" ? "explode_small" : "hurt"); }
+      }
+      this.hazards = this.hazards.filter((h) => h.t < h.warn + h.active + 0.3);
+    }
+
     updateBullets(dt) {
-      for (const b of this.bullets) { b.x += b.vx * dt; b.y += b.vy * dt; }
+      for (const b of this.bullets) {
+        b.x += b.vx * dt; b.y += b.vy * dt;
+        if (b.fuse != null && (b.fuse -= dt) <= 0) {
+          // 터지는 탄
+          b.dead = true;
+          const prev = this._firing;
+          for (let i = 0; i < b.burst; i++) this.bullets.push({ x: b.x, y: b.y, vx: Math.cos((i / b.burst) * Math.PI * 2) * 150, vy: Math.sin((i / b.burst) * Math.PI * 2) * 150, r: 6, color: b.color, boss: b.boss });
+          this._firing = prev;
+        }
+      }
+      this.bullets = this.bullets.filter((b) => !b.dead);
       this.bullets = this.bullets.filter((b) => b.x > -20 && b.x < C.width + 20 && b.y > -20 && b.y < C.height + 20);
     }
 

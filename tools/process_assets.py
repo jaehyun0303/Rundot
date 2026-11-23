@@ -44,6 +44,13 @@ def magenta_mask(rgb: np.ndarray) -> np.ndarray:
     return flood_from_border(candidate)
 
 
+def white_mask(rgb: np.ndarray) -> np.ndarray:
+    """흰 배경 (마젠타가 잘 안 나올 때 대안)."""
+    r, g, b = (rgb[..., i].astype(int) for i in range(3))
+    candidate = (r > 235) & (g > 235) & (b > 235)
+    return flood_from_border(candidate)
+
+
 def flood_from_border(candidate: np.ndarray) -> np.ndarray:
     h, w = candidate.shape
     bg = np.zeros_like(candidate)
@@ -73,7 +80,7 @@ def cut(src: str, box, mode: str, out: str, size=None):
     if mode == "none":
         alpha = np.full(rgb.shape[:2], 255, np.uint8)
     else:
-        bg = checker_mask(rgb) if mode == "checker" else magenta_mask(rgb)
+        bg = checker_mask(rgb) if mode == "checker" else white_mask(rgb) if mode == "white" else magenta_mask(rgb)
         alpha = np.where(bg, 0, 255).astype(np.uint8)
     rgba = Image.fromarray(np.dstack([rgb, alpha]), "RGBA")
     if mode != "none":

@@ -124,13 +124,14 @@
   };
   let current = null, wanted = null, step = 0, nextTime = 0, timer = null;
 
+  let transpose = 0;
   function playStep(tr, i, t) {
     const at = t - ctx.currentTime;
     const len = 60 / tr.bpm / 2; // 8분음표
     const b = tr.bass[i % tr.bass.length];
-    if (b) tone(hz(b), len * 0.9, { type: "triangle", vol: 0.32, at, out: musicGain });
+    if (b) tone(hz(b + transpose), len * 0.9, { type: "triangle", vol: 0.32, at, out: musicGain });
     const l = tr.lead[i % tr.lead.length];
-    if (l) tone(hz(l), len * 0.85, { type: tr.leadType, vol: tr.leadType === "sawtooth" ? 0.07 : 0.09, at, out: musicGain });
+    if (l) tone(hz(l + transpose), len * 0.85, { type: tr.leadType, vol: tr.leadType === "sawtooth" ? 0.07 : 0.09, at, out: musicGain });
     const d = tr.drum[i % tr.drum.length];
     if (d === "k") tone(140, 0.12, { type: "sine", vol: 0.5, slide: 0.3, at, out: musicGain });
     if (d === "s") noise(0.12, { vol: 0.18, freq: 1800, at, out: musicGain });
@@ -143,7 +144,10 @@
     current = name;
     clearInterval(timer);
     if (!name) return;
-    const tr = TRACKS[name];
+    // "stage:-3" 처럼 뒤에 붙은 숫자만큼 조를 바꾼다 (지역마다 다른 느낌)
+    const [base, tp] = name.split(":");
+    transpose = Number(tp) || 0;
+    const tr = TRACKS[base];
     step = 0;
     nextTime = ctx.currentTime + 0.1;
     timer = setInterval(() => {

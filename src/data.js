@@ -45,11 +45,61 @@ RD.DIFFICULTY = {
 
 // 게임 모드
 RD.MODES = {
-  story: { name: "스테이지", desc: "3개 스테이지를 깨고 박쥐 왕을 쓰러뜨려라" },
-  endless: { name: "무한", desc: "끝없이 몰려오는 적. 얼마나 버틸 수 있을까" },
-  bossrush: { name: "보스 러시", desc: "강화 3개를 고르고 보스만 연달아 상대한다" },
+  story: { name: "스토리", desc: "5개 지역을 차례로 깨고 폭풍 군주를 쓰러뜨려라" },
+  stageselect: { name: "스테이지 선택", desc: "스토리에서 도달한 지역을 골라 한 판만 한다" },
+  endless: { name: "무한", desc: "보스를 잡을 때마다 지역이 바뀌며 끝없이 강해진다" },
+  bossrush: { name: "보스 러시", desc: "강화 3개를 고르고 지역 보스만 연달아 상대한다" },
   timeattack: { name: "타임 어택", desc: "3분 동안 최대한 많은 점수를 모아라", time: 180 },
+  hardcore: { name: "하드코어", desc: "스토리를 잔기 1개로. 회복 아이템 없음, 점수 x2", lives: 1, noHeal: true, scoreMul: 2 },
+  chaos: { name: "혼돈", desc: "30초마다 지역과 지형 효과가 무작위로 바뀐다. 점수 x1.5", scoreMul: 1.5, shiftEvery: 30 },
 };
+
+// 지역(스테이지). 배경 이미지(bg, ground)가 없으면 코드로 그린 임시 배경을 쓴다
+// variant: 그 지역 몬스터의 색 / effect: 지형 효과
+RD.STAGES = [
+  {
+    id: "forest", mobs: ["fairy", "bomber"], bossTrait: "흡혈: 박쥐 왕의 탄에 맞으면 박쥐 왕이 회복한다. 체력이 낮아지면 더 빨라진다", name: "속삭이는 숲", bg: "bg_forest", ground: "ground", variant: null,
+    effect: "bless", effectName: "숲의 축복", effectDesc: "하트가 2배로 자주 나온다",
+    boss: "boss_bat", bossName: "박쥐 왕", midName: "돌 골렘", transpose: 0,
+    sky: ["#1b2348", "#3d4f6e"], far: "#2a3a55", mid: "#1f3b2c", groundCol: ["#4f8a3a", "#5a3a22"], shape: "trees",
+  },
+  {
+    id: "cave", mobs: ["eye", "beetle"], bossTrait: "수정 갑옷: 주위를 도는 수정이 있는 동안 피해가 크게 줄어든다. 수정을 먼저 깨라", name: "수정 동굴", bg: "bg_cave", ground: "ground_cave", variant: "crystal",
+    effect: "dark", effectName: "어둠", effectDesc: "내 주변만 보인다. 적 탄은 빛나서 보인다",
+    boss: "boss_crystal", bossName: "수정 거인", midName: "수정 골렘", transpose: -3,
+    sky: ["#0b0a1a", "#1c1636"], far: "#231d40", mid: "#3a2d6a", groundCol: ["#4b3f7a", "#241c3a"], shape: "crystals",
+  },
+  {
+    id: "volcano", mobs: ["bomber", "beetle"], bossTrait: "분열과 용암 자국: 착지한 자리에 용암이 남고, 체력이 줄면 새끼 슬라임을 낳는다", name: "불타는 화산", bg: "bg_volcano", ground: "ground_volcano", variant: "fire",
+    effect: "lava", effectName: "용암 분출", effectDesc: "예고된 자리에서 용암 기둥이 솟고 불똥이 떨어진다",
+    boss: "boss_fire", bossName: "마그마 슬라임 왕", midName: "용암 골렘", transpose: 2,
+    sky: ["#2a0a0a", "#6a1e12"], far: "#3a1410", mid: "#24100c", groundCol: ["#3a2420", "#ff6a1a"], shape: "volcano",
+  },
+  {
+    id: "snow", mobs: ["beetle", "fairy", "eye"], bossTrait: "빙결: 서리 여왕의 탄에 맞으면 잠깐 느려진다", name: "얼어붙은 설원", bg: "bg_snow", ground: "ground_snow", variant: "ice",
+    effect: "ice", effectName: "빙판과 눈보라", effectDesc: "미끄러지듯 움직이고, 가끔 강풍이 옆으로 민다",
+    boss: "boss_frost", bossName: "서리 여왕", midName: "얼음 골렘", transpose: -5,
+    sky: ["#6a86b0", "#c8d8ec"], far: "#9ab0cc", mid: "#5a7a9a", groundCol: ["#eef4fa", "#8aa4c0"], shape: "pines",
+  },
+  {
+    id: "sky", mobs: ["eye", "bomber", "fairy"], bossTrait: "순간이동: 체력이 줄면 여기저기로 순간이동하며 공격한다", name: "폭풍의 하늘", bg: "bg_sky", ground: "ground_sky", variant: "storm",
+    effect: "storm", effectName: "낙뢰", effectDesc: "예고선이 뜬 자리에 번개가 떨어진다",
+    boss: "boss_storm", bossName: "폭풍 군주", midName: "구름 골렘", transpose: 5,
+    sky: ["#14142a", "#3a3a5c"], far: "#2a2a48", mid: "#4a4a6a", groundCol: ["#8a8aa8", "#4a4a6a"], shape: "clouds",
+  },
+];
+
+// 몬스터 색 바꾸기 (색상 회전, 채도, 밝기)
+// hueTo: 끌어당길 색상(0~360), mix: 얼마나 끌어당길지(0~1)
+RD.VARIANTS = {
+  crystal: { hueTo: 265, mix: 0.75, sat: 1.2, light: 0.04 },
+  fire: { hueTo: 18, mix: 0.85, sat: 1.5, light: 0 },
+  ice: { hueTo: 200, mix: 0.85, sat: 0.7, light: 0.16 },
+  storm: { hueTo: 52, mix: 0.7, sat: 1.2, light: 0.06 },
+};
+
+// 부엉이 회오리: 하나가 지울 수 있는 적 탄 수
+RD.OWL_ABSORB = 5;
 
 // 캐릭터 등급 (뽑기)
 RD.GRADES = {
@@ -115,10 +165,10 @@ RD.CHARACTERS = [
     name: "부엉이 비행사",
     grade: "SR",
     type: "설치형",
-    desc: "천천히 나아가는 회오리. 닿은 적을 계속 때리고 적 탄을 날려 버린다 (보스 탄은 못 막음)",
+    desc: "천천히 나아가는 회오리. 닿은 적을 계속 때리고 적 탄을 날려 버린다 (회오리 하나당 5발, 보스 탄은 못 막음)",
     illust: "illust_owl",
     shot: {
-      name: "회오리", kind: "tornado", cd: 0.85, dmg: 2.4, speed: 250, w: 54, h: 96, life: 2.4, color: "#bff5d8", pierceAll: true,
+      name: "회오리", kind: "tornado", cd: 0.9, dmg: 2.0, speed: 250, w: 54, h: 96, life: 2.4, color: "#bff5d8", pierceAll: true,
       multi: [1, 2, 3, 4], // 한 번에 만드는 회오리 수
       multiDesc: (lv) => `한 번에 만드는 회오리 ${lv + 1}개 → ${lv + 2}개`,
     },
@@ -170,8 +220,20 @@ RD.ENEMIES = {
   wisp: { sprite: "wisp", exp: 5, hp: 18, w: 40, h: 40, score: 400, scale: 2 },
   slime: { sprite: "slime", exp: 2, hp: 6, w: 40, h: 30, score: 200, scale: 2, ground: true },
   mushroom: { sprite: "mushroom", exp: 3, hp: 10, w: 40, h: 46, score: 300, scale: 2, ground: true },
+  // 특성이 있는 몬스터
+  eye: { sprite: "eye", exp: 3, hp: 8, w: 36, h: 36, score: 400, scale: 2, desc: "저격: 조준선을 띄운 뒤 빠른 탄을 쏜다" },
+  beetle: { sprite: "beetle", exp: 4, hp: 14, w: 46, h: 32, score: 500, scale: 2.2, armor: 0.35, desc: "갑옷: 받는 피해 65% 감소. 돌진하는 동안은 배가 드러나 갑옷이 없다" },
+  fairy: { sprite: "fairy", exp: 3, hp: 7, w: 34, h: 34, score: 600, scale: 2, desc: "치유: 주변 몬스터의 체력을 채운다. 먼저 잡자" },
+  bomber: { sprite: "bomber", exp: 2, hp: 3, w: 34, h: 34, score: 300, scale: 1.8, desc: "자폭: 쫓아와서 터지고, 죽으면 탄을 흩뿌린다" },
+  slimelet: { sprite: "slime", exp: 1, hp: 2, w: 22, h: 16, score: 80, scale: 1.1, ground: true, desc: "슬라임이 죽으면 둘로 갈라진다" },
+  shard: { sprite: "shard", exp: 2, hp: 60, w: 26, h: 40, score: 800, scale: 1.6, desc: "수정 갑옷: 살아 있는 동안 수정 거인이 받는 피해 65% 감소" },
   golem: { sprite: "golem", exp: 25, hp: 360, w: 90, h: 100, score: 5000, scale: 3.6, ground: true, midboss: true },
-  boss: { sprite: "batking", exp: 60, hp: 1700, w: 200, h: 150, score: 50000, scale: 6, boss: true },
+  // 지역 보스 (지역마다 공격 패턴이 다르다)
+  boss_bat: { sprite: "batking", exp: 60, hp: 1700, w: 200, h: 150, score: 50000, scale: 6, boss: true, style: "bat" },
+  boss_crystal: { sprite: "golem", variant: "crystal", exp: 70, hp: 2000, w: 150, h: 160, score: 60000, scale: 5.6, boss: true, ground: true, style: "crystal" },
+  boss_fire: { sprite: "slime", variant: "fire", exp: 80, hp: 2100, w: 200, h: 130, score: 70000, scale: 7, boss: true, ground: true, style: "fire" },
+  boss_frost: { sprite: "batking", variant: "ice", exp: 90, hp: 2300, w: 200, h: 150, score: 80000, scale: 6, boss: true, style: "frost" },
+  boss_storm: { sprite: "wisp", variant: "storm", exp: 100, hp: 2600, w: 170, h: 170, score: 100000, scale: 6.5, boss: true, style: "storm" },
 };
 
 // 적 탄
@@ -205,6 +267,8 @@ RD.UPGRADES = [
 
 RD.IMAGES = [
   "bg_forest", "ground",
+  // 새 지역 이미지 (없으면 코드로 그린 배경을 쓴다)
+  "bg_cave", "ground_cave", "bg_volcano", "ground_volcano", "bg_snow", "ground_snow", "bg_sky", "ground_sky",
   "item_gem", "item_star", "item_coin", "item_heart",
   "pet_0", "pet_1", "pet_2", "pet_3",
 ];

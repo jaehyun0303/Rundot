@@ -274,6 +274,52 @@
     p(14, 20, 4, 1, OUTLINE);
     p(9, 24, 3, 3 + fl, a); p(15, 24, 3, 4 - fl, a); p(21, 24, 3, 3 + fl, a);
   };
+  // 저격 눈알: 커다란 눈 하나, 촉수
+  MON.eye = function (p, f, hurt) {
+    const skin = hurt ? "#ffffff" : "#8a3a6a", dk = "#5a2246";
+    p(8, 8, 16, 16, skin); p(6, 11, 20, 10, skin); p(10, 6, 12, 2, skin);
+    p(10, 10, 12, 12, "#f4eef0"); p(12, 9, 8, 14, "#f4eef0");
+    p(13, 12, 6, 8, hurt ? "#ffffff" : "#ff3048"); p(15, 14, 2, 4, OUTLINE); p(14, 12, 2, 2, "#fff");
+    const w = f % 2;
+    p(9, 24, 2, 4 + w, dk); p(14, 24, 2, 5 - w, dk); p(19, 24, 2, 4 + w, dk); p(23, 22, 2, 4 - w, dk); p(6, 22, 2, 3 + w, dk);
+  };
+  // 갑옷 딱정벌레: 단단한 등껍질, 앞으로 돌진
+  MON.beetle = function (p, f, hurt) {
+    const sh = hurt ? "#ffffff" : "#2f6a8a", hi = hurt ? "#ffffff" : "#5fb0d8";
+    p(8, 10, 18, 12, sh); p(10, 8, 14, 2, sh); p(6, 13, 2, 7, sh);
+    p(16, 9, 1, 13, OUTLINE);
+    p(11, 11, 4, 2, hi); p(19, 11, 4, 2, hi);
+    p(3, 14, 5, 6, "#3a2a1a"); p(1, 15, 2, 2, "#e0c070"); p(1, 19, 2, 2, "#e0c070"); // 머리와 뿔
+    p(4, 15, 1, 1, "#ff4d5e");
+    const w = f % 2;
+    p(9 + w, 22, 2, 4, "#3a2a1a"); p(15 - w, 22, 2, 4, "#3a2a1a"); p(21 + w, 22, 2, 4, "#3a2a1a");
+  };
+  // 치유 요정: 주변 몬스터의 체력을 채운다
+  MON.fairy = function (p, f, hurt) {
+    const body = hurt ? "#ffffff" : "#7fe08a", wing = hurt ? "#ffffff" : "#d8fff0";
+    const w = f % 2;
+    p(4, 6 + w * 3, 8, 8 - w * 2, wing); p(20, 6 + w * 3, 8, 8 - w * 2, wing);
+    p(12, 8, 8, 8, "#ffe0c0"); p(12, 7, 8, 3, body);
+    p(13, 11, 2, 2, OUTLINE); p(17, 11, 2, 2, OUTLINE);
+    p(12, 16, 8, 8, body); p(11, 22, 10, 3, body);
+    p(22, 14, 2, 10, "#c8a060"); p(21, 12, 4, 3, "#ff8ad8"); // 지팡이
+  };
+  // 자폭 가시공: 플레이어에게 날아와 터진다
+  MON.bomber = function (p, f, hurt) {
+    const b = hurt ? "#ffffff" : "#3a3a48", sp = hurt ? "#ffffff" : "#c8c8d8";
+    p(9, 9, 14, 14, b); p(7, 12, 18, 8, b); p(12, 7, 8, 18, b);
+    p(15, 3, 2, 4, sp); p(15, 25, 2, 4, sp); p(3, 15, 4, 2, sp); p(25, 15, 4, 2, sp);
+    p(7, 7, 3, 3, sp); p(22, 7, 3, 3, sp); p(7, 22, 3, 3, sp); p(22, 22, 3, 3, sp);
+    p(11, 13, 3, 3, f % 2 ? "#ff3048" : "#ffd34d"); p(18, 13, 3, 3, f % 2 ? "#ff3048" : "#ffd34d");
+    p(12, 19, 8, 2, "#ff8a3d");
+  };
+  // 수정 갑옷 (수정 거인 주위를 도는 방패 수정)
+  MON.shard = function (p, f, hurt) {
+    const c = hurt ? "#ffffff" : "#9fe8ff";
+    p(13, 4, 6, 4, c); p(11, 8, 10, 12, c); p(13, 20, 6, 6, c); p(15, 26, 2, 3, c);
+    p(13, 8, 2, 10, "#ffffff");
+  };
+
   // 보스: 박쥐 왕 (왕관과 망토)
   MON.batking = function (p, f, hurt) {
     MON.bat(p, f, hurt);
@@ -285,8 +331,33 @@
 
   const mcache = {};
   RD.MONSTER_SIZE = MSIZE;
-  RD.getMonsterFrame = function (type, frame, hurt) {
-    const key = type + frame + (hurt ? "h" : "");
+  // 지역 색으로 바꾸기: 색상 회전, 채도, 밝기 (테두리와 흰색은 그대로)
+  function recolor(cv, v) {
+    const g = cv.getContext("2d");
+    const img = g.getImageData(0, 0, cv.width, cv.height), d = img.data;
+    for (let i = 0; i < d.length; i += 4) {
+      if (!d[i + 3]) continue;
+      let r = d[i] / 255, gg = d[i + 1] / 255, b = d[i + 2] / 255;
+      const mx = Math.max(r, gg, b), mn = Math.min(r, gg, b);
+      let h = 0, sat = 0, l = (mx + mn) / 2;
+      if (mx - mn < 0.04 || l < 0.15 || l > 0.95) continue; // 회색, 테두리, 흰색
+      const dd = mx - mn;
+      sat = l > 0.5 ? dd / (2 - mx - mn) : dd / (mx + mn);
+      h = mx === r ? (gg - b) / dd + (gg < b ? 6 : 0) : mx === gg ? (b - r) / dd + 2 : (r - gg) / dd + 4;
+      h = h * 60;
+      let dh = ((v.hueTo - h + 540) % 360) - 180; // 가장 가까운 쪽으로
+      h = ((h + dh * v.mix) % 360 + 360) % 360 / 360;
+      sat = Math.min(1, sat * v.sat);
+      l = Math.min(0.92, l + v.light);
+      const q = l < 0.5 ? l * (1 + sat) : l + sat - l * sat, pp = 2 * l - q;
+      const f = (t) => { t = (t + 1) % 1; return t < 1 / 6 ? pp + (q - pp) * 6 * t : t < 1 / 2 ? q : t < 2 / 3 ? pp + (q - pp) * (2 / 3 - t) * 6 : pp; };
+      d[i] = f(h + 1 / 3) * 255; d[i + 1] = f(h) * 255; d[i + 2] = f(h - 1 / 3) * 255;
+    }
+    g.putImageData(img, 0, 0);
+  }
+
+  RD.getMonsterFrame = function (type, frame, hurt, variant) {
+    const key = type + frame + (hurt ? "h" : "") + (variant || "");
     if (!mcache[key]) {
       const cv = document.createElement("canvas");
       cv.width = cv.height = MSIZE;
@@ -294,6 +365,7 @@
       const p = (x, y, w, h, col) => { g.fillStyle = col; g.fillRect(x, y, w, h); };
       MON[type](p, frame, hurt);
       outline(cv);
+      if (variant && !hurt && RD.VARIANTS[variant]) recolor(cv, RD.VARIANTS[variant]);
       mcache[key] = cv;
     }
     return mcache[key];
