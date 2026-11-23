@@ -172,6 +172,19 @@ CROPS = [
     # 나팔 천사 컷씬 (가장자리 검은 선 제외)
     ("cut_angel.png", (6, 4, 508, 760), "magenta", "cut_angel_0.png", None),
     ("cut_angel.png", (516, 4, 1017, 760), "magenta", "cut_angel_1.png", None),
+    # 중간 보스 골렘, 특수 몬스터 (프레임별)
+    ("golem.png", (6, 4, 506, 760), "magenta", "mon_golem_0.png", None),
+    ("golem.png", (518, 4, 1018, 760), "magenta", "mon_golem_1.png", None),
+    ("eye.png", (4, 4, 508, 660), "magenta", "mon_eye_0.png", None),
+    ("eye.png", (516, 4, 1020, 660), "magenta", "mon_eye_1.png", None),
+    ("beetle.png", (4, 4, 506, 379), "magenta", "mon_beetle_0.png", None),
+    ("beetle.png", (514, 4, 1020, 379), "magenta", "mon_beetle_1.png", None),
+    ("beetle.png", (4, 387, 506, 760), "magenta", "mon_beetle_2.png", None),
+    ("beetle.png", (514, 387, 1020, 760), "magenta", "mon_beetle_3.png", None),
+    ("fairy.png", (0, 0, 512, 765), "magenta", "mon_fairy_0.png", None),
+    ("fairy.png", (512, 0, 1024, 765), "magenta", "mon_fairy_1.png", None),
+    ("bomber.png", (4, 4, 508, 760), "magenta", "mon_bomber_0.png", None),
+    ("bomber.png", (514, 4, 1020, 760), "magenta", "mon_bomber_1.png", None),
     # 배경 / 바닥 (불투명)
     ("bg_forest.png", (0, 0, 1024, 572), "none", "bg_forest.png", None),
     ("ground.png", (0, 0, 1024, 495), "checker", "ground.png", None),

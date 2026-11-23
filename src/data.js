@@ -308,13 +308,13 @@ RD.ENEMIES = {
   slime: { sprite: "slime", exp: 2, hp: 6, w: 40, h: 30, score: 200, scale: 2, ground: true },
   mushroom: { sprite: "mushroom", exp: 3, hp: 10, w: 40, h: 46, score: 300, scale: 2, ground: true },
   // 특성이 있는 몬스터
-  eye: { sprite: "eye", exp: 3, hp: 8, w: 36, h: 36, score: 400, scale: 2, desc: "저격: 조준선을 띄운 뒤 빠른 탄을 쏜다" },
-  beetle: { sprite: "beetle", exp: 4, hp: 14, w: 46, h: 32, score: 500, scale: 2.2, armor: 0.35, desc: "갑옷: 받는 피해 65% 감소. 돌진하는 동안은 배가 드러나 갑옷이 없다" },
-  fairy: { sprite: "fairy", exp: 3, hp: 7, w: 34, h: 34, score: 600, scale: 2, desc: "치유: 주변 몬스터의 체력을 채운다. 먼저 잡자" },
-  bomber: { sprite: "bomber", exp: 2, hp: 3, w: 34, h: 34, score: 300, scale: 1.8, desc: "자폭: 쫓아와서 터지고, 죽으면 탄을 흩뿌린다" },
+  eye: { img: ["mon_eye_0", "mon_eye_1"], drawH: 54, fps: 3, sprite: "eye", exp: 3, hp: 8, w: 36, h: 36, score: 400, scale: 2, desc: "저격: 조준선을 띄운 뒤 빠른 탄을 쏜다" },
+  beetle: { img: ["mon_beetle_0", "mon_beetle_1", "mon_beetle_2", "mon_beetle_3"], drawH: 42, fps: 10, sprite: "beetle", exp: 4, hp: 14, w: 46, h: 32, score: 500, scale: 2.2, armor: 0.35, desc: "갑옷: 받는 피해 65% 감소. 돌진하는 동안은 배가 드러나 갑옷이 없다" },
+  fairy: { img: ["mon_fairy_0", "mon_fairy_1"], drawH: 52, fps: 6, sprite: "fairy", exp: 3, hp: 7, w: 34, h: 34, score: 600, scale: 2, desc: "치유: 주변 몬스터의 체력을 채운다. 먼저 잡자" },
+  bomber: { img: ["mon_bomber_0", "mon_bomber_1"], drawH: 48, fps: 4, sprite: "bomber", exp: 2, hp: 3, w: 34, h: 34, score: 300, scale: 1.8, desc: "자폭: 쫓아와서 터지고, 죽으면 탄을 흩뿌린다" },
   slimelet: { sprite: "slime", exp: 1, hp: 2, w: 22, h: 16, score: 80, scale: 1.1, ground: true, desc: "슬라임이 죽으면 둘로 갈라진다" },
   shard: { sprite: "shard", exp: 2, hp: 60, w: 26, h: 40, score: 800, scale: 1.6, desc: "수정 갑옷: 살아 있는 동안 수정 거인이 받는 피해 65% 감소" },
-  golem: { sprite: "golem", exp: 25, hp: 360, w: 90, h: 100, score: 5000, scale: 3.6, ground: true, midboss: true },
+  golem: { img: ["mon_golem_0", "mon_golem_1"], drawH: 124, fps: 2, sprite: "golem", exp: 25, hp: 360, w: 90, h: 100, score: 5000, scale: 3.6, ground: true, midboss: true },
   // 지역 보스 (지역마다 공격 패턴이 다르다)
   // 특별 모드 적
   locust: { sprite: "bat", variant: "locust", exp: 1, hp: 2, w: 28, h: 20, score: 60, scale: 1.5, desc: "황충: 떼로 빠르게 날아온다" },
@@ -368,6 +368,8 @@ RD.IMAGES = [
   "boss_bat_0", "boss_bat_1", "boss_crystal_0", "boss_crystal_1", "boss_fire_0", "boss_fire_1",
   "boss_frost_0", "boss_frost_1", "boss_storm_0", "boss_storm_1",
   "boss_chaos_0", "boss_chaos_1", "cut_angel_0", "cut_angel_1",
+  "mon_golem_0", "mon_golem_1", "mon_eye_0", "mon_eye_1", "mon_fairy_0", "mon_fairy_1", "mon_bomber_0", "mon_bomber_1",
+  "mon_beetle_0", "mon_beetle_1", "mon_beetle_2", "mon_beetle_3",
   "item_gem", "item_star", "item_coin", "item_heart",
   "pet_0", "pet_1", "pet_2", "pet_3",
 ];

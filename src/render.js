@@ -126,9 +126,12 @@
       const f = Math.floor(e.t * (def.sprite === "bat" || def.sprite === "batking" ? 10 : 5)) % 2;
       if (def.img && hasImg(def.img[0])) {
         // 이미지 보스: 날개짓은 시간, 마그마 슬라임은 점프 중일 때 두 번째 프레임
-        let fi = Math.floor(e.t * (def.style === "crystal" ? 1.5 : 4)) % 2;
+        let fi = Math.floor(e.t * (def.fps || (def.style === "crystal" ? 1.5 : 4))) % def.img.length;
         if (def.style === "fire") fi = e.air ? 1 : 0;
-        const im = RD.img(def.img[fi]);
+        if (e.type === "bomber") fi = Math.hypot(e.x - run.player.x, e.y - run.player.y) < 160 ? 1 : 0; // 가까우면 눈이 빨개진다
+        if (e.type === "beetle" && (e.wind || e.dashing)) fi = 3;
+        // 보스는 고유 색, 나머지는 지역 색으로
+        const im = def.boss ? RD.img(def.img[fi]) : RD.tintImage(def.img[fi], e.variant);
         const h = def.drawH, w = (im.width / im.height) * h;
         const top = def.ground ? e.y + def.h / 2 - h + 6 : e.y - h / 2;
         g.imageSmoothingEnabled = true;

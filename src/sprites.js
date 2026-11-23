@@ -356,6 +356,22 @@
     g.putImageData(img, 0, 0);
   }
 
+  // 그림 이미지를 지역 색으로 바꾼 사본 (캐시)
+  const tintCache = {};
+  RD.tintImage = function (name, variant) {
+    const im = RD.img(name);
+    if (!variant || !RD.VARIANTS[variant] || !im || !im.naturalWidth) return im;
+    const key = name + "|" + variant;
+    if (!tintCache[key]) {
+      const cv = document.createElement("canvas");
+      cv.width = im.naturalWidth; cv.height = im.naturalHeight;
+      cv.getContext("2d").drawImage(im, 0, 0);
+      recolor(cv, RD.VARIANTS[variant]);
+      tintCache[key] = cv;
+    }
+    return tintCache[key];
+  };
+
   RD.getMonsterFrame = function (type, frame, hurt, variant) {
     const key = type + frame + (hurt ? "h" : "") + (variant || "");
     if (!mcache[key]) {
