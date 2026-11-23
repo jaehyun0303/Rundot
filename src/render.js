@@ -289,6 +289,7 @@
       }
       g.save();
       g.translate(b.x, b.y);
+      if (b.fake) g.globalAlpha = 0.55 + 0.35 * Math.sin(b.age * 18 + b.x);
       if (shape === "blood") {
         // 피 방울: 진행 방향으로 뾰족한 물방울
         g.rotate(ang);
@@ -759,6 +760,7 @@
       if (b.sub2) text(g, b.sub2, C.width / 2, C.height / 2 + 62, 15, "#ffc49a", "center");
     }
     if (run.choosing) drawChoice(g, run);
+    if (run.cutscene) drawCutscene(g, run);
     RD.drawSoundButton(g);
   }
 
@@ -775,6 +777,87 @@
     if (m) { g.beginPath(); g.moveTo(b.x + 4, b.y - 5); g.lineTo(b.x + 10, b.y + 5); g.moveTo(b.x + 10, b.y - 5); g.lineTo(b.x + 4, b.y + 5); g.stroke(); }
     else { g.beginPath(); g.arc(b.x + 2, b.y, 6, -0.9, 0.9); g.stroke(); }
   };
+
+  // ---------- 나팔 컷씬 ----------
+  // 도트 천사 (오른쪽에서 왼쪽을 보고 나팔을 분다)
+  function drawAngel(g, x, y, S, t, blowing, idx) {
+    const P = (px, py, w, h, c) => { g.fillStyle = c; g.fillRect(x + px * S, y + py * S, w * S, h * S); };
+    const flap = Math.sin(t * 3) > 0 ? 0 : 2;
+    // 날개 (뒤쪽)
+    P(4, 6 + flap, 10, 4, "#fff6d8"); P(1, 4 + flap, 6, 4, "#fff6d8"); P(-2, 2 + flap, 5, 3, "#ffe9a0");
+    P(18, 6 + flap, 10, 4, "#fff6d8"); P(25, 4 + flap, 6, 4, "#fff6d8"); P(29, 2 + flap, 5, 3, "#ffe9a0");
+    P(5, 10 + flap, 8, 3, "#ffe9a0"); P(19, 10 + flap, 8, 3, "#ffe9a0");
+    // 후광
+    g.strokeStyle = "#ffd34d"; g.lineWidth = S;
+    g.beginPath(); g.ellipse(x + 16 * S, y - 1 * S, 5 * S, 1.6 * S, 0, 0, Math.PI * 2); g.stroke();
+    // 머리와 얼굴
+    P(12, 1, 8, 8, "#ffe0c0"); P(11, 0, 10, 3, "#ffd34d"); P(11, 2, 2, 5, "#ffd34d"); P(19, 2, 2, 5, "#ffd34d");
+    P(13, 4, 1, 2, "#3a2a1a"); P(16, 4, 1, 2, "#3a2a1a");
+    // 옷
+    P(11, 9, 10, 4, "#ffffff"); P(10, 13, 12, 6, "#ffffff"); P(9, 19, 14, 6, "#ffffff"); P(9, 24, 14, 1, "#ffd34d");
+    P(15, 9, 2, 16, "#f0e6c8");
+    // 나팔: 불 때는 입에 대고 앞(왼쪽)으로 든다
+    if (blowing) {
+      P(-6, 5, 18, 2, "#ffd34d"); P(-10, 3, 5, 6, "#ffd34d"); P(-11, 2, 2, 8, "#ffe9a0");
+      g.strokeStyle = "rgba(255,233,160,0.8)"; g.lineWidth = 3;
+      for (let k = 0; k < 3; k++) { const r = ((t * 140 + k * 40) % 120) + 10; g.beginPath(); g.arc(x - 11 * S, y + 6 * S, r, Math.PI * 0.6, Math.PI * 1.4); g.stroke(); }
+    } else {
+      P(20, 12, 2, 12, "#ffd34d"); P(19, 23, 4, 3, "#ffd34d");
+    }
+    text(g, ["첫째", "둘째", "셋째", "넷째", "다섯째", "여섯째", "일곱째"][idx] || "", x + 16 * S, y + 30 * S, 14, "#ffd34d", "center");
+  }
+
+  // 독수리 (화, 화, 화)
+  function drawEagle(g, x, y, S, t) {
+    const P = (px, py, w, h, c) => { g.fillStyle = c; g.fillRect(x + px * S, y + py * S, w * S, h * S); };
+    const flap = Math.sin(t * 5) > 0 ? -3 : 3;
+    P(-14, 4 + flap, 14, 3, "#4a3020"); P(14, 4 + flap, 14, 3, "#4a3020"); P(-18, 6 + flap, 6, 2, "#6b4a2e"); P(26, 6 + flap, 6, 2, "#6b4a2e");
+    P(4, 2, 10, 8, "#6b4a2e"); P(5, -3, 6, 6, "#f4f0e8"); P(3, 0, 3, 2, "#ffd34d"); P(6, -1, 1, 1, "#1d1622");
+    P(6, 10, 6, 3, "#4a3020"); P(5, 13, 2, 2, "#ffd34d"); P(10, 13, 2, 2, "#ffd34d");
+  }
+
+  RD.cutSkip = { x: C.width - 150, y: 18, w: 130, h: 34 };
+  function drawCutscene(g, run) {
+    const c = run.cutscene, line = c.lines[c.idx];
+    g.fillStyle = "rgba(6,2,10,0.72)";
+    g.fillRect(0, 0, C.width, C.height);
+    // 하늘에서 내려오는 빛
+    const glow = g.createLinearGradient(0, 0, 0, C.height);
+    glow.addColorStop(0, "rgba(255,233,160,0.35)"); glow.addColorStop(1, "rgba(255,233,160,0)");
+    g.fillStyle = glow; g.fillRect(560, 0, 260, C.height);
+    const drop = Math.min(1, c.t / 0.7);
+    const ay = -260 + (90 + 260) * (1 - Math.pow(1 - drop, 3));
+    const blowing = c.blowAt != null && c.t - c.blowAt < 2.5 && line.blow;
+    if (line.who === "독수리") drawEagle(g, 640, 120, 5, c.t);
+    else if (c.angel >= 0) drawAngel(g, 600, ay, 7, c.t, blowing, c.angel);
+    else {
+      // 처음 장면: 일곱 천사가 나란히 선다
+      for (let k = 0; k < 7; k++) drawAngel(g, 70 + k * 122, ay + (k % 2) * 30 + 40, 3.2, c.t + k, false, -1);
+    }
+    // 대사창
+    const bx = 50, by = 372, bw = C.width - 100, bh = 128;
+    g.fillStyle = "rgba(20,10,20,0.92)"; g.fillRect(bx, by, bw, bh);
+    g.strokeStyle = "#ffd34d"; g.lineWidth = 3; g.strokeRect(bx, by, bw, bh);
+    if (line.who) {
+      g.fillStyle = "#ffd34d"; g.fillRect(bx + 16, by - 18, Math.max(110, line.who.length * 18 + 30), 32);
+      text(g, line.who, bx + 30, by - 2, 17, "#1d1622", "left", "#ffd34d");
+    }
+    // 한 글자씩 나오는 대사 (줄바꿈)
+    const shown = line.text.slice(0, Math.floor(c.lt * 28));
+    g.font = `bold 21px ${FONT}`;
+    const words = shown.split(" "), lines = [""];
+    for (const w of words) {
+      const t = (lines[lines.length - 1] + " " + w).trim();
+      if (g.measureText(t).width > bw - 60) lines.push(w); else lines[lines.length - 1] = t;
+    }
+    lines.slice(0, 3).forEach((l, i) => text(g, l, bx + 30, by + 34 + i * 32, 21, line.who ? "#ffffff" : "#ffe9a0"));
+    if (c.lt * 28 >= line.text.length && Math.floor(c.t * 2) % 2) text(g, "▶ 터치 / Space", bx + bw - 20, by + bh - 18, 13, "#ffd34d", "right");
+    text(g, `${c.idx + 1} / ${c.lines.length}`, bx + 20, by + bh - 18, 12, "#9a8aa8");
+    // 건너뛰기
+    const sk = RD.cutSkip;
+    g.fillStyle = "rgba(255,255,255,0.12)"; g.fillRect(sk.x, sk.y, sk.w, sk.h);
+    text(g, "건너뛰기 ▶▶", sk.x + sk.w / 2, sk.y + sk.h / 2 + 1, 14, "#ffffff", "center");
+  }
 
   // 레벨업 강화 카드 3장
   RD.cardRects = [];
@@ -887,9 +970,9 @@
       } else if (h.type === "zone") {
         // 독 연기 (셋째 나팔)
         const k = warn ? 0.15 + 0.1 * (Math.floor(h.t * 8) % 2) : on ? 0.45 : 0;
-        g.fillStyle = `rgba(120,200,60,${k})`;
+        g.fillStyle = h.fire ? `rgba(255,90,20,${k})` : `rgba(120,200,60,${k})`;
         g.fillRect(h.x - h.w / 2, h.top, h.w, C.groundY - h.top);
-        if (on) for (let i = 0; i < 8; i++) { g.fillStyle = "rgba(170,230,90,0.6)"; g.fillRect(h.x - h.w / 2 + ((i * 37 + h.t * 60) % h.w), C.groundY - ((i * 53 + h.t * 90) % (C.groundY - h.top)), 8, 8); }
+        if (on) for (let i = 0; i < 8; i++) { g.fillStyle = h.fire ? "rgba(255,200,60,0.7)" : "rgba(170,230,90,0.6)"; g.fillRect(h.x - h.w / 2 + ((i * 37 + h.t * 60) % h.w), C.groundY - ((i * 53 + h.t * 90) % (C.groundY - h.top)), 8, 8); }
       } else if (h.type === "bolt") {
         if (warn) {
           g.strokeStyle = `rgba(255,230,107,${0.35 + 0.35 * (Math.floor(h.t * 10) % 2)})`;
@@ -957,6 +1040,23 @@
     if (run.M.special === "judgment" && run.tr >= 0) {
       g.fillStyle = RD.TRUMPETS[run.tr].tint;
       g.fillRect(0, 0, C.width, C.height);
+      if (run.tr === 3) {
+        // 핏빛 달
+        const mx = 820, my = 90;
+        const gl = g.createRadialGradient(mx, my, 20, mx, my, 140);
+        gl.addColorStop(0, "rgba(255,40,40,0.5)"); gl.addColorStop(1, "rgba(255,40,40,0)");
+        g.fillStyle = gl; g.fillRect(mx - 140, my - 140, 280, 280);
+        g.fillStyle = "#c01818"; g.beginPath(); g.arc(mx, my, 46, 0, Math.PI * 2); g.fill();
+        g.fillStyle = "#8a0e0e"; g.beginPath(); g.arc(mx - 14, my - 10, 10, 0, Math.PI * 2); g.arc(mx + 16, my + 14, 7, 0, Math.PI * 2); g.fill();
+        g.fillStyle = "rgba(0,0,0,0.55)"; g.beginPath(); g.arc(mx + 18, my - 6, 44, 0, Math.PI * 2); g.fill(); // 삼분의 일이 어두워진 달
+      }
+      if (run.dreamT > 0) {
+        // 악몽 속: 보랏빛으로 일렁인다
+        g.fillStyle = `rgba(90,20,140,${0.28 + 0.08 * Math.sin(run.t * 6)})`;
+        g.fillRect(0, 0, C.width, C.height);
+        g.strokeStyle = "rgba(200,140,255,0.25)"; g.lineWidth = 2;
+        for (let y = 20; y < C.height; y += 40) { g.beginPath(); for (let x = 0; x <= C.width; x += 40) g.lineTo(x, y + Math.sin(x * 0.02 + run.t * 4) * 10); g.stroke(); }
+      }
       if (run.tr === 4) { // 무저갱의 연기
         g.fillStyle = "rgba(40,30,20,0.35)";
         for (let i = 0; i < 8; i++) { g.beginPath(); g.arc(((i * 173 - run.t * 40) % 1100 + 1100) % 1100 - 70, 60 + (i * 61) % 200, 90, 0, Math.PI * 2); g.fill(); }

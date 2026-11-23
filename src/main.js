@@ -143,6 +143,12 @@
     held.add(e.code);
     syncKeys();
     if (e.repeat) return;
+    if (scene === "play" && run.cutscene) {
+      // 컷씬: Space/Enter/X 넘기기, Esc 건너뛰기
+      if (["Space", "Enter", "KeyX", "KeyZ"].includes(e.code)) run.advanceCutscene();
+      if (e.code === "Escape") run.endCutscene();
+      return;
+    }
     if (scene === "play" && run.choosing) {
       const n = { Digit1: 0, Digit2: 1, Digit3: 2, Numpad1: 0, Numpad2: 1, Numpad3: 2 }[e.code];
       if (n != null) run.choose(n);
@@ -193,6 +199,12 @@
     if (e.target.closest && e.target.closest("button")) return; // 화면 밖 폭탄 버튼
     const pt = toGame(e);
     if (e.target === canvas && soundHit(pt)) { RD.audio && RD.audio.toggle(); return; }
+    if (run.cutscene) {
+      const sk = RD.cutSkip;
+      if (e.target === canvas && pt.x >= sk.x && pt.x <= sk.x + sk.w && pt.y >= sk.y && pt.y <= sk.y + sk.h) run.endCutscene();
+      else run.advanceCutscene();
+      return;
+    }
     if (run.choosing) {
       // 강화 카드 고르기 (선택 직후 실수로 눌리지 않게 0.35초 기다림)
       if (run.choosing.t < 0.35) return;
@@ -426,7 +438,7 @@
   }
 
   function drawTouchHints() {
-    if (run.choosing) return;
+    if (run.choosing || run.cutscene) return;
     if (!isTouch()) {
       if (run.t < 6) RD.text(g, "이동: 방향키 / WASD    정밀 이동: Shift    궁극기: X    사격은 자동", C.width / 2, C.height - 50, 14, "rgba(255,255,255,0.8)", "center");
       return;
@@ -483,6 +495,7 @@
   // 화면 밖 버튼(세로 화면용 폭탄 버튼)에서 쓰는 입력
   RD.press = (action, down) => {
     if (scene !== "play" || !run || !down) return;
+    if (run.cutscene) { run.advanceCutscene(); return; }
     if (action === "bomb") run.bomb();
   };
   RD.debugState = () => ({ scene, run, coins, owned, pity });

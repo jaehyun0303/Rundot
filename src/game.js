@@ -120,6 +120,7 @@
       this.tr = -1; // 일곱 나팔: 몇 번째 나팔인지
       this.trT = 0;
       this.ev = {}; // 한 번만 일어나는 일 기록
+      if (this.M.special === "judgment") this.intro = null; // 처음 컷씬이 대신한다
       if (mode === "stageselect") {
         // 뒤쪽 지역을 고르면 따라잡을 수 있도록 강화를 미리 고른다 (지역마다 2개)
         this.loop = 1 + 0.5 * (opts.stage || 0);
@@ -348,6 +349,36 @@
     }
 
     // ---------- 일곱 나팔 소리의 심판 ----------
+    // ---------- 컷씬 (나팔 부는 천사와 대사) ----------
+    startCutscene(lines, angel, onEnd) {
+      this.cutscene = { lines, idx: 0, t: 0, lt: 0, angel, onEnd };
+      this.bullets = [];
+      this.onCutLine();
+    }
+
+    onCutLine() {
+      const c = this.cutscene, line = c.lines[c.idx];
+      c.lt = 0;
+      if (line.blow) { c.blowAt = c.t; RD.audio && RD.audio.sfx("trumpet"); }
+    }
+
+    // 터치/키: 글자가 다 안 나왔으면 다 보여 주고, 다 나왔으면 다음 줄
+    advanceCutscene() {
+      const c = this.cutscene;
+      if (!c || c.t < 0.3) return;
+      const line = c.lines[c.idx];
+      if (c.lt * 28 < line.text.length) { c.lt = 99; return; }
+      if (++c.idx >= c.lines.length) return this.endCutscene();
+      this.onCutLine();
+    }
+
+    endCutscene() {
+      const c = this.cutscene;
+      this.cutscene = null;
+      this.player.invuln = Math.max(this.player.invuln, 1.5);
+      if (c && c.onEnd) c.onEnd();
+    }
+
     blowTrumpet(i) {
       const T = RD.TRUMPETS[i];
       this.tr = i;
@@ -355,14 +386,21 @@
       this.terrain = "t" + (i + 1);
       this.hazards = [];
       this.loop = 1 + i * 0.35;
-      this.banner = { text: T.name, sub: T.line, color: "#ffd34d", t: 0, life: 4 };
-      RD.audio && RD.audio.sfx("trumpet");
+      this.banner = { text: T.name, sub: T.line, color: "#ffd34d", t: 0, life: 3 };
+    }
+
+    // 다음 나팔: 천사가 나와서 나팔을 분 뒤 재앙이 시작된다
+    nextTrumpet(i) {
+      this.startCutscene(RD.TRUMPET_SCENES[i], i, () => this.blowTrumpet(i));
     }
 
     directJudgment(dt) {
       const angels = this.enemies.some((e) => !e.dead && e.type === "angel");
       const busy = this.bossAlive || angels;
-      if (this.tr < 0) { if ((this.trT += dt) > 4.5) this.blowTrumpet(0); return; }
+      if (this.tr < 0) {
+        if (!this.ev.intro) { this.ev.intro = true; this.startCutscene(RD.TRUMPET_SCENES.intro, -1, () => this.nextTrumpet(0)); }
+        return;
+      }
       if (!busy) this.trT += dt;
       const i = this.tr, E = this.ev;
       // 나팔마다 정해진 큰 사건
@@ -384,7 +422,14 @@
         this.spawnBoss();
       }
       // 나팔이 끝나면 다음 나팔 (일곱째는 용을 쓰러뜨려야 끝)
-      if (i < 6 && this.trT > 38 && !busy) { this.blowTrumpet(i + 1); return; }
+      if (i === 1 && this.trT > 5 && !E.chaos) {
+        // 둘째 나팔: 피바다에서 깨어난 혼돈의 심판 드래곤
+        E.chaos = true;
+        this.banner = { text: "WARNING", sub: "혼돈의 심판 드래곤", sub2: "특성 · 불붙은 산을 던지고 피바다를 일으키며, 분노하면 모든 재앙을 뒤섞는다", color: "#ff4d5e", t: 0, life: 3.5 };
+        RD.audio && RD.audio.sfx("warning");
+        this.addEnemy("boss_chaos", C.width + 160, 240, { path: "boss", phase: 1, name: "혼돈의 심판 드래곤", baseY: 240 });
+      }
+      if (i < 6 && this.trT > 38 && !busy) { this.nextTrumpet(i + 1); return; }
       if (busy && this.bossAlive) return;
       if ((this.spawnT -= dt) <= 0) {
         this.spawnT = Math.max(0.9, 2.2 - i * 0.18) * rand(0.8, 1.2);
@@ -397,10 +442,16 @@
       const p = this.player, i = this.tr;
       const every = (key, sec) => { this[key] = (this[key] || 0) - dt; if (this[key] <= 0) { this[key] = sec; return true; } return false; };
       this._firing = null;
-      if (i === 0 && every("pT", 0.28)) {
-        // 피 섞인 우박과 불
-        if (Math.random() < 0.5) this.shot(rand(100, C.width + 60), -10, Math.PI / 2 + 0.25, rand(220, 300), "shard", { color: "#ffffff", r: 6 });
-        else this.shot(rand(100, C.width + 60), -10, Math.PI / 2 + 0.25, rand(180, 240), "fireball", { color: "#ff5a1a", r: 7 });
+      if (i === 0) {
+        // 피 섞인 우박과 불 (더 촘촘하게) + 불붙은 땅 + 불의 소나기
+        if (every("pT", 0.16)) {
+          const r = Math.random();
+          if (r < 0.4) this.shot(rand(100, C.width + 60), -10, Math.PI / 2 + 0.25, rand(240, 320), "shard", { color: "#ffffff", r: 6 });
+          else if (r < 0.75) this.shot(rand(100, C.width + 60), -10, Math.PI / 2 + 0.25, rand(190, 250), "fireball", { color: "#ff5a1a", r: 7 });
+          else this.shot(rand(100, C.width + 60), -10, Math.PI / 2 + 0.2, rand(200, 260), "blood", { color: "#d8202a" });
+        }
+        if (every("fT", 4.5)) this.hazards.push({ type: "zone", fire: true, x: p.x + rand(-60, 60), w: 140, top: C.groundY - 130, t: 0, warn: 0.9, active: 2.5, dmg: 16 });
+        if (every("rT", 3.2)) { const sx = rand(300, C.width), a = Math.atan2(p.y + 10, p.x - sx); for (let q = -2; q <= 2; q++) this.shot(sx, -10, a + q * 0.12, 260, "fireball", { color: "#ff7a1a", r: 7 }); }
       }
       if (i === 1 && every("pT", 6.5)) {
         // 불붙은 큰 산이 던져진다
@@ -410,7 +461,32 @@
         // 쓴 쑥 별: 떨어진 자리에 독 연기
         this.hazards.push({ type: "star", x: Math.random() < 0.6 ? p.x + rand(-40, 40) : rand(80, C.width - 80), t: 0, warn: 1.1, active: 0.2, w: 40, dmg: 20 });
       }
-      if (i === 3 && every("pT", 6)) this.blackout = 1.4; // 해와 달과 별이 어두워진다
+      if (i === 3) {
+        if (every("pT", 9)) this.blackout = 1.4; // 해와 달과 별이 어두워진다
+        // 핏빛 달 아래, 악몽 속으로 빠졌다가 깨어난다
+        if (!this.dreamT && every("nT", 13)) {
+          this.dreamT = 5.5;
+          p.inverted = 2.5;
+          this.banner = { text: "악몽 속으로…", sub: "조작이 뒤집히고, 가짜 탄이 섞인다", color: "#c58aff", t: 0, life: 1.6 };
+          RD.audio && RD.audio.sfx("shieldbreak");
+        }
+        if (this.dreamT) {
+          this.dreamT -= dt;
+          if (every("dT", 0.9)) {
+            // 진짜와 가짜가 섞인 악몽의 탄
+            const cx = p.x + rand(-40, 40), cy = p.y + rand(-40, 40);
+            for (let q = 0; q < 14; q++) {
+              const a = (q / 14) * Math.PI * 2;
+              this.shot(cx + Math.cos(a) * 260, cy + Math.sin(a) * 260, a + Math.PI, 150, "candy", { color: "#7a3aa0", r: 7, fake: q % 3 !== 0 });
+            }
+          }
+          if (this.dreamT <= 0) {
+            this.dreamT = 0;
+            this.bullets = this.bullets.filter((b) => !b.fake);
+            this.banner = { text: "악몽에서 깨어났다", color: "#ffd34d", t: 0, life: 1.2, small: true };
+          }
+        }
+      }
       if (i === 4 && every("pT", 1.5) && !this.bossAlive) {
         // 황충 떼
         const y = rand(80, C.groundY - 80);
@@ -845,6 +921,7 @@
     // ---------- 갱신 ----------
     update(dt) {
       if (this.banner && (this.banner.t += dt) > this.banner.life) this.banner = null;
+      if (this.cutscene) { this.cutscene.t += dt; this.cutscene.lt += dt; return; } // 컷씬 동안 멈춘다
       if (this.choosing) { this.choosing.t += dt; return; } // 강화를 고르는 동안 멈춘다
       this.t += dt;
       this.scroll += C.scrollSpeed * dt;
@@ -925,7 +1002,7 @@
 
       // 피격 판정 (판정은 캐릭터 가운데의 작은 점)
       if (p.dead <= 0 && p.invuln <= 0) {
-        const bi = this.bullets.findIndex((b) => Math.hypot(b.x - p.x, b.y - p.y) < b.r + C.hitRadius);
+        const bi = this.bullets.findIndex((b) => !b.fake && Math.hypot(b.x - p.x, b.y - p.y) < b.r + C.hitRadius);
         if (bi >= 0) {
           const b = this.bullets.splice(bi, 1)[0];
           const shielded = p.shielded;
@@ -1098,6 +1175,10 @@
         RD.audio && RD.audio.sfx("clear");
         if (def.style === "abaddon") {
           this.banner = { text: "첫째 화가 지나갔다", sub: "그러나 아직 두 화가 남았다", color: "#ffd34d", t: 0, life: 3 };
+          return;
+        }
+        if (def.style === "chaos") {
+          this.banner = { text: "혼돈이 가라앉았다", sub: "그러나 나팔 소리는 아직 끝나지 않았다", color: "#ffd34d", t: 0, life: 3 };
           return;
         }
         if (def.style === "nightmare" || def.style === "dragon") {
@@ -1530,6 +1611,34 @@
             for (let q = 0; q < 12; q++) this.shot(e.x - 30 - q * 10, e.y + (q - 6) * 20, Math.PI + rand(-0.2, 0.2), bs, "minibat", { wob: { amp: 30, f: 7, ph: q }, color: "#c8a030" });
           }
           break;
+        case "chaos": {
+          // 혼돈의 심판 드래곤
+          if (ph === 1) {
+            // 불붙은 산을 던진다
+            e.fireT = 1.4 / fr;
+            if (e.n % 2) this.hazards.push({ type: "meteor", sx: e.x - 60, sy: e.y - 120, ex: p.x + rand(-40, 40), ey: Math.min(C.groundY - 40, p.y + 20), t: 0, warn: 1.1, active: 0.7, w: 150, r: 70, dmg: 30 });
+            for (let q = -3; q <= 3; q++) this.shot(e.x - 60, e.y, aim + q * 0.11, bs * 1.05, "fireball", { color: "#ff3a1a", r: 8 });
+          } else if (ph === 2) {
+            // 피바다: 아래에서 솟구치는 피의 기둥 (빈틈 하나) + 넘실대는 피의 물결
+            e.fireT = 1.5 / fr;
+            if (e.n % 2) {
+              const gap = Math.max(80, Math.min(C.width - 80, p.x + rand(-100, 100)));
+              for (let x = 30; x < C.width; x += 36) if (Math.abs(x - gap) > 60) this.shot(x, C.height + 10, -Math.PI / 2, bs * 0.6, "blood", { color: "#d8202a" });
+            } else {
+              for (let q = 0; q < 16; q++) this.shot(e.x - 40, 40 + q * 27, Math.PI, bs * 0.7, "drop", { wob: { amp: 40, f: 3, ph: q * 0.5 }, color: "#b01020" });
+            }
+          } else {
+            // 혼돈: 모든 재앙을 뒤섞는다
+            e.fireT = 1.2 / fr;
+            const roll = e.n % 4;
+            if (roll === 0) { this.beam(e, aim - 0.6, 0.5, 0.9, 1.3); this.beam(e, aim + 0.6, -0.5, 0.9, 1.3); }
+            else if (roll === 1) { const n = 12, cx = p.x, cy = p.y; for (let q = 0; q < n; q++) { if (q === e.n % n) continue; const a = (q / n) * Math.PI * 2; this.shot(cx + Math.cos(a) * 170, cy + Math.sin(a) * 170, a + Math.PI, 0, "blood", { redirect: 0.8, rspeed: bs * 1.15, aimCenter: true, cx, cy, color: "#ff3048" }); } }
+            else if (roll === 2) { let x = p.x - 150, y = 70; for (let q = 0; q < 3; q++) { const nx = p.x + rand(-120, 160), ny = Math.min(C.groundY - 20, y + rand(100, 170)); this.lineStrike(x, y, nx, ny); x = nx; y = ny; } }
+            else { this.hazards.push({ type: "meteor", sx: C.width + 100, sy: -100, ex: p.x, ey: Math.min(C.groundY - 40, p.y), t: 0, warn: 1.1, active: 0.7, w: 150, r: 70, dmg: 30 }); e.spin = (e.spin || 0); for (let q = 0; q < 20; q++) this.shot(e.x, e.y, (q / 20) * Math.PI * 2 + e.n, bs * 0.7, "fireball", { color: "#c03aff", r: 7 }); }
+            this.shake = Math.max(this.shake, 0.2);
+          }
+          break;
+        }
         case "dragon": {
           // 일곱 머리: 용 주위 일곱 곳에서 쏜다
           const heads = [];

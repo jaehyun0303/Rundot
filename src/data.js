@@ -120,6 +120,55 @@ RD.TRUMPETS = [
   { name: "일곱째 나팔", line: "번개와 음성과 우레와 지진과 큰 우박, 그리고 하늘의 큰 이적", tint: "rgba(255,255,255,0.06)" },
 ];
 
+// 나팔 컷씬 대사 (요한계시록 8~12장 내용을 풀어 쓴 것)
+// who: 말하는 이, blow: 이 줄에서 천사가 나팔을 분다
+RD.TRUMPET_SCENES = {
+  intro: [
+    { who: "", text: "어린 양이 일곱째 인을 떼실 때에, 하늘이 약 반 시간쯤 고요하였다." },
+    { who: "", text: "하나님 앞에 선 일곱 천사가 일곱 나팔을 받았다." },
+    { who: "", text: "또 다른 천사가 금 향로에 제단의 불을 담아 땅에 쏟으니, 우레와 음성과 번개와 지진이 일어났다." },
+    { who: "", text: "일곱 나팔을 가진 일곱 천사가 나팔 불기를 준비한다." },
+  ],
+  0: [
+    { who: "첫째 천사", text: "첫째 천사가 나팔을 분다!", blow: true },
+    { who: "", text: "피 섞인 우박과 불이 땅에 쏟아져, 땅과 수목의 삼분의 일이 타고, 푸른 풀이 다 타 버렸다." },
+  ],
+  1: [
+    { who: "둘째 천사", text: "둘째 천사가 나팔을 분다!", blow: true },
+    { who: "", text: "불붙은 큰 산 같은 것이 바다에 던져지니, 바다의 삼분의 일이 피가 되었다." },
+    { who: "", text: "바다 가운데 생명 가진 것들의 삼분의 일이 죽고, 배들의 삼분의 일이 깨졌다." },
+    { who: "", text: "피바다 깊은 곳에서… 혼돈의 심판 드래곤이 눈을 뜬다." },
+  ],
+  2: [
+    { who: "셋째 천사", text: "셋째 천사가 나팔을 분다!", blow: true },
+    { who: "", text: "횃불같이 타는 큰 별이 하늘에서 떨어져, 강들과 물샘의 삼분의 일에 떨어졌다." },
+    { who: "", text: "그 별의 이름은 '쓴 쑥'. 물의 삼분의 일이 쓴 쑥이 되어, 그 물을 마신 많은 사람이 죽었다." },
+  ],
+  3: [
+    { who: "넷째 천사", text: "넷째 천사가 나팔을 분다!", blow: true },
+    { who: "", text: "해 삼분의 일과 달 삼분의 일과 별들의 삼분의 일이 타격을 받아 어두워졌다." },
+    { who: "", text: "남은 달은 온통 피같이 붉게 물들고… 깨어 있는지 꿈속인지 알 수 없는 악몽이 스며든다." },
+  ],
+  4: [
+    { who: "독수리", text: "땅에 사는 자들에게 화, 화, 화가 있으리라! 아직 세 천사가 불 나팔 소리가 남았도다!" },
+    { who: "다섯째 천사", text: "다섯째 천사가 나팔을 분다!", blow: true },
+    { who: "", text: "하늘에서 땅에 떨어진 별 하나가 무저갱의 열쇠를 받았다." },
+    { who: "", text: "무저갱이 열리자 큰 화덕의 연기 같은 연기가 올라와, 해와 공기가 어두워졌다." },
+    { who: "", text: "연기 속에서 황충이 땅 위로 나왔다. 그들의 왕은 무저갱의 사자, 아바돈이라 한다." },
+  ],
+  5: [
+    { who: "여섯째 천사", text: "여섯째 천사가 나팔을 분다!", blow: true },
+    { who: "음성", text: "큰 강 유브라데에 결박된 네 천사를 놓아 주라." },
+    { who: "", text: "마병대의 수는 이만만. 말의 머리는 사자 머리 같고, 그 입에서 불과 연기와 유황이 나온다." },
+  ],
+  6: [
+    { who: "일곱째 천사", text: "일곱째 천사가 나팔을 분다!", blow: true },
+    { who: "하늘의 큰 음성들", text: "세상 나라가 우리 주와 그의 그리스도의 나라가 되어, 그가 세세토록 왕 노릇 하시리로다." },
+    { who: "", text: "하늘의 성전이 열리고, 번개와 음성과 우레와 지진과 큰 우박이 있었다." },
+    { who: "", text: "하늘에 또 큰 이적이 보이니, 머리가 일곱이요 뿔이 열인 한 큰 붉은 용이라." },
+  ],
+};
+
 // 몬스터 색 바꾸기 (색상 회전, 채도, 밝기)
 // hueTo: 끌어당길 색상(0~360), mix: 얼마나 끌어당길지(0~1)
 RD.VARIANTS = {
@@ -133,6 +182,7 @@ RD.VARIANTS = {
   holy: { hueTo: 48, mix: 0.9, sat: 0.6, light: 0.25 },
   crimson: { hueTo: 0, mix: 0.92, sat: 1.4, light: -0.02 },
   judgment: { hueTo: 8, mix: 0.6, sat: 0.9, light: -0.05 },
+  chaos: { hueTo: 300, mix: 0.85, sat: 1.3, light: -0.08 },
 };
 
 // 부엉이 회오리: 하나가 지울 수 있는 적 탄 수
@@ -272,6 +322,7 @@ RD.ENEMIES = {
   angel: { sprite: "wisp", variant: "holy", exp: 15, hp: 420, w: 60, h: 60, score: 8000, scale: 3, elite: true, desc: "결박에서 풀린 천사" },
   boss_nightmare: { sprite: "wisp", variant: "nightmare", exp: 80, hp: 3200, w: 170, h: 170, score: 80000, scale: 7, boss: true, style: "nightmare" },
   boss_abaddon: { sprite: "batking", variant: "locust", exp: 90, hp: 2600, w: 210, h: 160, score: 100000, scale: 6.5, boss: true, style: "abaddon" },
+  boss_chaos: { sprite: "batking", variant: "chaos", exp: 120, hp: 4200, w: 230, h: 170, score: 200000, scale: 7.2, boss: true, style: "chaos" },
   boss_dragon: { sprite: "batking", variant: "crimson", exp: 150, hp: 5600, w: 240, h: 180, score: 300000, scale: 7.5, boss: true, style: "dragon" },
   boss_bat: { img: ["boss_bat_0", "boss_bat_1"], drawH: 250, sprite: "batking", exp: 60, hp: 1700, w: 200, h: 150, score: 50000, scale: 6, boss: true, style: "bat" },
   boss_crystal: { img: ["boss_crystal_0", "boss_crystal_1"], drawH: 270, sprite: "golem", variant: "crystal", exp: 70, hp: 2000, w: 150, h: 160, score: 60000, scale: 5.6, boss: true, ground: true, style: "crystal" },
