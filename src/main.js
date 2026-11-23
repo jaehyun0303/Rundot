@@ -302,15 +302,16 @@
       if (s && s.id === e.pointerId) { s.ang = Math.atan2(pt.y - btn.y, pt.x - btn.x); s.drag = Math.hypot(pt.x - btn.x, pt.y - btn.y); }
     }
     if (U.move && U.move.id === e.pointerId) {
-      let dx = (e.clientX - U.move.cx) / 45, dy = (e.clientY - U.move.cy) / 45;
+      let dx = (e.clientX - U.move.cx) / 60, dy = (e.clientY - U.move.cy) / 60;
       const l = Math.hypot(dx, dy);
-      if (l > 1) { dx /= l; dy /= l; }
+      if (l < 0.18) { dx = dy = 0; } // 가운데 근처는 멈춤 (데드존)
+      else if (l > 1) { dx /= l; dy /= l; }
       U.move.dx = dx; U.move.dy = dy;
       run.input.dx = dx; run.input.dy = dy;
     }
   }
   function brawlUp(e) {
-    if (U.atk && U.atk.id === e.pointerId) { run.brawlAttack(U.atk.drag > 14 ? U.atk.ang : null); U.atk = null; }
+    if (U.atk && U.atk.id === e.pointerId) { run.brawlAttack(U.atk.drag > 22 ? U.atk.ang : null); U.atk = null; }
     if (U.sup && U.sup.id === e.pointerId) { run.brawlSuper(); U.sup = null; }
     if (U.move && U.move.id === e.pointerId) { U.move = null; run.input.dx = run.input.dy = 0; }
   }

@@ -1191,7 +1191,7 @@
     const B = run.brawl, p = run.player, U = RD.brawlUI;
     if (!B || p.dead > 0) return;
     // 조준 미리보기 (조준 스틱을 끄는 중이거나 마우스)
-    const aiming = U.atk && U.atk.drag > 14 ? U.atk : U.sup && U.sup.drag > 14 ? U.sup : null;
+    const aiming = U.atk && U.atk.drag > 22 ? U.atk : U.sup && U.sup.drag > 22 ? U.sup : null;
     let ang = aiming ? aiming.ang : U.mouse ? Math.atan2(U.mouse.y - p.y, U.mouse.x - p.x) : null;
     if (ang != null) {
       const sup = aiming === U.sup;

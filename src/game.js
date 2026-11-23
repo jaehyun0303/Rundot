@@ -715,6 +715,19 @@
       const B = this.brawl, p = this.player;
       if (!B || this.over || this.choosing || p.dead > 0 || B.ammo < 1) return false;
       if (ang == null) ang = this.autoAim();
+      else {
+        // 조준 보정: 조준 방향 근처(약 25도 안)에 적이 있으면 그쪽으로 살짝 맞춰 준다
+        let best = null, bd = 0.45;
+        for (const e of this.enemies) {
+          if (e.dead || e.delay > 0 || e.x > C.width + 20) continue;
+          let da = Math.atan2(e.y - p.y, e.x - p.x) - ang;
+          while (da > Math.PI) da -= Math.PI * 2;
+          while (da < -Math.PI) da += Math.PI * 2;
+          const w = Math.abs(da) - (RD.ENEMIES[e.type].boss ? 0.25 : 0);
+          if (w < bd) { bd = w; best = da; }
+        }
+        if (best != null) ang += best;
+      }
       B.ammo -= 1;
       B.aimAng = ang;
       const W = RD.BRAWL[this.charId];
@@ -1148,7 +1161,8 @@
         let my = inp.dy * sp * dt + inp.moveY;
         p.inverted = Math.max(0, (p.inverted || 0) - dt);
         if (p.inverted > 0) { mx = -mx; my = -my; } // 악몽: 조작 반전
-        if (this.terrain === "ice") {
+        if (this.raid) { mx *= 0.62; my *= 0.62; } // 레이드: 더 차분한 이동
+        if (this.terrain === "ice" && !this.raid) { // 레이드는 빙판에서도 미끄러지지 않는다
           // 빙판: 바로 멈추거나 꺾지 못하고 미끄러진다
           const k = Math.min(1, dt * 3.5);
           p.vx += (mx / Math.max(dt, 0.001) - p.vx) * k;
