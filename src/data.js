@@ -33,6 +33,7 @@ RD.ITEMS = {
   gem: { img: "item_gem", size: 26, score: 300 },
   star: { img: "item_star", size: 30, score: 1000 },
   life: { label: "1UP", color: "#3fbf6a", size: 34, score: 0, life: 1 },
+  candy: { candy: true, size: 26, score: 50, heal: 3, sugar: 1 }, // 달콤한 꿈: 꿈 게이지 회복, 슈가 러시 충전
 };
 
 // 난이도
@@ -52,6 +53,9 @@ RD.MODES = {
   timeattack: { name: "타임 어택", desc: "3분 동안 최대한 많은 점수를 모아라", time: 180 },
   hardcore: { name: "하드코어", desc: "스토리를 잔기 1개로. 회복 아이템 없음, 점수 x2", lives: 1, noHeal: true, scoreMul: 2 },
   chaos: { name: "혼돈", desc: "30초마다 지역과 지형 효과가 무작위로 바뀐다. 점수 x1.5", scoreMul: 1.5, shiftEvery: 30 },
+  // 특별 모드
+  dream: { name: "달콤한 꿈", special: "dream", lives: 1, desc: "사탕 나라의 꿈. 사탕을 모아 슈가 러시! 꿈 게이지가 바닥나면 잠에서 깬다" },
+  trumpets: { name: "일곱 나팔", special: "judgment", scoreMul: 2, desc: "일곱 나팔이 차례로 울리며 재앙이 내린다. 마지막엔 큰 붉은 용. 점수 x2" },
 };
 
 // 지역(스테이지). 배경 이미지(bg, ground)가 없으면 코드로 그린 임시 배경을 쓴다
@@ -87,6 +91,33 @@ RD.STAGES = [
     boss: "boss_storm", bossName: "폭풍 군주", midName: "구름 골렘", transpose: 5,
     sky: ["#14142a", "#3a3a5c"], far: "#2a2a48", mid: "#4a4a6a", groundCol: ["#8a8aa8", "#4a4a6a"], shape: "clouds",
   },
+  // ---------- 특별 모드 전용 지역 (special) ----------
+  {
+    id: "dream", special: true, name: "달콤한 꿈", bg: "bg_dream", ground: "ground_dream", variant: "candy",
+    mobs: ["fairy", "bomber"], bossTrait: "악몽: 사탕 탄이 검게 변해 덮쳐 오고, 마지막엔 조작을 뒤집는다",
+    effect: "sweet", effectName: "단꿈", effectDesc: "사탕 30개를 모으면 슈가 러시 (무적, 연사 2배, 적 탄이 사탕으로)",
+    boss: "boss_nightmare", bossName: "악몽", midName: "젤리 골렘", transpose: 0, music: "dream",
+    sky: ["#ffd6ec", "#c8b8ff"], far: "#f4b8dc", mid: "#ffffff", groundCol: ["#ffb8d8", "#c890e0"], shape: "candy",
+  },
+  {
+    id: "judgment", special: true, name: "일곱 나팔 소리의 심판", bg: "bg_judgment", ground: "ground_judgment", variant: "judgment",
+    mobs: ["eye", "bomber", "beetle"], bossTrait: "일곱 머리와 열 뿔: 일곱 곳에서 탄을 쏘고, 꼬리로 하늘의 별을 끌어내린다",
+    effect: "trumpet", effectName: "나팔 소리", effectDesc: "나팔이 울릴 때마다 새로운 재앙이 내린다",
+    boss: "boss_dragon", bossName: "큰 붉은 용", midName: "심판의 골렘", transpose: -2, music: "judgment",
+    sky: ["#1a0508", "#5a1410"], far: "#2a0a0a", mid: "#160707", groundCol: ["#3a1a14", "#1a0a08"], shape: "ruins",
+  },
+];
+RD.STORY_COUNT = RD.STAGES.filter((s) => !s.special).length; // 일반 지역 수
+
+// 일곱 나팔: 요한계시록 8~11장의 재앙을 바탕으로
+RD.TRUMPETS = [
+  { name: "첫째 나팔", line: "피 섞인 우박과 불이 땅에 쏟아진다", tint: "rgba(255,60,20,0.12)" },
+  { name: "둘째 나팔", line: "불붙은 큰 산이 바다에 던져지고, 바다가 피가 된다", tint: "rgba(160,0,20,0.22)" },
+  { name: "셋째 나팔", line: "횃불 같은 큰 별 '쓴 쑥'이 떨어져 물이 쓰게 된다", tint: "rgba(80,160,40,0.12)" },
+  { name: "넷째 나팔", line: "해와 달과 별의 삼분의 일이 어두워진다", tint: "rgba(0,0,0,0.2)" },
+  { name: "다섯째 나팔", line: "무저갱이 열리고 연기 속에서 황충이 나온다 (첫째 화)", tint: "rgba(90,60,20,0.3)" },
+  { name: "여섯째 나팔", line: "유브라데에 결박된 네 천사가 풀리고 마병대가 몰려온다 (둘째 화)", tint: "rgba(255,120,0,0.12)" },
+  { name: "일곱째 나팔", line: "번개와 음성과 우레와 지진과 큰 우박, 그리고 하늘의 큰 이적", tint: "rgba(255,255,255,0.06)" },
 ];
 
 // 몬스터 색 바꾸기 (색상 회전, 채도, 밝기)
@@ -96,6 +127,12 @@ RD.VARIANTS = {
   fire: { hueTo: 18, mix: 0.85, sat: 1.5, light: 0 },
   ice: { hueTo: 200, mix: 0.85, sat: 0.7, light: 0.16 },
   storm: { hueTo: 52, mix: 0.7, sat: 1.2, light: 0.06 },
+  candy: { hueTo: 320, mix: 0.7, sat: 1.1, light: 0.14 },
+  nightmare: { hueTo: 275, mix: 0.9, sat: 0.8, light: -0.12 },
+  locust: { hueTo: 48, mix: 0.85, sat: 1.0, light: 0 },
+  holy: { hueTo: 48, mix: 0.9, sat: 0.6, light: 0.25 },
+  crimson: { hueTo: 0, mix: 0.92, sat: 1.4, light: -0.02 },
+  judgment: { hueTo: 8, mix: 0.6, sat: 0.9, light: -0.05 },
 };
 
 // 부엉이 회오리: 하나가 지울 수 있는 적 탄 수
@@ -229,6 +266,13 @@ RD.ENEMIES = {
   shard: { sprite: "shard", exp: 2, hp: 60, w: 26, h: 40, score: 800, scale: 1.6, desc: "수정 갑옷: 살아 있는 동안 수정 거인이 받는 피해 65% 감소" },
   golem: { sprite: "golem", exp: 25, hp: 360, w: 90, h: 100, score: 5000, scale: 3.6, ground: true, midboss: true },
   // 지역 보스 (지역마다 공격 패턴이 다르다)
+  // 특별 모드 적
+  locust: { sprite: "bat", variant: "locust", exp: 1, hp: 2, w: 28, h: 20, score: 60, scale: 1.5, desc: "황충: 떼로 빠르게 날아온다" },
+  horseman: { sprite: "beetle", variant: "fire", exp: 4, hp: 18, w: 46, h: 32, score: 600, scale: 2.4, armor: 0.5, desc: "마병대: 돌진하며 불과 연기와 유황을 뿜는다" },
+  angel: { sprite: "wisp", variant: "holy", exp: 15, hp: 420, w: 60, h: 60, score: 8000, scale: 3, elite: true, desc: "결박에서 풀린 천사" },
+  boss_nightmare: { sprite: "wisp", variant: "nightmare", exp: 80, hp: 3200, w: 170, h: 170, score: 80000, scale: 7, boss: true, style: "nightmare" },
+  boss_abaddon: { sprite: "batking", variant: "locust", exp: 90, hp: 2600, w: 210, h: 160, score: 100000, scale: 6.5, boss: true, style: "abaddon" },
+  boss_dragon: { sprite: "batking", variant: "crimson", exp: 150, hp: 5600, w: 240, h: 180, score: 300000, scale: 7.5, boss: true, style: "dragon" },
   boss_bat: { img: ["boss_bat_0", "boss_bat_1"], drawH: 250, sprite: "batking", exp: 60, hp: 1700, w: 200, h: 150, score: 50000, scale: 6, boss: true, style: "bat" },
   boss_crystal: { img: ["boss_crystal_0", "boss_crystal_1"], drawH: 270, sprite: "golem", variant: "crystal", exp: 70, hp: 2000, w: 150, h: 160, score: 60000, scale: 5.6, boss: true, ground: true, style: "crystal" },
   boss_fire: { img: ["boss_fire_0", "boss_fire_1"], drawH: 210, sprite: "slime", variant: "fire", exp: 80, hp: 2100, w: 200, h: 130, score: 70000, scale: 7, boss: true, ground: true, style: "fire" },

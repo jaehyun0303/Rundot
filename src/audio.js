@@ -84,6 +84,11 @@
     ult_cat: () => { [72, 76, 79, 83, 86, 91].forEach((n, i) => tone(hz(n), 0.4, { type: "sine", vol: 0.1, at: i * 0.08 })); for (let i = 0; i < 10; i++) tone(hz(96 - (i % 5) * 2), 0.15, { type: "sine", vol: 0.05, at: 0.6 + i * 0.22 }); },
     shield: () => [79, 84, 88].forEach((n, i) => tone(hz(n), 0.12, { type: "sine", vol: 0.08, at: i * 0.05 })),
     shieldbreak: () => { tone(1800, 0.25, { type: "triangle", vol: 0.14, slide: 0.4 }); noise(0.2, { vol: 0.12, freq: 4000, q: 2 }); },
+    // 나팔: 떨림이 있는 금관 소리 (세 음을 길게)
+    trumpet: () => [[67, 0, 0.5], [72, 0.45, 0.5], [79, 0.9, 1.4]].forEach(([n, at, d]) => {
+      tone(hz(n), d, { type: "sawtooth", vol: 0.16, at, attack: 0.05 });
+      tone(hz(n) * 1.005, d, { type: "square", vol: 0.06, at, attack: 0.05 });
+    }),
     gacha: () => [60, 64, 67, 72].forEach((n, i) => tone(hz(n), 0.12, { vol: 0.1, at: i * 0.06 })),
     gacha_rare: () => [72, 76, 79, 84, 88, 91].forEach((n, i) => tone(hz(n), 0.25, { type: "triangle", vol: 0.14, at: i * 0.07 })),
   };
@@ -121,6 +126,21 @@
       drum: "k.hsk.hsk.hsk.ss",
       leadType: "sawtooth",
     },
+  };
+  // 특별 모드 곡
+  TRACKS.dream = {
+    bpm: 108,
+    bass: [53, 0, 60, 0, 50, 0, 57, 0, 46, 0, 53, 0, 48, 0, 55, 0],
+    lead: [77, 81, 84, 81, 79, 76, 72, 76, 74, 77, 81, 77, 72, 76, 79, 84],
+    drum: "k.h.h.h.k.h.h.h.",
+    leadType: "sine",
+  };
+  TRACKS.judgment = {
+    bpm: 132,
+    bass: [40, 40, 40, 52, 41, 41, 41, 53, 38, 38, 38, 50, 39, 39, 46, 51],
+    lead: [64, 0, 67, 0, 71, 0, 72, 71, 65, 0, 64, 0, 62, 0, 63, 0],
+    drum: "k..sk..sk.k.s.ss",
+    leadType: "sawtooth",
   };
   let current = null, wanted = null, step = 0, nextTime = 0, timer = null;
 

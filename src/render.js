@@ -38,7 +38,8 @@
     for (let i = 0; i < 14; i++) items2.push({ x: (i / 14) * W + r() * 40, w: 40 + r() * 60, h: 90 + r() * 170, k: r() });
     both(f, (ctx) => items.forEach((it) => {
       if (st.shape === "crystals") { tri(ctx, it.x, 0, it.w * 0.5, -it.h * 0.9, st.far); tri(ctx, it.x + 60, H - 60, it.w * 0.5, it.h * 0.8, st.far); }
-      else if (st.shape === "clouds") { ctx.fillStyle = st.far; for (let k = 0; k < 4; k++) { ctx.beginPath(); ctx.arc(it.x + k * 40, 330 - it.k * 140, 50 + k * 8, 0, Math.PI * 2); ctx.fill(); } }
+      else if (st.shape === "clouds" || st.shape === "candy") { ctx.fillStyle = st.far; for (let k = 0; k < 4; k++) { ctx.beginPath(); ctx.arc(it.x + k * 40, 330 - it.k * 140, 50 + k * 8, 0, Math.PI * 2); ctx.fill(); } }
+      else if (st.shape === "ruins") { tri(ctx, it.x, H - 70, it.w * 1.8, it.h * 0.6, st.far); ctx.fillStyle = "#3a0a0a"; ctx.fillRect(it.x - 3, H - 70 - it.h * 0.6, 6, it.h * 0.25); }
       else {
         tri(ctx, it.x, H - 70, it.w * 1.6, it.h + 40, st.far);
         if (st.shape === "pines") tri(ctx, it.x, H - 70 - (it.h + 40) * 0.72, it.w * 1.6 * 0.28, (it.h + 40) * 0.28, "#f4f8fc");
@@ -50,6 +51,18 @@
       if (st.shape === "trees") { ctx.fillStyle = "#2a1c12"; ctx.fillRect(it.x - 6, base - it.h * 0.5, 12, it.h * 0.5); ctx.fillStyle = st.mid; ctx.beginPath(); ctx.arc(it.x, base - it.h * 0.6, it.w * 0.7, 0, Math.PI * 2); ctx.fill(); }
       else if (st.shape === "pines") { for (let k = 0; k < 3; k++) tri(ctx, it.x, base - k * it.h * 0.25, it.w * (1.1 - k * 0.25), it.h * 0.45, k % 2 ? "#3e5e7a" : st.mid); tri(ctx, it.x, base - it.h * 0.75, it.w * 0.3, it.h * 0.18, "#ffffff"); }
       else if (st.shape === "crystals") { const c = it.k > 0.5 ? "#7f6fe0" : "#4fb8e8"; ctx.globalAlpha = 0.85; tri(ctx, it.x, base, it.w * 0.6, it.h * 0.9, c); tri(ctx, it.x + it.w * 0.3, base, it.w * 0.4, it.h * 0.55, "#b8a8ff"); ctx.globalAlpha = 1; }
+      else if (st.shape === "candy") {
+        // 막대사탕과 솜사탕 나무
+        ctx.fillStyle = "#ffffff"; ctx.fillRect(it.x - 3, base - it.h * 0.8, 6, it.h * 0.8);
+        ctx.fillStyle = it.k > 0.5 ? "#ff8ac8" : "#8ad8ff"; ctx.beginPath(); ctx.arc(it.x, base - it.h * 0.8, it.w * 0.45, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 4; ctx.beginPath(); ctx.arc(it.x, base - it.h * 0.8, it.w * 0.25, 0, Math.PI * 1.5); ctx.stroke();
+      }
+      else if (st.shape === "ruins") {
+        // 무너진 기둥
+        ctx.fillStyle = st.mid; ctx.fillRect(it.x - 14, base - it.h * 0.7, 28, it.h * 0.7);
+        ctx.fillStyle = "#2a1010"; ctx.fillRect(it.x - 20, base - it.h * 0.7, 40, 10);
+        ctx.fillStyle = "rgba(255,60,20,0.25)"; ctx.fillRect(it.x - 14, base - 8, 28, 8);
+      }
       else if (st.shape === "volcano") { tri(ctx, it.x, base, it.w * 1.2, it.h * 0.5, st.mid); ctx.fillStyle = "rgba(255,90,20,0.6)"; ctx.fillRect(it.x - 2, base - 6, 4, 6); }
       else { ctx.fillStyle = "rgba(220,220,255,0.35)"; for (let k = 0; k < 3; k++) { ctx.beginPath(); ctx.arc(it.x + k * 26, base - it.h * 0.6, 26 + k * 6, 0, Math.PI * 2); ctx.fill(); } }
     }));
@@ -258,15 +271,102 @@
     }
   }
 
+  // 적 탄: 보스마다 모양이 다르다
   function drawBullets(g, run) {
+    const P = (x, y, w, h, c) => { g.fillStyle = c; g.fillRect(x, y, w, h); };
     for (const b of run.bullets) {
-      g.fillStyle = b.color;
-      g.globalAlpha = 0.35;
-      g.beginPath(); g.arc(b.x, b.y, b.r + 4, 0, Math.PI * 2); g.fill();
-      g.globalAlpha = 1;
-      g.beginPath(); g.arc(b.x, b.y, b.r, 0, Math.PI * 2); g.fill();
-      g.fillStyle = "#fff";
-      g.beginPath(); g.arc(b.x, b.y, b.r * 0.5, 0, Math.PI * 2); g.fill();
+      const ang = Math.atan2(b.vy, b.vx);
+      const shape = b.shape;
+      if (!shape) {
+        g.fillStyle = b.color;
+        g.globalAlpha = 0.35;
+        g.beginPath(); g.arc(b.x, b.y, b.r + 4, 0, Math.PI * 2); g.fill();
+        g.globalAlpha = 1;
+        g.beginPath(); g.arc(b.x, b.y, b.r, 0, Math.PI * 2); g.fill();
+        g.fillStyle = "#fff";
+        g.beginPath(); g.arc(b.x, b.y, b.r * 0.5, 0, Math.PI * 2); g.fill();
+        continue;
+      }
+      g.save();
+      g.translate(b.x, b.y);
+      if (shape === "blood") {
+        // 피 방울: 진행 방향으로 뾰족한 물방울
+        g.rotate(ang);
+        g.fillStyle = "rgba(216,32,42,0.35)"; g.beginPath(); g.ellipse(-4, 0, 14, 8, 0, 0, Math.PI * 2); g.fill();
+        g.fillStyle = b.color; g.beginPath(); g.moveTo(10, 0); g.lineTo(-4, -6); g.arc(-4, 0, 6, -Math.PI / 2, Math.PI / 2, true); g.closePath(); g.fill();
+        P(-6, -3, 3, 3, "#ff9aa0");
+      } else if (shape === "wave") {
+        // 초음파: 진행 방향으로 휜 초승달
+        g.rotate(ang);
+        g.strokeStyle = b.color; g.lineWidth = 4;
+        g.beginPath(); g.arc(-6, 0, 11, -1.1, 1.1); g.stroke();
+        g.strokeStyle = "rgba(255,255,255,0.8)"; g.lineWidth = 2;
+        g.beginPath(); g.arc(-8, 0, 11, -0.9, 0.9); g.stroke();
+      } else if (shape === "minibat") {
+        // 작은 박쥐
+        const f = Math.floor(b.age * 14) % 2;
+        P(-5, -4, 10, 8, "#4b3270"); P(-3, -2, 2, 2, "#ff4d5e"); P(1, -2, 2, 2, "#ff4d5e");
+        if (f) { P(-13, -8, 8, 5, "#6a4a9a"); P(5, -8, 8, 5, "#6a4a9a"); } else { P(-13, 2, 8, 5, "#6a4a9a"); P(5, 2, 8, 5, "#6a4a9a"); }
+      } else if (shape === "shard") {
+        // 수정 조각: 길쭉한 마름모, 멈춰 있을 때는 빛난다
+        g.rotate(b.redirect != null && !b.redone ? b.age * 8 : ang);
+        if (b.redirect != null && !b.redone) { g.fillStyle = "rgba(159,232,255,0.3)"; g.beginPath(); g.arc(0, 0, 16, 0, Math.PI * 2); g.fill(); }
+        g.fillStyle = b.color; g.beginPath(); g.moveTo(14, 0); g.lineTo(0, -6); g.lineTo(-12, 0); g.lineTo(0, 6); g.closePath(); g.fill();
+        g.fillStyle = "#ffffff"; g.beginPath(); g.moveTo(10, 0); g.lineTo(0, -3); g.lineTo(-4, 0); g.closePath(); g.fill();
+      } else if (shape === "fireball" || shape === "lava") {
+        // 불덩이와 용암 덩이: 꼬리를 끈다
+        g.rotate(ang);
+        const r = b.r;
+        g.fillStyle = "rgba(255,90,20,0.35)"; g.beginPath(); g.ellipse(-r * 1.4, 0, r * 2, r * 0.8, 0, 0, Math.PI * 2); g.fill();
+        g.fillStyle = shape === "lava" ? "#a8300a" : "#ff5a1a"; g.beginPath(); g.arc(0, 0, r, 0, Math.PI * 2); g.fill();
+        g.fillStyle = shape === "lava" ? "#ff8a3d" : "#ffd34d"; g.beginPath(); g.arc(r * 0.2, -r * 0.1, r * 0.55, 0, Math.PI * 2); g.fill();
+        if (b.fuse != null) { g.fillStyle = Math.floor(b.age * 12) % 2 ? "#ffffff" : "#ff3048"; g.fillRect(-3, -3, 6, 6); }
+      } else if (shape === "flake") {
+        // 눈꽃: 빙글빙글 도는 육각 별
+        g.rotate(b.age * 4);
+        g.strokeStyle = b.color; g.lineWidth = 2.5;
+        for (let i = 0; i < 3; i++) { g.rotate(Math.PI / 3); g.beginPath(); g.moveTo(-b.r - 3, 0); g.lineTo(b.r + 3, 0); g.stroke(); }
+        P(-2, -2, 4, 4, "#ffffff");
+      } else if (shape === "icicle") {
+        // 고드름: 길고 뾰족
+        g.rotate(b.redirect != null && !b.redone ? Math.atan2((b.cy || 0) - b.y, (b.cx || 0) - b.x) : ang);
+        g.fillStyle = b.color; g.beginPath(); g.moveTo(18, 0); g.lineTo(-12, -6); g.lineTo(-12, 6); g.closePath(); g.fill();
+        g.fillStyle = "#ffffff"; g.fillRect(-10, -2, 20, 2);
+      } else if (shape === "bolt") {
+        // 번개탄: 지그재그
+        g.rotate(ang);
+        g.strokeStyle = b.color; g.lineWidth = 4;
+        g.beginPath(); g.moveTo(-14, 0); g.lineTo(-6, -5); g.lineTo(0, 4); g.lineTo(8, -3); g.lineTo(14, 0); g.stroke();
+        g.strokeStyle = "#ffffff"; g.lineWidth = 1.5; g.stroke();
+      } else if (shape === "candy") {
+        // 사탕: 멈춰 있다 검게 변하면 덮쳐 온다
+        const dark = b.redirect != null && b.age > b.redirect * 0.6;
+        g.rotate(b.age * 5);
+        g.fillStyle = dark ? "#2a1038" : b.color; g.beginPath(); g.arc(0, 0, b.r, 0, Math.PI * 2); g.fill();
+        g.strokeStyle = dark ? "#c58aff" : "#ffffff"; g.lineWidth = 2;
+        g.beginPath(); g.arc(0, 0, b.r * 0.55, 0, Math.PI * 1.3); g.stroke();
+        g.fillStyle = dark ? "#c58aff" : "#ffffff";
+        g.beginPath(); g.moveTo(b.r, 0); g.lineTo(b.r + 6, -4); g.lineTo(b.r + 6, 4); g.fill();
+        g.beginPath(); g.moveTo(-b.r, 0); g.lineTo(-b.r - 6, -4); g.lineTo(-b.r - 6, 4); g.fill();
+      } else if (shape === "z") {
+        text(g, "Z", 0, 0, 20, b.color, "center", "#3a2060");
+      } else if (shape === "star") {
+        g.rotate(b.age * 3);
+        g.fillStyle = b.color; g.beginPath();
+        for (let i = 0; i < 10; i++) { const r = i % 2 ? b.r * 0.45 : b.r * 1.3, a = (i * Math.PI) / 5; g[i ? "lineTo" : "moveTo"](Math.cos(a) * r, Math.sin(a) * r); }
+        g.fill();
+      } else if (shape === "drop") {
+        g.rotate(ang);
+        g.fillStyle = b.color; g.beginPath(); g.moveTo(11, 0); g.lineTo(-3, -6); g.arc(-3, 0, 6, -Math.PI / 2, Math.PI / 2, true); g.closePath(); g.fill();
+        g.fillStyle = "rgba(255,255,255,0.7)"; g.fillRect(-5, -3, 3, 3);
+      } else if (shape === "smoke") {
+        g.fillStyle = "rgba(60,50,40,0.75)"; g.beginPath(); g.arc(0, 0, b.r, 0, Math.PI * 2); g.fill();
+        g.fillStyle = "rgba(120,100,80,0.6)"; g.beginPath(); g.arc(-b.r * 0.3, -b.r * 0.3, b.r * 0.5, 0, Math.PI * 2); g.fill();
+        g.fillStyle = "#ff6a1a"; g.fillRect(-2, -2, 4, 4);
+      } else {
+        g.fillStyle = b.color; g.beginPath(); g.arc(0, 0, b.r, 0, Math.PI * 2); g.fill();
+      }
+      g.restore();
     }
   }
 
@@ -274,6 +374,17 @@
     for (const it of run.items) {
       const def = RD.ITEMS[it.type];
       const bob = Math.sin((it.t || 0) * 6) * 2;
+      if (def.candy) {
+        // 사탕: 줄무늬 동그라미와 포장
+        const r = def.size / 2 - 3;
+        g.save(); g.translate(it.x, it.y + bob); g.rotate((it.t || 0) * 2);
+        g.fillStyle = "#ff9ad8"; g.beginPath(); g.moveTo(r, 0); g.lineTo(r + 7, -6); g.lineTo(r + 7, 6); g.fill();
+        g.beginPath(); g.moveTo(-r, 0); g.lineTo(-r - 7, -6); g.lineTo(-r - 7, 6); g.fill();
+        g.fillStyle = "#ffffff"; g.beginPath(); g.arc(0, 0, r, 0, Math.PI * 2); g.fill();
+        g.strokeStyle = "#ff4d8a"; g.lineWidth = 3; g.beginPath(); g.arc(0, 0, r * 0.6, 0, Math.PI * 1.4); g.stroke();
+        g.restore();
+        continue;
+      }
       if (def.label) {
         // P / B 아이템
         const s = def.size;
@@ -571,6 +682,21 @@
     // 경험치와 레벨
     bar(g, 46, 60, 170, 6, run.exp / run.expNeed, "#7fe6ff");
     text(g, "Lv." + run.level, 18, 63, 12, "#7fe6ff");
+    // 특별 모드 표시
+    if (run.M.special === "dream") {
+      text(g, run.rush > 0 ? "슈가 러시!" : "사탕", 14, 100, 11, "#ff9ad8");
+      bar(g, 58, 96, 120, 6, run.rush > 0 ? run.rush / 6 : run.sugar / 30, "#ff9ad8");
+    }
+    if (run.M.special === "judgment") {
+      for (let i = 0; i < 7; i++) {
+        const done = i < run.tr, now = i === run.tr;
+        const x = C.width / 2 - 7 * 15 + i * 30, y = 92;
+        g.fillStyle = done ? "#7a6020" : now ? "#ffd34d" : "#3a2d48";
+        g.fillRect(x, y - 3, 16, 6); g.beginPath(); g.moveTo(x + 16, y - 7); g.lineTo(x + 24, y - 10); g.lineTo(x + 24, y + 10); g.lineTo(x + 16, y + 7); g.fill();
+      }
+      text(g, run.tr >= 0 ? RD.TRUMPETS[run.tr].name : "나팔을 불 준비", C.width / 2, 112, 12, "#ffd34d", "center");
+    }
+    if (p.inverted > 0) text(g, `조작 반전 ${p.inverted.toFixed(1)}`, p.x, p.y - 60, 14, "#c58aff", "center");
     // 패시브 표시
     if (run.charId === "fox") {
       text(g, "베기", 18, 82, 11, "#bfe4ff");
@@ -714,11 +840,56 @@
         } else if (on) {
           const k = Math.min(1, (h.t - h.warn) / 0.12);
           const top = C.groundY - (C.groundY + 20) * k;
-          g.fillStyle = "#c2200a"; g.fillRect(h.x - h.w / 2, top, h.w, C.groundY - top);
-          g.fillStyle = "#ff6a1a"; g.fillRect(h.x - h.w / 2 + 10, top, h.w - 20, C.groundY - top);
-          g.fillStyle = "#ffd34d"; g.fillRect(h.x - 8, top, 16, C.groundY - top);
+          const cols = h.quake ? ["#4a3020", "#8a6440", "#c4945c"] : ["#c2200a", "#ff6a1a", "#ffd34d"];
+          g.fillStyle = cols[0]; g.fillRect(h.x - h.w / 2, top, h.w, C.groundY - top);
+          g.fillStyle = cols[1]; g.fillRect(h.x - h.w / 2 + 10, top, h.w - 20, C.groundY - top);
+          g.fillStyle = cols[2]; g.fillRect(h.x - 8, top, 16, C.groundY - top);
           for (let i = 0; i < 6; i++) { g.fillStyle = "#ffb347"; g.fillRect(h.x - h.w / 2 + ((i * 23 + h.t * 300) % h.w), top + ((i * 71 + h.t * 500) % (C.groundY - top + 1)), 6, 6); }
         }
+      } else if (h.type === "meteor") {
+        // 불붙은 큰 산
+        if (warn) {
+          g.strokeStyle = `rgba(255,80,20,${0.3 + 0.4 * (Math.floor(h.t * 8) % 2)})`;
+          g.lineWidth = h.r * 2; g.globalAlpha = 0.25;
+          g.beginPath(); g.moveTo(h.sx, h.sy); g.lineTo(h.ex, h.ey); g.stroke(); g.globalAlpha = 1;
+          text(g, "!", h.ex, h.ey - 40, 34, "#ffd34d", "center");
+        } else if (!h.landed && h.x != null) {
+          g.fillStyle = "rgba(255,120,20,0.4)"; g.beginPath(); g.arc(h.x + 40, h.y - 40, h.r * 1.3, 0, Math.PI * 2); g.fill();
+          g.fillStyle = "#3a2018"; g.beginPath(); g.moveTo(h.x - h.r, h.y + h.r * 0.6); g.lineTo(h.x - h.r * 0.2, h.y - h.r); g.lineTo(h.x + h.r * 0.3, h.y - h.r * 0.5); g.lineTo(h.x + h.r, h.y + h.r * 0.6); g.closePath(); g.fill();
+          g.fillStyle = "#ff6a1a"; g.fillRect(h.x - h.r * 0.5, h.y - h.r * 0.4, h.r, 10); g.fillRect(h.x - 10, h.y - h.r * 0.9, 20, h.r * 0.8);
+          g.fillStyle = "#ffd34d"; g.fillRect(h.x - 6, h.y - h.r * 0.95, 12, 14);
+        }
+      } else if (h.type === "star") {
+        if (warn) {
+          g.strokeStyle = `rgba(160,230,90,${0.35 + 0.35 * (Math.floor(h.t * 10) % 2)})`; g.lineWidth = 2; g.setLineDash([10, 8]);
+          g.beginPath(); g.moveTo(h.x, 0); g.lineTo(h.x, C.groundY); g.stroke(); g.setLineDash([]);
+          const y = (h.t / h.warn) * C.groundY;
+          g.fillStyle = "#c8ff6a"; g.beginPath(); g.arc(h.x, y, 10, 0, Math.PI * 2); g.fill();
+          g.fillStyle = "rgba(200,255,106,0.4)"; g.fillRect(h.x - 4, y - 50, 8, 50);
+        }
+      } else if (h.type === "beam" || h.type === "line") {
+        // 수정 레이저 (휩쓸기) / 연쇄 번개: 예고선 → 굵은 빛
+        const x1 = h.type === "beam" ? h.x : h.x1, y1 = h.type === "beam" ? h.y : h.y1;
+        const x2 = h.x2, y2 = h.y2;
+        if (x2 == null) continue;
+        const col = h.type === "beam" ? "159,232,255" : "255,230,107";
+        if (warn) {
+          g.strokeStyle = `rgba(${col},${0.35 + 0.35 * (Math.floor(h.t * 10) % 2)})`;
+          g.lineWidth = 2; g.setLineDash([12, 8]);
+          g.beginPath(); g.moveTo(x1, y1); g.lineTo(x2, y2); g.stroke(); g.setLineDash([]);
+        } else if (on) {
+          g.strokeStyle = `rgba(${col},0.45)`; g.lineWidth = h.w + 14;
+          g.beginPath(); g.moveTo(x1, y1); g.lineTo(x2, y2); g.stroke();
+          g.strokeStyle = `rgb(${col})`; g.lineWidth = h.w;
+          g.stroke();
+          g.strokeStyle = "#ffffff"; g.lineWidth = h.w / 3; g.stroke();
+        }
+      } else if (h.type === "zone") {
+        // 독 연기 (셋째 나팔)
+        const k = warn ? 0.15 + 0.1 * (Math.floor(h.t * 8) % 2) : on ? 0.45 : 0;
+        g.fillStyle = `rgba(120,200,60,${k})`;
+        g.fillRect(h.x - h.w / 2, h.top, h.w, C.groundY - h.top);
+        if (on) for (let i = 0; i < 8; i++) { g.fillStyle = "rgba(170,230,90,0.6)"; g.fillRect(h.x - h.w / 2 + ((i * 37 + h.t * 60) % h.w), C.groundY - ((i * 53 + h.t * 90) % (C.groundY - h.top)), 8, 8); }
       } else if (h.type === "bolt") {
         if (warn) {
           g.strokeStyle = `rgba(255,230,107,${0.35 + 0.35 * (Math.floor(h.t * 10) % 2)})`;
@@ -744,7 +915,7 @@
   // 수정 동굴: 어둠 (캐릭터 주변만 밝다)
   let darkCv = null;
   function drawDarkness(g, run) {
-    if (run.terrain !== "dark") return;
+    if (run.terrain !== "dark" && run.terrain !== "t4") return;
     if (!darkCv) { darkCv = document.createElement("canvas"); darkCv.width = C.width; darkCv.height = C.height; }
     const d = darkCv.getContext("2d");
     d.globalCompositeOperation = "source-over";
@@ -758,7 +929,7 @@
       d.fillStyle = gr; d.beginPath(); d.arc(x, y, r, 0, Math.PI * 2); d.fill();
     };
     const p = run.player;
-    if (p.dead <= 0) hole(p.x + 40, p.y, 250);
+    if (p.dead <= 0) hole(p.x + 40, p.y, run.blackout > 0 ? 120 : run.terrain === "t4" ? 300 : 250);
     const boss = run.boss; // 보스는 어둠 속에서도 어렴풋이 보인다
     if (boss) hole(boss.x, boss.y, 190);
     for (const e of run.effects) if (e.type === "boom") hole(e.x, e.y, 90 * (1 - e.t / e.life) + 20);
@@ -782,6 +953,18 @@
         for (let i = 0; i < 18; i++) g.fillRect(((i * 211 + run.t * w.dir * 1200) % C.width + C.width) % C.width, (i * 31) % C.height, 90, 2);
         text(g, w.dir > 0 ? "강풍 →" : "← 강풍", C.width / 2, 120, 24, "#dff4ff", "center");
       }
+    }
+    if (run.M.special === "judgment" && run.tr >= 0) {
+      g.fillStyle = RD.TRUMPETS[run.tr].tint;
+      g.fillRect(0, 0, C.width, C.height);
+      if (run.tr === 4) { // 무저갱의 연기
+        g.fillStyle = "rgba(40,30,20,0.35)";
+        for (let i = 0; i < 8; i++) { g.beginPath(); g.arc(((i * 173 - run.t * 40) % 1100 + 1100) % 1100 - 70, 60 + (i * 61) % 200, 90, 0, Math.PI * 2); g.fill(); }
+      }
+    }
+    if (run.rush > 0) {
+      g.fillStyle = `rgba(255,154,216,${0.12 + 0.06 * Math.sin(run.t * 10)})`;
+      g.fillRect(0, 0, C.width, C.height);
     }
     if (run.terrain === "lava") {
       g.fillStyle = "rgba(255,120,40,0.08)";
