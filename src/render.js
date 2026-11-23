@@ -135,8 +135,12 @@
         const h = def.drawH, w = (im.width / im.height) * h;
         const top = def.ground ? e.y + def.h / 2 - h + 6 : e.y - h / 2;
         g.imageSmoothingEnabled = true;
+        g.save();
+        // flip: 그림이 오른쪽을 보고 있으면 좌우로 뒤집어 플레이어(왼쪽)를 보게 한다
+        if (def.flip) { g.translate(Math.round(e.x), 0); g.scale(-1, 1); g.translate(-Math.round(e.x), 0); }
         g.drawImage(im, Math.round(e.x - w / 2), Math.round(top), w, h);
         if (e.flash > 0) { g.globalCompositeOperation = "lighter"; g.globalAlpha = 0.5; g.drawImage(im, Math.round(e.x - w / 2), Math.round(top), w, h); g.globalAlpha = 1; g.globalCompositeOperation = "source-over"; }
+        g.restore();
         g.imageSmoothingEnabled = false;
         if (RD.debug) { const b = run.enemyBox(e); g.strokeStyle = "orange"; g.strokeRect(b.x, b.y, b.w, b.h); }
         continue;

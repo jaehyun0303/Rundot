@@ -314,7 +314,7 @@ RD.ENEMIES = {
   bomber: { img: ["mon_bomber_0", "mon_bomber_1"], drawH: 48, fps: 4, sprite: "bomber", exp: 2, hp: 3, w: 34, h: 34, score: 300, scale: 1.8, desc: "자폭: 쫓아와서 터지고, 죽으면 탄을 흩뿌린다" },
   slimelet: { sprite: "slime", exp: 1, hp: 2, w: 22, h: 16, score: 80, scale: 1.1, ground: true, desc: "슬라임이 죽으면 둘로 갈라진다" },
   shard: { sprite: "shard", exp: 2, hp: 60, w: 26, h: 40, score: 800, scale: 1.6, desc: "수정 갑옷: 살아 있는 동안 수정 거인이 받는 피해 65% 감소" },
-  golem: { img: ["mon_golem_0", "mon_golem_1"], drawH: 124, fps: 2, sprite: "golem", exp: 25, hp: 360, w: 90, h: 100, score: 5000, scale: 3.6, ground: true, midboss: true },
+  golem: { flip: true, img: ["mon_golem_0", "mon_golem_1"], drawH: 124, fps: 2, sprite: "golem", exp: 25, hp: 360, w: 90, h: 100, score: 5000, scale: 3.6, ground: true, midboss: true },
   // 지역 보스 (지역마다 공격 패턴이 다르다)
   // 특별 모드 적
   locust: { sprite: "bat", variant: "locust", exp: 1, hp: 2, w: 28, h: 20, score: 60, scale: 1.5, desc: "황충: 떼로 빠르게 날아온다" },
