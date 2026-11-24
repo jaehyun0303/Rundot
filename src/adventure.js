@@ -7,6 +7,7 @@
   class Run {
     constructor(charId) {
       this.charId = charId;
+      this.skillAs = (RD.ADV.SKILL_AS && RD.ADV.SKILL_AS[charId]) || charId; // 새 캐릭터는 기존 스킬 방식을 빌린다
       this.t = 0;
       this.speed = C.startSpeed;
       this.hp = C.maxHp;
@@ -33,14 +34,14 @@
 
     get camX() { return this.player.x - C.playerScreenX; }
     get invincible() {
-      return this.boost > 0 || this.player.invuln > 0 || (this.skill.active > 0 && ["fox", "bear"].includes(this.charId));
+      return this.boost > 0 || this.player.invuln > 0 || (this.skill.active > 0 && ["fox", "bear"].includes(this.skillAs));
     }
 
     // ---------- 입력 ----------
     jump() {
       const p = this.player;
       if (this.over) return;
-      const maxJumps = this.charId === "rabbit" && this.skill.active > 0 ? 3 : 2;
+      const maxJumps = this.skillAs === "rabbit" && this.skill.active > 0 ? 3 : 2;
       if (p.jumps < maxJumps) {
         p.vy = -(p.jumps === 0 ? C.jumpVelocity : C.doubleJumpVelocity);
         p.jumps++;
@@ -155,7 +156,7 @@
       this.speed = Math.min(C.maxSpeed, C.startSpeed + this.t * C.speedGain);
       let speed = this.speed;
       if (this.boost > 0) speed *= 1.5;
-      if (this.charId === "fox" && this.skill.active > 0) speed *= 1.6;
+      if (this.skillAs === "fox" && this.skill.active > 0) speed *= 1.6;
       this.hp -= (C.hpDrain + this.t * C.hpDrainGain) * dt;
 
       // 스킬 (오븐브레이크처럼 게이지가 차면 자동 발동)
@@ -170,7 +171,7 @@
           this.effects.push({ type: "text", x: p.x, y: p.y - 140, text: RD.ADV.SKILLS[this.charId] + "!", t: 0, life: 1.2 });
         }
       }
-      const giant = this.charId === "bear" && this.skill.active > 0;
+      const giant = this.skillAs === "bear" && this.skill.active > 0;
       p.scale += ((giant ? 2 : 1) - p.scale) * Math.min(1, dt * 8);
       this.boost = Math.max(0, this.boost - dt);
       this.magnet = Math.max(0, this.magnet - dt);
@@ -180,7 +181,7 @@
       // 이동
       p.x += speed * dt;
       p.animT += dt * (speed / 360);
-      const flying = this.charId === "owl" && this.skill.active > 0;
+      const flying = this.skillAs === "owl" && this.skill.active > 0;
       if (flying && this.input.jumpHeld) {
         p.vy = Math.max(p.vy - 4200 * dt, -420);
       }
@@ -243,7 +244,7 @@
         if (o.flying || o.passed) continue;
         const box = this.obstacleBox(o);
         if (!overlap(hb, box)) continue;
-        const smash = this.boost > 0 || (this.skill.active > 0 && ["fox", "bear"].includes(this.charId));
+        const smash = this.boost > 0 || (this.skill.active > 0 && ["fox", "bear"].includes(this.skillAs));
         if (smash) {
           o.flying = { vx: 500, vy: -700, rot: 0 };
           this.score += 50;
@@ -258,7 +259,7 @@
       }
 
       // 아이템
-      const pull = this.magnet > 0 || (this.charId === "cat" && this.skill.active > 0);
+      const pull = this.magnet > 0 || (this.skillAs === "cat" && this.skill.active > 0);
       const cx = p.x, cy = p.y - 34 * p.scale;
       for (const it of this.items) {
         if (it.taken) continue;
@@ -279,7 +280,7 @@
       const def = RD.ADV.ITEMS[it.type];
       it.taken = true;
       it.gone = true;
-      const mult = this.charId === "rabbit" && this.skill.active > 0 ? 2 : 1;
+      const mult = this.skillAs === "rabbit" && this.skill.active > 0 ? 2 : 1;
       this.score += def.score * mult;
       if (def.coins) this.coins += def.coins;
       if (def.heal) { this.hp = Math.min(C.maxHp, this.hp + def.heal); this.floatText("+" + def.heal, "#ff6b8a"); }
@@ -453,7 +454,7 @@
     if (p.hurtTimer > 0) pose = "hurt";
     else if (p.sliding) pose = "slide";
     else if (!p.onGround) pose = "jump";
-    const owlFly = run.charId === "owl" && run.skill.active > 0 && !p.onGround;
+    const owlFly = run.skillAs === "owl" && run.skill.active > 0 && !p.onGround;
     if (owlFly) frame = Math.floor(run.t * 20) % 4;
 
     if (p.invuln > 0 && !run.over && Math.floor(run.t * 20) % 2 === 0) return;
@@ -471,7 +472,7 @@
       g.fill();
     }
     // 스킬/부스트 효과
-    const dash = run.boost > 0 || (run.charId === "fox" && run.skill.active > 0);
+    const dash = run.boost > 0 || (run.skillAs === "fox" && run.skill.active > 0);
     if (dash) {
       g.globalAlpha = 0.3;
       g.drawImage(spr, dx - 30, dy, size, size);
@@ -479,7 +480,7 @@
       g.drawImage(spr, dx - 60, dy, size, size);
       g.globalAlpha = 1;
     }
-    if (run.charId === "cat" && run.skill.active > 0 || run.magnet > 0) {
+    if (run.skillAs === "cat" && run.skill.active > 0 || run.magnet > 0) {
       g.strokeStyle = "rgba(197,138,255,0.6)";
       g.lineWidth = 3;
       g.beginPath();

@@ -298,6 +298,38 @@ RD.CHARACTERS = [
     sig: { name: "분열 구슬", desc: "구슬이 맞으면 작은 구슬로 갈라진다" },
     bomb: { name: "별빛 마법진", desc: "적 탄을 코인으로 바꾸고 별똥별을 떨어뜨린다", color: "#c58aff" },
   },
+  {
+    id: "panda",
+    name: "판다 정령술사",
+    grade: "SR",
+    type: "소환형",
+    desc: "숲의 정령을 불러 함께 싸운다. 정령이 알아서 적을 쏘고 탄을 막는다",
+    passive: "정령의 가호: 정령이 닿은 적 탄을 막는다",
+    illust: "illust_panda",
+    shot: {
+      name: "잎사귀 다트", kind: "leaf", cd: 0.32, dmg: 2.2, speed: 820, color: "#9fff8a", pierceAll: true,
+      multi: [1, 2, 3, 4], // 소환하는 정령 수
+      multiDesc: (lv) => `함께 싸우는 정령 ${lv + 1}마리 → ${lv + 2}마리`,
+    },
+    sig: { name: "정령 강화", desc: "정령의 공격 속도 +25%, 위력 +20%" },
+    bomb: { name: "정령왕 강림", desc: "거대한 정령왕이 6초 동안 함께 싸우며 탄을 막는다", color: "#9fffb0" },
+  },
+  {
+    id: "mech",
+    name: "다람쥐 메카닉",
+    grade: "SR",
+    type: "메카형",
+    desc: "개틀링과 로켓을 쏘는 정비공. 궁극기로 거대 메카에 탑승한다",
+    passive: "강화 장갑: 받는 피해 -20%",
+    illust: "illust_mech",
+    shot: {
+      name: "개틀링 + 로켓", kind: "gatling", cd: 0.09, dmg: 0.9, speed: 1000, color: "#ffd34d",
+      multi: [1, 2, 3, 4], // 총열 수
+      multiDesc: (lv) => `개틀링 총열 ${lv + 1}개 → ${lv + 2}개`,
+    },
+    sig: { name: "로켓 포드", desc: "로켓이 더 자주, 한 번에 1발 더 나간다" },
+    bomb: { name: "메카 탑승", desc: "거대 메카에 7초 동안 탑승. 무적, 주포와 미사일 난사, 몸으로 들이받는다", color: "#ffb347" },
+  },
 ];
 
 // 여우: 탄을 베는 데 쓰는 베기 게이지
@@ -365,7 +397,7 @@ RD.UPGRADES = [
   { id: "multi", cat: "주무기", name: "탄 추가", max: 3, color: "#ff5a5a", desc: (lv) => `한 번에 나가는 탄 ${lv + 1}줄 → ${lv + 2}줄` }, // 이름과 설명은 캐릭터마다 바뀐다
   { id: "dmg", cat: "주무기", name: "위력 강화", max: 5, color: "#ff5a5a", desc: () => "주무기 위력 +20%" },
   { id: "rate", cat: "주무기", name: "연사 속도", max: 5, color: "#ff5a5a", desc: () => "주무기 발사 간격 -12%" },
-  { id: "pierce", cat: "주무기", name: "관통", max: 2, color: "#ff5a5a", desc: () => "탄이 적을 하나 더 뚫고 지나간다", only: (ch) => !ch.shot.pierceAll },
+  { id: "pierce", cat: "주무기", name: "관통", max: 2, color: "#ff5a5a", desc: () => "탄이 적을 하나 더 뚫고 지나간다", only: (ch) => ch.id === "cat" },
   { id: "sig", cat: "전용", name: "", max: 3, color: "#ffd34d", desc: () => "" }, // 캐릭터 전용 (이름과 설명은 캐릭터 데이터)
   { id: "missile", cat: "보조무기", name: "유도 미사일", max: 5, color: "#7fe6ff", desc: (lv) => lv ? "미사일 +1발, 위력 증가" : "주기적으로 적을 쫓는 미사일 발사" },
   { id: "laser", cat: "보조무기", name: "레이저", max: 5, color: "#7fe6ff", desc: (lv) => lv ? "레이저 굵기와 위력 증가" : "주기적으로 앞으로 굵은 레이저 발사" },
@@ -403,6 +435,8 @@ RD.BRAWL = {
   rabbit: { name: "부메랑 단검 3개", ammo: 3, reload: 1.2, charge: 0.05, dmg: 7, count: 3, speed: 1100 },
   bear: { name: "망치 투척", ammo: 3, reload: 1.5, charge: 0.14, dmg: 50, radius: 80, dist: 380 },
   owl: { name: "회오리", ammo: 3, reload: 1.4, charge: 0.025, dmg: 9, size: 1, life: 1.8, speed: 300 },
+  panda: { name: "잎사귀 다트 + 정령", ammo: 3, reload: 1.2, charge: 0.07, dmg: 14, count: 2 },
+  mech: { name: "개틀링 연사", ammo: 3, reload: 1.3, charge: 0.025, dmg: 7.5, count: 6 },
   cat: { name: "유도 구슬 3개", ammo: 3, reload: 1.1, charge: 0.05, dmg: 21, count: 3 },
 };
 
@@ -457,6 +491,26 @@ RD.BRAWL_UPS = {
     bu("o_gather", "sup", "바람 모으기", 3, { charge: 0.25 }, "궁극기 충전 +25%"),
     ...BRAWL_COMMON,
   ],
+  panda: [
+    bu("p_more", "atk", "정령 추가", 3, { count: 1 }, "함께 싸우는 정령 +1"),
+    bu("p_fast", "atk", "정령의 속삭임", 3, { reload: 0.15 }, "재장전 -15%, 정령 공격 속도 증가"),
+    bu("p_leaf", "atk", "날카로운 잎", 4, { dmg: 0.2 }, "잎사귀와 정령 위력 +20%"),
+    bu("p_guard", "atk", "수호 정령", 2, { size: 0.5 }, "정령이 막는 범위 +50%"),
+    bu("p_king", "sup", "정령왕 강화", 3, { spow: 0.35 }, "정령왕 위력 +35%"),
+    bu("p_stay", "sup", "오래 머무는 정령왕", 2, { sdur: 1 }, "정령왕이 1초 더 머문다"),
+    bu("p_bond", "sup", "교감", 3, { charge: 0.25 }, "궁극기 충전 +25%"),
+    ...BRAWL_COMMON,
+  ],
+  mech: [
+    bu("m_barrel", "atk", "총열 추가", 3, { count: 2 }, "한 번에 쏘는 탄 +2"),
+    bu("m_rocket", "atk", "로켓 포드", 3, { wave: 1 }, "연사할 때마다 로켓 +1발"),
+    bu("m_cal", "atk", "대구경 탄", 4, { dmg: 0.2 }, "탄 위력 +20%"),
+    bu("m_loader", "atk", "자동 장전기", 3, { reload: 0.15 }, "재장전 -15%"),
+    bu("m_cannon", "sup", "주포 강화", 3, { spow: 0.35 }, "메카 주포 위력 +35%"),
+    bu("m_fuel", "sup", "연료 증설", 2, { sdur: 1 }, "메카 탑승 시간 +1초"),
+    bu("m_overdrive", "sup", "오버드라이브", 3, { charge: 0.25 }, "궁극기 충전 +25%"),
+    ...BRAWL_COMMON,
+  ],
   cat: [
     bu("c_more", "atk", "구슬 추가", 3, { count: 1 }, "한 번에 쏘는 구슬 +1"),
     bu("c_split", "atk", "분열 구슬", 2, { split: 1 }, "구슬이 맞으면 작은 구슬로 갈라진다"),
@@ -498,7 +552,8 @@ RD.ADV = {
     log: { img: "obs_log_hanging", kind: "hanging", w: 210 },
   },
   // 캐릭터별 스킬 (게이지가 차면 자동 발동)
-  SKILLS: { fox: "돌진", cat: "자석 마법", bear: "거대화", rabbit: "3단 점프", owl: "비행" },
+  SKILLS: { fox: "돌진", cat: "자석 마법", bear: "거대화", rabbit: "3단 점프", owl: "비행", panda: "정령 자석", mech: "메카 탑승" },
+  SKILL_AS: { panda: "cat", mech: "bear" }, // 새 캐릭터의 스킬은 기존 스킬 방식을 빌려 쓴다
 };
 
 RD.IMAGES = [
@@ -515,4 +570,4 @@ RD.IMAGES = [
   "item_gem", "item_star", "item_coin", "item_heart",
   "pet_0", "pet_1", "pet_2", "pet_3",
 ];
-RD.ILLUSTS = ["illust_fox", "illust_cat", "illust_bear", "illust_rabbit", "illust_owl"];
+RD.ILLUSTS = ["illust_fox", "illust_cat", "illust_bear", "illust_rabbit", "illust_owl", "illust_panda", "illust_mech"];

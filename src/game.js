@@ -154,7 +154,7 @@
     get power() { return 1 + this.lv("multi"); }
     get dmgMul() { return (1 + 0.2 * this.lv("dmg")) * (1 + RD.GACHA.starDmg * (this.stars - 1)); }
     get maxHp() { return C.maxHp + 25 * this.lv("hp") + RD.GACHA.starHp * (this.stars - 1); }
-    get armor() { return 1 - 0.15 * this.lv("armor"); }
+    get armor() { return (1 - 0.15 * this.lv("armor")) * (this.charId === "mech" ? 0.8 : 1); } // 다람쥐: 강화 장갑
     get magnetR() { return 100 * (1 + 0.6 * this.lv("magnet")); }
     get scoreMul() { return this.D.score * (this.M.scoreMul || 1) * (1 + 0.15 * this.lv("luck")); }
     get bossAlive() { return this.enemies.some((e) => !e.dead && (RD.ENEMIES[e.type].boss || RD.ENEMIES[e.type].midboss)); }
@@ -181,7 +181,7 @@
       if (u.brawl) return { name: u.name, desc: u.desc() };
       if (u.id === "sig") return { name: this.char.sig.name, desc: this.char.sig.desc };
       if (u.id === "multi") {
-        const names = { fox: "베기 강화", rabbit: "단검 추가", bear: "망치 추가", owl: "회오리 추가", cat: "구슬 추가" };
+        const names = { fox: "베기 강화", rabbit: "단검 추가", bear: "망치 추가", owl: "회오리 추가", cat: "구슬 추가", panda: "정령 추가", mech: "총열 추가" };
         return { name: names[this.charId], desc: this.char.shot.multiDesc(this.lv("multi")) };
       }
       return { name: u.name, desc: u.desc(this.lv(u.id)) };
@@ -672,6 +672,24 @@
           }
           break;
         }
+        case "leaf": {
+          // 판다: 잎사귀 다트 (정령은 updateSummons 에서 따로 쏜다)
+          this.addShot({ kind: "leaf", main: true, x: p.x + 30, y: p.y, vx: s.speed, vy: 0, w: 22, h: 12, dmg, pierce: 1, color: s.color });
+          break;
+        }
+        case "gatling": {
+          // 다람쥐: 개틀링 (총열 수만큼) + 몇 번에 한 번 로켓
+          const n = s.multi[pw - 1];
+          for (let i = 0; i < n; i++) {
+            const oy = (i - (n - 1) / 2) * 9, a = rand(-0.05, 0.05);
+            this.addShot({ kind: "bullet", main: true, x: p.x + 34, y: p.y + 4 + oy, vx: Math.cos(a) * s.speed, vy: Math.sin(a) * s.speed, w: 14, h: 6, dmg, pierce: 0, color: s.color });
+          }
+          p.volley = (p.volley || 0) + 1;
+          if (p.volley % (sig ? 6 : 9) === 0) for (let i = 0; i <= (sig ? 1 + Math.floor(sig / 2) : 0); i++) {
+            this.addShot({ kind: "missile", x: p.x, y: p.y - 10, vx: 300, vy: -200 + i * 120, w: 18, h: 12, dmg: 6 * this.dmgMul * (1 + 0.25 * sig), homing: true, color: "#ffd34d" });
+          }
+          break;
+        }
         default: {
           // 고양이: 유도 구슬
           const pierce = this.lv("pierce");
@@ -777,6 +795,18 @@
           const a = ang + (i - (n - 1) / 2) * 0.3;
           this.addShot({ ...base, kind: "tornado", x: p.x + Math.cos(a) * 30, y: p.y + Math.sin(a) * 30, vx: Math.cos(a) * W.speed, vy: Math.sin(a) * W.speed, w: 54 * size, h: 96 * size, dmg, pierce: 99, life: W.life * (1 + this.bst("life")), tick: new Map() });
         }
+      } else if (this.charId === "panda") {
+        for (let i = 0; i < W.count; i++) {
+          const a = ang + (i - (W.count - 1) / 2) * 0.12;
+          this.addShot({ ...base, kind: "leaf", x: p.x + 10, y: p.y, vx: Math.cos(a) * 900, vy: Math.sin(a) * 900, w: 22, h: 12, dmg, pierce: 1 });
+        }
+      } else if (this.charId === "mech") {
+        const n = W.count + this.bst("count");
+        for (let i = 0; i < n; i++) {
+          const a = ang + rand(-0.12, 0.12);
+          this.addShot({ ...base, kind: "bullet", x: p.x + 20 + i * 6, y: p.y + rand(-6, 6), vx: Math.cos(a) * 1000, vy: Math.sin(a) * 1000, w: 14, h: 6, dmg, pierce: 0 });
+        }
+        for (let i = 0; i < this.bst("wave"); i++) this.addShot({ ...base, kind: "missile", x: p.x, y: p.y - 10, vx: Math.cos(ang + 0.6 - i * 0.6) * 400, vy: Math.sin(ang + 0.6 - i * 0.6) * 400, w: 18, h: 12, dmg: dmg * 2.5, pierce: 0, homing: true, charge: ch * 2 });
       } else {
         const n = W.count + this.bst("count");
         for (let i = 0; i < n; i++) {
@@ -866,6 +896,35 @@
       this.damage(e, dmg);
     }
 
+    // ---------- 판다: 정령 소환 ----------
+    get summonCount() {
+      if (this.charId !== "panda") return 0;
+      return this.raid ? 1 + this.bst("count") : this.power;
+    }
+    updateSummons(dt) {
+      const n = this.summonCount, p = this.player;
+      if (!this.summons) this.summons = [];
+      while (this.summons.length < n) this.summons.push({ x: p.x, y: p.y, cd: rand(0, 0.5), ph: this.summons.length });
+      this.summons.length = n;
+      if (!n || p.dead > 0) return;
+      const sig = this.raid ? 0 : this.lv("sig");
+      const cdBase = 0.62 / (1 + 0.25 * sig) * (this.raid ? 1 - Math.min(0.5, this.bst("reload")) : 1);
+      const dmg = (this.raid ? 4.5 : 2.4) * this.dmgMul * (1 + 0.2 * sig) * (this.raid ? 1 + this.bst("dmg") : 1);
+      const guard = 18 * (1 + (this.raid ? this.bst("size") : 0));
+      this.summons.forEach((m, i) => {
+        // 플레이어 뒤쪽에서 둥실둥실 떠다닌다
+        const a = this.t * 1.6 + (i / n) * Math.PI * 2;
+        const tx = p.x - 30 + Math.cos(a) * 46, ty = p.y + Math.sin(a) * 52;
+        m.x += (tx - m.x) * Math.min(1, dt * 7); m.y += (ty - m.y) * Math.min(1, dt * 7);
+        if ((m.cd -= dt) <= 0) {
+          m.cd = cdBase;
+          this.addShot({ kind: "spirit", x: m.x, y: m.y, vx: 620, vy: rand(-80, 80), w: 14, h: 14, dmg, pierce: 0, homing: true, color: "#9fffb0", brawl: !!this.raid, charge: 0.02 });
+        }
+        // 정령의 가호: 닿은 적 탄을 막는다
+        this.bullets = this.bullets.filter((b) => b.boss && b.r > 9 || Math.hypot(b.x - m.x, b.y - m.y) > guard + b.r);
+      });
+    }
+
     // 보조무기
     updateSubWeapons(dt) {
       const p = this.player, S = this.sub;
@@ -944,7 +1003,7 @@
       const p = this.player;
       if (!fromSuper) this.bombs--;
       const sdur = this.raid ? this.bst("sdur") : 0;
-      const life = { fox: 1.0, rabbit: 3.0, bear: 1.5, owl: 2.8, cat: 3.0 }[this.charId] + (this.charId === "fox" ? 0 : this.charId === "bear" ? 0.3 * sdur : sdur);
+      const life = { fox: 1.0, rabbit: 3.0, bear: 1.5, owl: 2.8, cat: 3.0, panda: 6, mech: 7 }[this.charId] + (this.charId === "fox" ? 0 : this.charId === "bear" ? 0.3 * sdur : sdur);
       this.bombT = life;
       this.ult = { kind: this.charId, t: 0, life, x0: p.x, y0: p.y, done: {}, spawnT: 0, mul: 1 + 0.3 * this.lv("bomb") + (this.raid ? this.bst("spow") : 0), sdur };
       p.invuln = Math.max(p.invuln, life + 0.6);
@@ -1056,6 +1115,35 @@
           }
           // 회오리 근처의 탄은 플레이어 쪽으로 오지 못한다
           this.bullets = this.bullets.filter((b) => Math.hypot(b.x - p.x, b.y - p.y) > 60);
+          break;
+        }
+        case "panda": {
+          // 정령왕 강림: 거대한 정령왕이 곁에서 싸운다
+          u.kx = p.x + 90; u.ky = Math.max(90, p.y - 50);
+          u.spawnT -= dt;
+          while (u.spawnT <= 0 && u.t < u.life - 0.3) {
+            u.spawnT += 0.12;
+            const a = rand(-0.5, 0.5);
+            this.addShot({ kind: "spirit", big: true, x: u.kx + 30, y: u.ky, vx: Math.cos(a) * 700, vy: Math.sin(a) * 700, w: 20, h: 20, dmg: 4.5 * u.mul, pierce: 1, homing: true, color: "#9fffb0" });
+          }
+          this.bullets = this.bullets.filter((b) => Math.hypot(b.x - u.kx, b.y - u.ky) > 110);
+          break;
+        }
+        case "mech": {
+          // 메카 탑승: 주포와 미사일, 몸으로 들이받기
+          u.shellT = (u.shellT || 0) - dt;
+          if (u.shellT <= 0) {
+            u.shellT = 0.3;
+            const a = this.autoAim();
+            this.addShot({ kind: "shell", x: p.x + 50, y: p.y - 20, vx: Math.cos(a) * 900, vy: Math.sin(a) * 900, w: 26, h: 14, dmg: 14 * u.mul, pierce: 0, color: "#ffb347" });
+            this.shake = Math.max(this.shake, 0.06);
+          }
+          u.mslT = (u.mslT || 0) - dt;
+          if (u.mslT <= 0) {
+            u.mslT = 0.5;
+            for (let i = 0; i < 2; i++) this.addShot({ kind: "missile", x: p.x - 10, y: p.y - 40, vx: -100 + i * 200, vy: -400, w: 18, h: 12, dmg: 9 * u.mul, homing: true, color: "#ffd34d" });
+          }
+          for (const e of live) if (Math.hypot(e.x - p.x, e.y - p.y) < 90 + RD.ENEMIES[e.type].w / 2) this.damage(e, 40 * u.mul * dt, true);
           break;
         }
         case "cat": {
@@ -1203,6 +1291,7 @@
 
       this.shoot(dt);
       this.updateSubWeapons(dt);
+      this.updateSummons(dt);
       this.updateSlashes(dt);
       this.updateShots(dt);
       this.updateEnemies(dt);

@@ -206,8 +206,9 @@
       } else if (e.code === "KeyX" || e.code === "Space" || e.code === "KeyK") run.bomb();
       if (e.code === "KeyB") RD.debug = !RD.debug;
     } else if (scene === "select") {
-      if (e.code === "ArrowLeft") selected = (selected + 4) % 5;
-      if (e.code === "ArrowRight") selected = (selected + 1) % 5;
+      const NC = RD.CHARACTERS.length;
+      if (e.code === "ArrowLeft") selected = (selected + NC - 1) % NC;
+      if (e.code === "ArrowRight") selected = (selected + 1) % NC;
       if (e.code === "KeyG") scene = "gacha";
       if (e.code === "KeyT") { testMode = !testMode; save.set("testMode", testMode); }
       if (e.code === "Enter" || e.code === "Space") { if (isOwned(selected)) startRun(); }
@@ -402,8 +403,11 @@
     }
 
     // 캐릭터
-    const cw = 172, chh = 232, gap = 12;
-    const x0 = (C.width - (cw * 5 + gap * 4)) / 2;
+    // 캐릭터 수에 맞춰 카드 폭을 나눈다
+    const NC = RD.CHARACTERS.length, gap = 8, chh = 232;
+    const cw = Math.min(172, Math.floor((C.width - 24 - gap * (NC - 1)) / NC));
+    const x0 = (C.width - (cw * NC + gap * (NC - 1))) / 2;
+    const fit = (str, size) => { g.font = `bold ${size}px ${RD.FONT}`; while (size > 8 && g.measureText(str).width > cw - 8) { size--; g.font = `bold ${size}px ${RD.FONT}`; } return size; };
     RD.CHARACTERS.forEach((ch, i) => {
       const sel = i === selected;
       const x = x0 + i * (cw + gap), y = 140 - (sel ? 5 : 0);
@@ -417,11 +421,17 @@
         g.imageSmoothingEnabled = true;
         g.drawImage(im, sx, 0, sw, im.height, x, y, cw, 150);
         g.imageSmoothingEnabled = false;
+      } else {
+        // 일러스트가 아직 없으면 도트 캐릭터를 크게
+        g.fillStyle = "#3a2d58"; g.fillRect(x, y, cw, 150);
+        const ss = Math.min(cw, 140);
+        g.drawImage(RD.getCharacterFrame(ch.id, "jump", 0), x + (cw - ss) / 2, y + 8, ss, ss);
       }
-      RD.text(g, ch.name, x + cw / 2, y + 166, 16, sel ? "#ffd34d" : "#fff", "center");
-      RD.text(g, `${ch.type} · ${ch.shot.name}`, x + cw / 2, y + 187, 12, "#ffc49a", "center");
-      RD.text(g, "전용: " + ch.sig.name, x + cw / 2, y + 204, 12, "#ffd34d", "center");
-      RD.text(g, "궁극기: " + ch.bomb.name, x + cw / 2, y + 221, 12, "#9fd0ff", "center");
+      const t1 = `${ch.type} · ${ch.shot.name}`, t2 = "전용: " + ch.sig.name, t3 = "궁극기: " + ch.bomb.name;
+      RD.text(g, ch.name, x + cw / 2, y + 166, fit(ch.name, 16), sel ? "#ffd34d" : "#fff", "center");
+      RD.text(g, t1, x + cw / 2, y + 187, fit(t1, 12), "#ffc49a", "center");
+      RD.text(g, t2, x + cw / 2, y + 204, fit(t2, 12), "#ffd34d", "center");
+      RD.text(g, t3, x + cw / 2, y + 221, fit(t3, 12), "#9fd0ff", "center");
       // 등급
       const GR = RD.GRADES[ch.grade];
       g.fillStyle = "#1d1622"; g.fillRect(x + 4, y + 4, 44, 20);
@@ -430,14 +440,14 @@
       if (isOwned(i)) {
         // 각성 별
         const st = starsOf(ch.id);
-        RD.text(g, "★".repeat(st) + "☆".repeat(G.maxStars - st), x + cw - 6, y + 14, 11, "#ffd34d", "right");
+        RD.text(g, "★".repeat(st) + "☆".repeat(G.maxStars - st), x + cw - 4, y + 14, cw < 150 ? 8 : 11, "#ffd34d", "right");
       } else {
         // 잠김: 뽑기로 얻는다
         g.fillStyle = "rgba(10,6,20,0.72)";
         g.fillRect(x, y, cw, chh);
         RD.text(g, "🔒", x + cw / 2, y + 80, 34, "#fff", "center");
         RD.text(g, "뽑기로 얻기", x + cw / 2, y + 120, 15, GR.color, "center");
-        RD.text(g, ch.name, x + cw / 2, y + 166, 16, "#aaa", "center");
+        RD.text(g, ch.name, x + cw / 2, y + 166, fit(ch.name, 16), "#aaa", "center");
       }
       buttons.push({ x, y, w: cw, h: chh, onClick: () => {
         if (!isOwned(i)) { scene = "gacha"; return; }
@@ -547,6 +557,7 @@
     g.restore();
     // 일러스트가 오른쪽에서 미끄러져 들어온다
     const im = RD.img(r.ch.illust);
+    if (!(im && im.width)) g.drawImage(RD.getCharacterFrame(r.ch.id, "jump", 0), C.width * 0.45 + (1 - k) * 500, 60, 400, 400);
     if (im && im.width) {
       const h = 470, w = (im.width / im.height) * h;
       const x = C.width * 0.62 - w / 2 + (1 - k) * 500;
@@ -615,7 +626,7 @@
         g.imageSmoothingEnabled = true;
         g.drawImage(im, sx, 0, sw, im.height, x, y, cw, ih);
         g.imageSmoothingEnabled = false;
-      }
+      } else { const ss = ch * 0.6; g.drawImage(RD.getCharacterFrame(r.ch.id, "jump", 0), x + (cw - ss) / 2, y, ss, ss); }
       RD.text(g, GR.name, x + 8, y + 12, 12, GR.color);
       RD.text(g, r.ch.name, x + cw / 2, y + ch * 0.72, n === 1 ? 18 : 14, "#fff", "center");
       const tag = r.kind === "new" ? "NEW!" : r.kind === "star" ? `각성 ★${r.stars}` : "코인 +50";

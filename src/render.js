@@ -212,6 +212,25 @@
         P(-16, -6, 8, 12, "rgba(197,138,255,0.6)");
         P(-9, -9, 18, 18, s.color);
         P(-5, -5, 8, 8, "#fff");
+      } else if (s.kind === "leaf") {
+        // 판다: 잎사귀 다트
+        g.rotate(Math.atan2(s.vy, s.vx) + Math.sin(s.t * 20) * 0.3);
+        g.fillStyle = "#5fcf6a"; g.beginPath(); g.ellipse(0, 0, 11, 5, 0, 0, Math.PI * 2); g.fill();
+        P(-10, -1, 20, 2, "#c8ffb0");
+      } else if (s.kind === "spirit") {
+        // 정령 탄: 초록빛 구슬
+        const r = s.big ? 10 : 7;
+        g.fillStyle = "rgba(159,255,176,0.35)"; g.beginPath(); g.arc(0, 0, r + 6, 0, Math.PI * 2); g.fill();
+        g.fillStyle = "#9fffb0"; g.beginPath(); g.arc(0, 0, r, 0, Math.PI * 2); g.fill();
+        P(-2, -2, 4, 4, "#ffffff");
+      } else if (s.kind === "bullet") {
+        // 다람쥐: 개틀링 탄
+        g.rotate(Math.atan2(s.vy, s.vx));
+        P(-10, -2, 14, 4, "#ffd34d"); P(2, -2, 4, 4, "#ffffff"); P(-18, -1, 8, 2, "rgba(255,211,77,0.4)");
+      } else if (s.kind === "shell") {
+        // 메카 주포탄
+        g.rotate(Math.atan2(s.vy, s.vx));
+        P(-30, -4, 20, 8, "rgba(255,179,71,0.4)"); P(-12, -7, 22, 14, "#8a93a0"); P(6, -5, 8, 10, "#ffb347"); P(-12, -7, 22, 3, "#d8dde6");
       } else if (s.kind === "meteor") {
         // 고양이 궁극기: 별똥별
         g.rotate(Math.atan2(s.vy, s.vx));
@@ -461,7 +480,37 @@
       g.fillStyle = "rgba(197,138,255,0.12)";
       g.fill();
     }
-    if (p.invuln > 0 && Math.floor(run.t * 16) % 2 === 0) return;
+    // 판다: 함께 다니는 정령
+    if (run.summons) for (const m of run.summons) {
+      const bob = Math.sin(run.t * 4 + m.ph) * 3;
+      g.fillStyle = "rgba(159,255,176,0.3)"; g.beginPath(); g.arc(m.x, m.y + bob, 16, 0, Math.PI * 2); g.fill();
+      g.fillStyle = "#c8ffd0"; g.beginPath(); g.arc(m.x, m.y + bob, 10, 0, Math.PI * 2); g.fill();
+      g.fillStyle = "#5fcf6a"; g.fillRect(m.x - 2, m.y - 15 + bob, 4, 6); g.fillRect(m.x + 1, m.y - 17 + bob, 5, 3); // 새싹
+      g.fillStyle = "#1d1622"; g.fillRect(m.x - 4, m.y - 2 + bob, 2, 3); g.fillRect(m.x + 2, m.y - 2 + bob, 2, 3);
+    }
+    // 정령왕
+    if (run.ult && run.ult.kind === "panda" && run.ult.kx != null) {
+      const u = run.ult, fade = Math.min(1, u.t * 3, (u.life - u.t) * 2);
+      g.save(); g.globalAlpha = fade;
+      const gl = g.createRadialGradient(u.kx, u.ky, 10, u.kx, u.ky, 120);
+      gl.addColorStop(0, "rgba(159,255,176,0.6)"); gl.addColorStop(1, "rgba(159,255,176,0)");
+      g.fillStyle = gl; g.fillRect(u.kx - 120, u.ky - 120, 240, 240);
+      g.drawImage(RD.getCharacterFrame("panda", "jump", 0), u.kx - 70, u.ky - 80, 140, 140);
+      g.strokeStyle = "rgba(200,255,210,0.8)"; g.lineWidth = 3; g.beginPath(); g.arc(u.kx, u.ky, 105, u.t * 2, u.t * 2 + 4.5); g.stroke();
+      g.restore();
+    }
+    // 메카 탑승: 캐릭터를 감싼 거대 메카
+    if (run.ult && run.ult.kind === "mech") {
+      const P = (x, y, w, h, c) => { g.fillStyle = c; g.fillRect(p.x + x, p.y + y, w, h); };
+      const step = Math.floor(run.t * 8) % 2 ? 2 : 0;
+      P(-46, -56, 92, 72, "#3a4a5a"); P(-42, -52, 84, 64, "#5a7a9a"); P(-42, -52, 84, 8, "#8ab0d0");
+      P(-20, -46, 40, 26, "#1d2a3a"); P(-16, -42, 32, 18, "rgba(127,230,255,0.35)"); // 조종석 창
+      P(40, -30, 44, 16, "#3a4a5a"); P(80, -34, 14, 24, "#8a93a0"); P(84, -28, 8, 12, "#ffb347"); // 주포
+      P(-60, -40, 16, 40, "#3a4a5a"); P(-58, -30, 12, 6, "#ffd34d"); // 미사일 포드
+      P(-36, 16 + step, 22, 26, "#3a4a5a"); P(14, 16 - step, 22, 26, "#3a4a5a"); P(-40, 40 + step, 30, 8, "#2a3440"); P(10, 40 - step, 30, 8, "#2a3440");
+    }
+    const riding = run.ult && run.ult.kind === "mech";
+    if (!riding && p.invuln > 0 && Math.floor(run.t * 16) % 2 === 0) return;
     const frame = run.charId === "owl" ? Math.floor(p.animT * 12) % 4 : 0;
     const spr = RD.getCharacterFrame(run.charId, run.charId === "owl" ? "run" : "jump", frame);
     const s = C.spriteScale, size = RD.SPRITE_SIZE * s;

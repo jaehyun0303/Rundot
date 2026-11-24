@@ -192,6 +192,55 @@
         p(hx - 4, hy + 11, 7, 2, "#f4f4f0");
       },
     },
+    // 판다 정령술사: 흰 몸, 검은 귀와 눈 둘레, 초록 잎 망토, 정령 구슬
+    panda: {
+      body: "#f4f2ee", belly: "#ffffff", leg: "#2a2633", snout: true,
+      ears(p, L) { p(L.hx, L.hy - 2, 4, 4, "#2a2633"); p(L.hx + 10, L.hy - 2, 4, 4, "#2a2633"); },
+      back(p, L, pose, f) {
+        if (L.slide) return;
+        p(L.tx - 4, L.ty, 5, L.th + (f % 2), "#3f9a4a"); // 잎 망토
+        p(L.tx - 6, L.ty + 3, 3, 4, "#5fcf6a");
+      },
+      torso(p, L) {
+        p(L.tx, L.ty, L.tw, L.th, "#2a2633");
+        p(L.tx + 2, L.ty + 1, L.tw - 4, 3, "#5fcf6a");
+        p(L.tx + 3, L.ty + 5, 4, 1, "#e0c070");
+      },
+      head(p, L) {
+        const { hx, hy } = L;
+        p(hx + 3, hy + 4, 4, 4, "#2a2633"); p(hx + 8, hy + 4, 4, 4, "#2a2633"); // 눈 둘레
+        p(hx + 4, hy + 5, 2, 2, "#ffffff"); p(hx + 9, hy + 5, 2, 2, "#ffffff");
+        p(hx + 2, hy - 1, 10, 2, "#5fcf6a"); p(hx + 6, hy - 3, 3, 2, "#9fff8a"); // 잎 머리띠
+      },
+      front(p, L) {
+        if (L.slide) return;
+        p(L.tx + L.tw + 1, L.ty - 5, 1, 12, "#8a5a35"); // 지팡이
+        p(L.tx + L.tw - 1, L.ty - 9, 5, 5, "#9fffb0"); p(L.tx + L.tw, L.ty - 8, 2, 2, "#ffffff");
+      },
+    },
+    // 다람쥐 메카닉: 주황 털, 큰 꼬리, 고글, 렌치, 정비복
+    mech: {
+      body: "#d8843a", belly: "#f8dcb0", snout: true, leg: "#3a4a5a",
+      ears(p, L) { p(L.hx + 1, L.hy - 3, 3, 4, "#d8843a"); p(L.hx + 10, L.hy - 3, 3, 4, "#d8843a"); },
+      back(p, L, pose, f) {
+        // 커다란 꼬리
+        const fl = f % 2;
+        p(L.tx - 7, L.ty - 8 - fl, 6, 10, "#c0702a"); p(L.tx - 9, L.ty - 12 - fl, 6, 6, "#d8843a"); p(L.tx - 8, L.ty - 11 - fl, 2, 3, "#f8dcb0");
+      },
+      torso(p, L) {
+        p(L.tx, L.ty, L.tw, L.th, "#4a6a8a"); // 정비복
+        p(L.tx + 1, L.ty + 2, L.tw - 2, 1, "#ffd34d");
+        p(L.tx + 3, L.ty + 4, 2, 2, "#aab1ba");
+      },
+      head(p, L) {
+        const { hx, hy } = L;
+        p(hx + 1, hy + 1, 12, 2, "#3a2a1a"); p(hx + 2, hy, 4, 3, "#7fe6ff"); p(hx + 8, hy, 4, 3, "#7fe6ff"); // 고글
+      },
+      front(p, L) {
+        if (L.slide) return;
+        p(L.tx + L.tw, L.ty + 1, 5, 2, "#aab1ba"); p(L.tx + L.tw + 4, L.ty - 1, 2, 2, "#aab1ba"); p(L.tx + L.tw + 4, L.ty + 3, 2, 2, "#aab1ba"); // 렌치
+      },
+    },
   };
 
   function outline(cv) {
