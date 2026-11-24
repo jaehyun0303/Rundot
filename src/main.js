@@ -44,6 +44,7 @@
   let selected = save.get("char", 0);
   if (!RD.CHARACTERS[selected] || !isOwned(selected)) selected = 0;
   let gachaResult = null; // 뽑기 결과 연출
+  let gachaInfo = false; // 확률 상세 창
   let run = null;
   let best = save.get("best", 0);
   RD.best = best;
@@ -65,6 +66,7 @@
 
 
   function startRun() {
+    if (!isOwned(selected)) { scene = "chars"; return; }
     const id = RD.CHARACTERS[selected].id;
     if (mode === "adventure") {
       // 어드벤처 런: 오븐브레이크 방식 러너
@@ -169,6 +171,7 @@
   const unlock = () => RD.audio && RD.audio.init();
   addEventListener("pointerdown", unlock, true);
   addEventListener("keydown", unlock, true);
+  const pauseHit = (pt) => Math.abs(pt.x - RD.PAUSE_BTN.x) < 26 && Math.abs(pt.y - RD.PAUSE_BTN.y) < 26;
   const soundHit = (pt) => Math.hypot(pt.x - RD.SOUND_BTN.x, pt.y - RD.SOUND_BTN.y) < RD.SOUND_BTN.r + 8;
 
   addEventListener("keydown", (e) => {
@@ -183,6 +186,8 @@
       if (["ArrowDown", "KeyS"].includes(e.code)) run.input.slideHeld = true;
       return;
     }
+    if (scene === "play" && !run.over && (e.code === "Escape" || e.code === "KeyP") && !run.cutscene && !run.choosing) { run.paused = !run.paused; return; }
+    if (scene === "play" && run.paused) return;
     if (scene === "play" && run.cutscene) {
       // 컷씬: Space/Enter/X 넘기기, Esc 건너뛰기
       if (["Space", "Enter", "KeyX", "KeyZ"].includes(e.code)) run.advanceCutscene();
@@ -191,10 +196,12 @@
     }
     if (scene === "play" && run.choosing) {
       const n = { Digit1: 0, Digit2: 1, Digit3: 2, Numpad1: 0, Numpad2: 1, Numpad3: 2 }[e.code];
-      if (n != null) run.choose(n);
-      if (e.code === "ArrowLeft" || e.code === "KeyA") run.choosing.sel = ((run.choosing.sel ?? 1) + 2) % 3;
-      if (e.code === "ArrowRight" || e.code === "KeyD") run.choosing.sel = ((run.choosing.sel ?? 1) + 1) % 3;
-      if (e.code === "Enter" || e.code === "Space") run.choose(run.choosing.sel ?? 1);
+      const N = run.choosing.options.length;
+      if (n != null && n < N) run.choosing.sel = n;
+      if (e.code === "ArrowLeft" || e.code === "KeyA") run.choosing.sel = ((run.choosing.sel ?? 1) + N - 1) % N;
+      if (e.code === "ArrowRight" || e.code === "KeyD") run.choosing.sel = ((run.choosing.sel ?? -1) + 1) % N;
+      if ((e.code === "Enter" || e.code === "Space") && run.choosing.sel != null) run.choose(run.choosing.sel);
+      if (e.code === "KeyR") run.reroll();
       return;
     }
     if (scene === "play") {
@@ -215,6 +222,12 @@
     } else if (scene === "result") {
       if (e.code === "Enter" || e.code === "Space") startRun();
       if (e.code === "Escape") scene = "select";
+    } else if (scene === "chars") {
+      const NC = RD.CHARACTERS.length;
+      if (e.code === "ArrowLeft") selected = (selected + NC - 1) % NC;
+      if (e.code === "ArrowRight") selected = (selected + 1) % NC;
+      if (e.code === "Escape") scene = "select";
+      if ((e.code === "Enter" || e.code === "Space") && isOwned(selected)) startRun();
     } else if (scene === "gacha") {
       if (gachaResult) {
         if (gachaResult.state !== "cards") { if (["Enter", "Space", "Escape"].includes(e.code)) skipGacha(); }
@@ -245,7 +258,7 @@
     if (scene === "play") return; // 플레이 중에는 아래 window 핸들러가 처리
     e.preventDefault();
     const pt = toGame(e);
-    if (soundHit(pt)) { RD.audio && RD.audio.toggle(); return; }
+    if (scene !== "select" && scene !== "chars" && soundHit(pt)) { RD.audio && RD.audio.toggle(); return; }
     if (scene === "gacha" && gachaResult && gachaResult.state !== "cards") { skipGacha(); return; }
     for (const b of buttons) {
       if (pt.x >= b.x && pt.x <= b.x + b.w && pt.y >= b.y && pt.y <= b.y + b.h) { RD.audio && RD.audio.sfx("click"); b.onClick(); break; }
@@ -256,6 +269,11 @@
     if (e.target.closest && e.target.closest("button")) return; // 화면 밖 폭탄 버튼
     const pt = toGame(e);
     if (e.target === canvas && soundHit(pt)) { RD.audio && RD.audio.toggle(); return; }
+    if (run.paused) {
+      for (const b of buttons) if (pt.x >= b.x && pt.x <= b.x + b.w && pt.y >= b.y && pt.y <= b.y + b.h) { RD.audio && RD.audio.sfx("click"); b.onClick(); break; }
+      return;
+    }
+    if (e.target === canvas && !run.over && !run.cutscene && !run.choosing && pauseHit(pt)) { run.paused = true; return; }
     if (run.isAdv) {
       const pad = e.target.closest && e.target.closest(".touchpad");
       const action = pad || (e.target === canvas && pt.x < C.width / 2) ? "slide" : "jump";
@@ -272,7 +290,15 @@
     if (run.choosing) {
       // 강화 카드 고르기 (선택 직후 실수로 눌리지 않게 0.35초 기다림)
       if (run.choosing.t < 0.35) return;
-      RD.cardRects.forEach((r, i) => { if (pt.x >= r.x && pt.x <= r.x + r.w && pt.y >= r.y && pt.y <= r.y + r.h) run.choose(i); });
+      const inR = (r) => r && pt.x >= r.x && pt.x <= r.x + r.w && pt.y >= r.y && pt.y <= r.y + r.h;
+      const cb = RD.choiceBtns;
+      if (inR(cb.confirm)) { if (run.choosing.sel != null) run.choose(run.choosing.sel); return; }
+      if (inR(cb.reroll)) { run.reroll(); return; }
+      RD.cardRects.forEach((r, i) => {
+        if (!inR(r)) return;
+        // 같은 카드를 한 번 더 누르면 바로 고른다
+        if (run.choosing.sel === i) run.choose(i); else { run.choosing.sel = i; RD.audio && RD.audio.sfx("click"); }
+      });
       return;
     }
     if (run.raid) { brawlDown(e, pt); return; }
@@ -341,172 +367,274 @@
   addEventListener("pointerup", endDrag);
   addEventListener("pointercancel", endDrag);
 
-  // ---------- 화면들 ----------
-  function button(x, y, w, h, label, onClick, color = "#ff8a3d") {
-    g.fillStyle = "#1d1622";
-    g.fillRect(x - 3, y - 3, w + 6, h + 6);
-    g.fillStyle = color;
-    g.fillRect(x, y, w, h);
-    g.fillStyle = "rgba(255,255,255,0.25)";
-    g.fillRect(x, y, w, h / 3);
-    RD.text(g, label, x + w / 2, y + h / 2 + 1, Math.min(28, h * 0.5), "#fff", "center");
+  // ---------- 화면들 (UI 목업 스타일) ----------
+  const UI = RD.UI;
+  function button(x, y, w, h, label, onClick, color = "#ff8a3d", sub) {
+    UI.btn(g, x, y, w, h, color);
+    const dark = ["#7fe6ff", "#9fffb0", "#ffd34d"].includes(color);
+    const tc = dark ? "#1d1622" : "#fff";
+    if (sub) {
+      UI.fitText(g, label, x + w / 2, y + h / 2 - 9, w - 12, Math.min(30, h * 0.42), tc, "center", dark ? color : "#1d1622");
+      UI.fitText(g, sub, x + w / 2, y + h / 2 + 16, w - 12, 12, tc, "center", dark ? color : "#1d1622");
+    } else UI.fitText(g, label, x + w / 2, y + h / 2 - 1, w - 12, Math.min(26, h * 0.45), tc, "center", dark ? color : "#1d1622");
     buttons.push({ x, y, w, h, onClick });
   }
 
-  function tab(x, y, w, h, label, active, color, onClick) {
-    g.fillStyle = "#1d1622";
-    g.fillRect(x - 2, y - 2, w + 4, h + 4);
-    g.fillStyle = active ? color : "#2b2140";
-    g.fillRect(x, y, w, h);
-    RD.text(g, label, x + w / 2, y + h / 2 + 1, Math.min(15, (w - 6) / (label.length * 0.92)), active ? "#1d1622" : "#cfc6e0", "center", active ? color : "#1d1622");
+  function tab(x, y, w, h, label, active, color, onClick, iconName) {
+    g.fillStyle = active ? color : "#1d1622"; g.fillRect(x - 3, y - 3, w + 6, h + 6);
+    g.fillStyle = active ? "#3d2f5a" : "#2b2140"; g.fillRect(x, y, w, h);
+    g.fillStyle = "rgba(0,0,0,0.25)"; g.fillRect(x, y + h - 3, w, 3);
+    let tx = x + w / 2, al = "center";
+    if (iconName) { UI.iconBox(g, x + 5, y + (h - 22) / 2, 22, iconName, color); tx = x + 34; al = "left"; }
+    UI.fitText(g, label, tx, y + h / 2, iconName ? w - 40 : w - 8, 14, active ? "#fff" : "#cfc6e0", al);
     buttons.push({ x, y, w, h, onClick });
   }
 
-  function drawSelect() {
+  const MODE_ICON = { story: "book", stageselect: "flag", endless: "target", bossrush: "skull", timeattack: "clock", hardcore: "heart", chaos: "chaos",
+    dream: "candy", adventure: "run", raid: "sword", trumpets: "trumpet" };
+  const MODE_COL = { story: "#ff8a3d", stageselect: "#ffd34d", endless: "#7fe6ff", bossrush: "#ff4d5e", timeattack: "#9fd0ff", hardcore: "#ff6a6a", chaos: "#c58aff",
+    dream: "#ff9ad8", adventure: "#7fe08a", raid: "#c58aff", trumpets: "#ffd34d" };
+  const ownedCount = () => RD.CHARACTERS.filter((c, i) => isOwned(i)).length;
+
+  function menuBackdrop() {
     menuT += 1 / 60;
-    RD.drawBackground(g, menuT * 120);
-    g.fillStyle = "rgba(10,8,20,0.5)";
-    g.fillRect(0, 0, C.width, C.height);
-    RD.text(g, "RUNDOT", 24, 34, 36, "#ffd34d");
-    // 테스트 모드 켜기/끄기
-    tab(20, 60, 150, 28, testMode ? "🧪 테스트 모드 ON" : "🧪 테스트 모드 OFF", testMode, "#7fe08a", () => { testMode = !testMode; save.set("testMode", testMode); });
-    if (testMode) RD.text(g, "모든 캐릭터·지역 해제, 뽑기 무료", 24, 100, 11, "#7fe08a");
+    g.fillStyle = UI.COL.bg; g.fillRect(0, 0, C.width, C.height);
+    // 반짝이는 도트 별
+    for (let i = 0; i < 40; i++) { g.fillStyle = `rgba(255,255,255,${0.15 + 0.25 * Math.abs(Math.sin(menuT * 1.3 + i))})`; g.fillRect((i * 173) % C.width, (i * 97) % C.height, 2, 2); }
+  }
 
-    // 모드
-    RD.text(g, "모드", 200, 34, 14, "#9fd0ff");
-    MODE_IDS.filter((id) => !RD.MODES[id].special).forEach((id, i) => tab(234 + i * 96, 20, 90, 30, RD.MODES[id].name, id === mode, "#7fe6ff", () => { mode = id; save.set("mode", id); loadBest(); }));
-    // 특별 모드 (난이도 줄 오른쪽)
-    const SPECIAL = { dream: ["🍬 꿈", "#ff9ad8"], adventure: ["🏃 어드벤처", "#7fe08a"], raid: ["⚔ 레이드", "#ff8a8a"], trumpets: ["🎺 나팔", "#ffd34d"] };
-    MODE_IDS.filter((id) => RD.MODES[id].special).forEach((id, i) => tab(586 + i * 80, 62, 76, 30, SPECIAL[id][0], id === mode, SPECIAL[id][1], () => { mode = id; save.set("mode", id); loadBest(); }));
-    // 난이도
-    RD.text(g, "난이도", 186, 76, 14, "#9fd0ff");
-    DIFF_IDS.forEach((id, i) => {
-      const D = RD.DIFFICULTY[id];
-      tab(234 + i * 86, 62, 82, 30, D.name, id === diff, D.color, () => { diff = id; save.set("diff", id); loadBest(); });
-    });
+  function coinBox(x, y, w) {
+    UI.panel(g, x, y, w, 34);
+    UI.icon(g, "coin", x + 10, y + 7, 20, "#ffd34d");
+    RD.text(g, testMode ? "무료" : coins.toLocaleString(), x + w - 10, y + 18, 17, "#fff", "right");
+  }
+
+  function subtitle() {
     const D = RD.DIFFICULTY[diff];
+    let s = `${RD.MODES[mode].name} · ${D.name}`;
+    if (mode === "stageselect") s += ` · ${RD.STAGES[pickStage].name}`;
+    if (mode === "raid") s += ` · ${RD.RAID_BOSSES[raidPick][2]} Lv.${raidLv[RD.RAID_BOSSES[raidPick][0]] || 1}`;
+    return s;
+  }
+
+  // 메인 로비
+  function drawSelect() {
+    menuBackdrop();
+    const D = RD.DIFFICULTY[diff], ch = RD.CHARACTERS[selected];
+    // 왼쪽 위: 로고, 보유, 코인
+    UI.panel(g, 16, 14, 312, 132);
+    RD.text(g, "RUNDOT", 30, 48, 42, "#ffd34d");
+    UI.iconBox(g, 30, 74, 30, "star", "#ffd34d", "#3a2d58");
+    RD.text(g, "모험가", 70, 82, 16, "#fff");
+    UI.chip(g, 132, 72, 92, 20, "#7fe6ff", `보유 ${ownedCount()}/${RD.CHARACTERS.length}`, 12);
+    coinBox(30, 102, 284);
+    // 모드 설명과 최고 기록
+    UI.panel(g, 16, 158, 312, 86, "#231a36");
+    UI.iconBox(g, 28, 170, 28, MODE_ICON[mode], MODE_COL[mode]);
+    RD.text(g, RD.MODES[mode].name, 66, 184, 17, MODE_COL[mode]);
+    const desc = RD.MODES[mode].desc;
+    g.font = `bold 11px ${RD.FONT}`;
+    const lines = [""];
+    for (const w of desc.split(" ")) { const t = (lines[lines.length - 1] + " " + w).trim(); if (g.measureText(t).width > 286) lines.push(w); else lines[lines.length - 1] = t; }
+    lines.slice(0, 2).forEach((l, i) => RD.text(g, l, 28, 208 + i * 15, 11, "#cfc6e0"));
+    RD.text(g, `최고 기록 ${best.toLocaleString()}`, 316, 184, 12, "#ffd34d", "right");
+    // 난이도 + 지역/보스 고르기
+    UI.panel(g, 16, 256, 312, 164);
+    RD.text(g, "난이도", 28, 272, 13, "#ffd34d");
+    DIFF_IDS.forEach((id, i) => { const d = RD.DIFFICULTY[id]; tab(28 + i * 74, 284, 68, 28, d.name, id === diff, d.color, () => { diff = id; save.set("diff", id); loadBest(); }); });
     if (mode === "raid") {
-      // 레이드 보스 고르기
+      RD.text(g, "레이드 보스", 28, 330, 13, "#ffd34d");
       RD.RAID_BOSSES.forEach(([type, , name], i) => {
-        const lv = raidLv[type] || 1;
-        tab(14 + i * 117, 104, 113, 26, `${name.length > 6 ? name.slice(0, 6) + "…" : name} Lv${lv}`, i === raidPick, "#ff8a8a", () => { raidPick = i; save.set("raidPick", i); loadBest(); });
+        tab(28 + (i % 2) * 146, 342 + Math.floor(i / 2) * 19, 140, 15, `${name} Lv${raidLv[type] || 1}`, i === raidPick, "#ff8a8a", () => { raidPick = i; save.set("raidPick", i); loadBest(); });
       });
     } else if (mode === "stageselect") {
-      // 지역 고르기 (스토리에서 도달한 곳까지)
+      RD.text(g, "지역", 28, 330, 13, "#ffd34d");
       RD.STAGES.filter((st) => !st.special).forEach((st, i) => {
         const open = testMode || i <= maxStage;
-        tab(120 + i * 146, 104, 138, 26, open ? `${i + 1}. ${st.name}` : `${i + 1}. 🔒`, i === pickStage, "#ffd34d", () => { if (open) { pickStage = i; save.set("pickStage", i); loadBest(); } });
+        tab(28 + (i % 2) * 146, 342 + Math.floor(i / 2) * 26, 140, 20, open ? `${i + 1}. ${st.name}` : `${i + 1}. 잠김`, i === pickStage, "#ffd34d", () => { if (open) { pickStage = i; save.set("pickStage", i); loadBest(); } });
       });
     } else {
-      if (mode === "adventure") RD.text(g, RD.MODES[mode].desc, C.width / 2, 116, 13, "#e8e0f5", "center");
-      else RD.text(g, `${RD.MODES[mode].desc}  ·  잔기 ${RD.MODES[mode].lives || D.lives}  ·  적 체력 x${D.enemyHp}  ·  받는 피해 x${D.damage}  ·  점수 x${D.score * (RD.MODES[mode].scoreMul || 1)}`, C.width / 2, 116, 13, "#e8e0f5", "center");
+      const lv = RD.MODES[mode].lives || D.lives;
+      RD.text(g, `잔기 ${lv}  ·  적 체력 x${D.enemyHp}`, 28, 336, 12, "#cfc6e0");
+      RD.text(g, `받는 피해 x${D.damage}  ·  점수 x${(D.score * (RD.MODES[mode].scoreMul || 1)).toFixed(1)}`, 28, 356, 12, "#cfc6e0");
+      RD.text(g, D.terrain ? `지형 효과 ${D.terrain < 1 ? "약하게" : D.terrain > 1 ? "강하게" : "보통"}` : "지형 효과 없음", 28, 376, 12, "#9fffb0");
     }
-
-    // 캐릭터
-    // 캐릭터 수에 맞춰 카드 폭을 나눈다
-    const NC = RD.CHARACTERS.length, gap = 8, chh = 232;
-    const cw = Math.min(172, Math.floor((C.width - 24 - gap * (NC - 1)) / NC));
-    const x0 = (C.width - (cw * NC + gap * (NC - 1))) / 2;
-    const fit = (str, size) => { g.font = `bold ${size}px ${RD.FONT}`; while (size > 8 && g.measureText(str).width > cw - 8) { size--; g.font = `bold ${size}px ${RD.FONT}`; } return size; };
-    RD.CHARACTERS.forEach((ch, i) => {
-      const sel = i === selected;
-      const x = x0 + i * (cw + gap), y = 140 - (sel ? 5 : 0);
-      g.fillStyle = sel ? "#ffd34d" : "#1d1622";
-      g.fillRect(x - 4, y - 4, cw + 8, chh + 8);
-      g.fillStyle = "#2b2140";
-      g.fillRect(x, y, cw, chh);
-      const im = RD.img(ch.illust);
-      if (im && im.width) {
-        const sw = im.height * (cw / 150), sx = (im.width - sw) / 2;
-        g.imageSmoothingEnabled = true;
-        g.drawImage(im, sx, 0, sw, im.height, x, y, cw, 150);
-        g.imageSmoothingEnabled = false;
-      } else {
-        // 일러스트가 아직 없으면 도트 캐릭터를 크게
-        g.fillStyle = "#3a2d58"; g.fillRect(x, y, cw, 150);
-        const ss = Math.min(cw, 140);
-        g.drawImage(RD.getCharacterFrame(ch.id, "jump", 0), x + (cw - ss) / 2, y + 8, ss, ss);
-      }
-      const t1 = `${ch.type} · ${ch.shot.name}`, t2 = "전용: " + ch.sig.name, t3 = "궁극기: " + ch.bomb.name;
-      RD.text(g, ch.name, x + cw / 2, y + 166, fit(ch.name, 16), sel ? "#ffd34d" : "#fff", "center");
-      RD.text(g, t1, x + cw / 2, y + 187, fit(t1, 12), "#ffc49a", "center");
-      RD.text(g, t2, x + cw / 2, y + 204, fit(t2, 12), "#ffd34d", "center");
-      RD.text(g, t3, x + cw / 2, y + 221, fit(t3, 12), "#9fd0ff", "center");
-      // 등급
-      const GR = RD.GRADES[ch.grade];
-      g.fillStyle = "#1d1622"; g.fillRect(x + 4, y + 4, 44, 20);
-      g.fillStyle = GR.color; g.fillRect(x + 6, y + 6, 40, 16);
-      RD.text(g, GR.name, x + 26, y + 15, 11, "#1d1622", "center", GR.color);
-      if (isOwned(i)) {
-        // 각성 별
-        const st = starsOf(ch.id);
-        RD.text(g, "★".repeat(st) + "☆".repeat(G.maxStars - st), x + cw - 4, y + 14, cw < 150 ? 8 : 11, "#ffd34d", "right");
-      } else {
-        // 잠김: 뽑기로 얻는다
-        g.fillStyle = "rgba(10,6,20,0.72)";
-        g.fillRect(x, y, cw, chh);
-        RD.text(g, "🔒", x + cw / 2, y + 80, 34, "#fff", "center");
-        RD.text(g, "뽑기로 얻기", x + cw / 2, y + 120, 15, GR.color, "center");
-        RD.text(g, ch.name, x + cw / 2, y + 166, fit(ch.name, 16), "#aaa", "center");
-      }
-      buttons.push({ x, y, w: cw, h: chh, onClick: () => {
-        if (!isOwned(i)) { scene = "gacha"; return; }
-        if (selected === i) startRun();
-        selected = i; save.set("char", i);
-      } });
+    // 가운데: 고른 캐릭터
+    UI.panel(g, 344, 14, 300, 320, "#1d1428");
+    UI.portrait(g, ch, 350, 20, 288, 308, Math.floor(menuT * 8) % 4);
+    UI.panel(g, 344, 344, 300, 76);
+    UI.fitText(g, ch.name, 494 - 30, 368, 200, 22, "#fff", "center");
+    UI.chip(g, 574, 357, 54, 22, UI.gradeCol(ch.grade), RD.GRADES[ch.grade].name, 12);
+    RD.text(g, "각성", 400, 401, 11, "#cfc6e0");
+    UI.stars(g, 432, 394, starsOf(ch.id), G.maxStars, 2);
+    buttons.push({ x: 344, y: 14, w: 300, h: 406, onClick: () => { scene = "chars"; } });
+    // 오른쪽 위: 소리, 테스트 모드
+    const tbx = C.width - 106;
+    UI.panel(g, tbx, 14, 38, 34, testMode ? "#2f5a3a" : "#2b2140");
+    UI.icon(g, "gear", tbx + 9, 21, 20, testMode ? "#7fe08a" : "#cfc6e0");
+    buttons.push({ x: tbx, y: 14, w: 38, h: 34, onClick: () => { testMode = !testMode; save.set("testMode", testMode); } });
+    if (testMode) RD.text(g, "테스트 모드", tbx - 8, 31, 11, "#7fe08a", "right");
+    // 모드 선택 (2열)
+    UI.panel(g, 660, 60, 284, 360);
+    RD.text(g, "모드 선택", 672, 78, 15, "#ffd34d");
+    RD.text(g, `${MODE_IDS.length}개 모드`, 932, 78, 11, "#9a8ab8", "right");
+    MODE_IDS.forEach((id, i) => {
+      const x = 670 + (i % 2) * 136, y = 94 + Math.floor(i / 2) * 54;
+      tab(x, y, 128, 44, RD.MODES[id].name, id === mode, MODE_COL[id], () => { mode = id; save.set("mode", id); loadBest(); }, MODE_ICON[id]);
+      if (RD.MODES[id].special) UI.chip(g, x + 86, y - 6, 40, 13, "#ffd34d", "특별", 9);
     });
+    // 아래: 메뉴 바
+    UI.panel(g, 16, 436, 628, 90, "#231a36");
+    [["캐릭터", "up", "#ff8a3d", () => { scene = "chars"; }], ["뽑기", "chest", "#c58aff", () => { scene = "gacha"; }], ["소리", "sound", "#7fe6ff", () => RD.audio && RD.audio.toggle()], ["테스트", "gear", "#7fe08a", () => { testMode = !testMode; save.set("testMode", testMode); }]]
+      .forEach(([label, ic, col, fn], i) => {
+        const x = 28 + i * 154, y = 448;
+        UI.btn(g, x, y, 142, 66, "#2b2140");
+        UI.icon(g, ic, x + 59, y + 8, 24, col);
+        RD.text(g, label, x + 71, y + 48, 15, "#fff", "center");
+        if (label === "테스트" && testMode) UI.chip(g, x + 100, y - 8, 40, 14, "#7fe08a", "ON", 10);
+        buttons.push({ x, y, w: 142, h: 66, onClick: fn });
+      });
+    // 출격
+    button(660, 436, 284, 90, "출격!", startRun, "#ff8a3d", subtitle());
+  }
 
-    const ch = RD.CHARACTERS[selected];
-    const spr = RD.getCharacterFrame(ch.id, ch.id === "owl" ? "run" : "jump", Math.floor(menuT * 10) % 4);
-    g.drawImage(spr, 24, 392, 110, 110);
-    RD.text(g, ch.desc.split(". ")[0], 145, 420, 15, "#fff");
-    RD.text(g, `전용 · ${ch.sig.name}: ${ch.sig.desc}`, 145, 446, 12, "#ffd34d");
-    RD.text(g, `궁극기 · ${ch.bomb.name}: ${ch.bomb.desc}`, 145, 470, 12, "#9fd0ff");
-    let ly = 494;
-    if (ch.passive) { RD.text(g, `패시브 · ${ch.passive}`, 145, ly, 12, "#9fffb0"); ly += 22; }
-    const stc = starsOf(ch.id);
-    const starTxt = stc > 1 ? `   각성 ★${stc}: 위력 +${Math.round(G.starDmg * 100 * (stc - 1))}%, 체력 +${G.starHp * (stc - 1)}` : "";
-    RD.text(g, `최고 점수 (${RD.MODES[mode].name} · ${D.name}) ${best.toLocaleString()}${starTxt}`, 145, ly, 12, "#cfc6e0");
-    RD.text(g, `코인 ${coins.toLocaleString()}`, C.width - 318, 400, 14, "#ffd34d", "center");
-    button(C.width - 384, 414, 132, 66, "뽑기", () => { scene = "gacha"; }, "#c58aff");
-    button(C.width - 230, 414, 200, 66, "출격!", startRun);
+  // 캐릭터 선택과 상세
+  function drawChars() {
+    menuBackdrop();
+    UI.panel(g, 16, 12, 40, 40); UI.icon(g, "back", 24, 20, 24, "#fff");
+    buttons.push({ x: 16, y: 12, w: 40, h: 40, onClick: () => { scene = "select"; } });
+    RD.text(g, "캐릭터 선택", 72, 33, 24, "#fff");
+    RD.text(g, `보유 ${ownedCount()}/${RD.CHARACTERS.length}`, 216, 35, 13, "#9fffb0");
+    coinBox(C.width - 196, 14, 180);
+    // 카드 줄
+    const NC = RD.CHARACTERS.length, gap = 10;
+    const cw = Math.floor((C.width - 32 - gap * (NC - 1)) / NC), chh = 168;
+    RD.CHARACTERS.forEach((c, i) => {
+      const x = 16 + i * (cw + gap), y = 66, sel = i === selected, own = isOwned(i), gc = UI.gradeCol(c.grade);
+      g.fillStyle = sel ? "#ffd34d" : gc; g.fillRect(x - 4, y - 4, cw + 8, chh + 8);
+      g.fillStyle = "#2b2140"; g.fillRect(x, y, cw, chh);
+      UI.portrait(g, c, x + 6, y + 6, cw - 12, 100);
+      if (!own) { g.fillStyle = "rgba(10,6,20,0.7)"; g.fillRect(x + 6, y + 6, cw - 12, 100); UI.icon(g, "lock", x + cw / 2 - 12, y + 30, 24, "#fff"); UI.chip(g, x + 10, y + 70, cw - 20, 18, "#c58aff", "뽑기로 얻기", 10, "#fff"); }
+      UI.chip(g, x + cw - 40, y + 2, 36, 16, gc, RD.GRADES[c.grade].name, 10);
+      if (sel) UI.chip(g, x - 2, y - 2, 34, 16, "#ffd34d", "선택", 10);
+      UI.fitText(g, c.name, x + cw / 2, y + 124, cw - 8, 14, own ? "#fff" : "#9a8ab8", "center");
+      const st = starsOf(c.id);
+      UI.stars(g, x + (cw - G.maxStars * 13) / 2, y + 140, st, G.maxStars, 1.4);
+      buttons.push({ x, y, w: cw, h: chh, onClick: () => { selected = i; if (own) save.set("char", i); } });
+    });
+    // 상세
+    const ch = RD.CHARACTERS[selected], own = isOwned(selected);
+    UI.panel(g, 16, 250, 928, 278, "#231a36");
+    UI.panel(g, 28, 262, 180, 254, "#1d1428");
+    UI.portrait(g, ch, 31, 265, 174, 248, Math.floor(menuT * 8) % 4);
+    UI.fitText(g, ch.name, 224, 282, 200, 24, "#fff");
+    UI.chip(g, 432, 270, 50, 22, UI.gradeCol(ch.grade), RD.GRADES[ch.grade].name, 12);
+    UI.chip(g, 490, 270, 60, 22, "#3d2f5a", ch.type, 12, "#fff");
+    UI.stars(g, 560, 273, starsOf(ch.id), G.maxStars, 2);
+    const rows = [["일반 공격", "sword", "#ff8a3d", ch.shot.name, ch.desc],
+      ["전용 강화", "up", "#c58aff", ch.sig.name, ch.sig.desc],
+      ["궁극기", "bolt", "#ffd34d", ch.bomb.name, ch.bomb.desc],
+      ["패시브", "shield", "#9fffb0", ch.passive ? ch.passive.split(":")[0] : "없음", ch.passive ? ch.passive.split(":").slice(1).join(":").trim() : "-"]];
+    rows.forEach(([k, ic, col, name, desc], i) => {
+      const y = 304 + i * 54;
+      UI.panel(g, 222, y, 470, 46, "#2b2140");
+      UI.iconBox(g, 230, y + 6, 34, ic, col);
+      RD.text(g, k, 274, y + 23, 11, "#9a8ab8");
+      UI.fitText(g, name, 340, y + 15, 340, 15, "#fff");
+      UI.fitText(g, desc, 340, y + 34, 340, 11, "#cfc6e0");
+    });
+    // 능력치
+    UI.panel(g, 706, 262, 226, 140, "#1d1428");
+    RD.text(g, "능력치", 718, 280, 13, "#ffd34d");
+    const S = RD.STATS[ch.id] || [5, 5, 5, 5];
+    [["공격", "#ff8a3d"], ["사거리", "#7fe6ff"], ["생존", "#9fffb0"], ["난이도", "#ff4d5e"]].forEach(([k, col], i) => {
+      const y = 302 + i * 25;
+      RD.text(g, k, 718, y + 6, 12, "#fff");
+      UI.segBar(g, 770, y, 120, 12, S[i] / 10, col, 10);
+      RD.text(g, String(S[i]), 922, y + 6, 12, "#cfc6e0", "right");
+    });
+    if (own) button(706, 414, 226, 102, "이 캐릭터로 출격", () => { save.set("char", selected); startRun(); }, "#ff8a3d", subtitle());
+    else button(706, 414, 226, 102, "뽑기로 얻기", () => { scene = "gacha"; }, "#c58aff", `${RD.GRADES[ch.grade].name} 등급`);
   }
 
   // ---------- 뽑기 화면 ----------
   function drawGacha() {
-    menuT += 1 / 60;
-    RD.drawBackground(g, menuT * 60);
-    g.fillStyle = "rgba(10,8,20,0.75)";
-    g.fillRect(0, 0, C.width, C.height);
-    RD.text(g, "캐릭터 뽑기", C.width / 2, 44, 36, "#ffd34d", "center");
-    RD.text(g, testMode ? "🧪 테스트 모드: 뽑기 무료 (결과는 저장되지 않음)" : `코인 ${coins.toLocaleString()}`, C.width / 2, 86, testMode ? 16 : 20, testMode ? "#7fe08a" : "#ffd34d", "center");
-    RD.text(g, `전설 확정까지 ${G.pity - pity}회`, C.width / 2, 112, 14, "#cfd8ff", "center");
-
+    menuBackdrop();
+    if (gachaResult && gachaResult.state !== "cards") { drawGachaResult(); return; }
+    // 위: 뒤로, 제목, 코인
+    UI.panel(g, 16, 12, 40, 40); UI.icon(g, "back", 24, 20, 24, "#fff");
+    buttons.push({ x: 16, y: 12, w: 40, h: 40, onClick: () => { gachaResult = null; scene = "select"; } });
+    RD.text(g, gachaResult ? "뽑기 결과" : "캐릭터 뽑기", 72, 33, 24, gachaResult ? "#ffd34d" : "#fff");
+    coinBox(C.width - 196, 14, 180);
     if (gachaResult) { drawGachaResult(); return; }
-
-    // 확률표
-    const order = ["MY", "SSR", "SR", "R", "C"];
+    // 확률표와 전설 확정까지 남은 횟수
+    UI.panel(g, 260, 64, 440, 66, "#231a36");
     const rate = { MY: G.rates.MY, SSR: G.rates.SSR, SR: G.rates.SR, R: G.rates.R, C: 1 - G.rates.MY - G.rates.SSR - G.rates.SR - G.rates.R };
-    order.forEach((gr, i) => {
-      const GR = RD.GRADES[gr];
-      const chars = RD.CHARACTERS.filter((c) => c.grade === gr);
-      const y = 150 + i * 38;
-      g.fillStyle = "rgba(255,255,255,0.06)";
-      g.fillRect(210, y - 18, 540, 36);
-      g.fillStyle = GR.color; g.fillRect(210, y - 18, 6, 36);
-      RD.text(g, GR.name, 232, y, 16, GR.color);
-      RD.text(g, chars.map((c) => c.name + (owned[c.id] ? ` ★${owned[c.id]}` : "")).join(", "), 300, y, 15, "#fff");
-      RD.text(g, `${(rate[gr] * 100).toFixed(1)}%`, 735, y, 15, GR.color, "right");
-      chars.forEach((c, k) => g.drawImage(RD.getCharacterFrame(c.id, "jump", 0), 760 + k * 36, y - 22, 44, 44));
+    ["MY", "SSR", "SR", "R", "C"].forEach((gr, i) => {
+      const x = 272 + i * 86;
+      g.fillStyle = UI.gradeCol(gr); g.fillRect(x, 74, 10, 10);
+      RD.text(g, `${RD.GRADES[gr].name} ${(rate[gr] * 100).toFixed(rate[gr] < 0.01 ? 1 : 1)}%`, x + 15, 80, 11, UI.gradeCol(gr));
     });
-    RD.text(g, "이미 가진 캐릭터가 나오면 각성(★ +1): 위력 +6%, 최대 체력 +6. 최대 ★6을 넘으면 코인 50 돌려받기", C.width / 2, 340, 13, "#cfd8ff", "center");
-    RD.text(g, "10회 뽑기는 희귀 이상 1개 보장", C.width / 2, 362, 13, "#cfd8ff", "center");
-
+    RD.text(g, `전설 확정까지 ${G.pity - pity}회`, 272, 110, 13, "#fff");
+    UI.segBar(g, 420, 104, 230, 12, pity / G.pity, "#ffd34d", 10);
+    RD.text(g, `${pity}/${G.pity}`, 690, 110, 11, "#9a8ab8", "right");
+    // 왼쪽: 픽업 (가장 높은 등급 캐릭터)
+    const pick = RD.CHARACTERS.find((c) => c.grade === "MY") || RD.CHARACTERS.find((c) => c.grade === "SSR");
+    UI.panel(g, 16, 148, 220, 270, "#231a36");
+    UI.chip(g, 24, 140, 86, 20, "#ffd34d", "이번 주 픽업", 11);
+    UI.panel(g, 28, 170, 196, 200, "#1d1428");
+    UI.portrait(g, pick, 30, 172, 192, 196, Math.floor(menuT * 8) % 4);
+    UI.fitText(g, pick.name, 30, 394, 130, 15, "#fff");
+    UI.chip(g, 168, 384, 52, 20, UI.gradeCol(pick.grade), RD.GRADES[pick.grade].name, 11);
+    // 가운데: 소환 마법진과 보물 상자
+    const cx = 480, cy = 290;
+    g.fillStyle = "rgba(197,138,255,0.18)"; g.beginPath(); g.moveTo(cx - 40, 130); g.lineTo(cx + 40, 130); g.lineTo(cx + 90, cy); g.lineTo(cx - 90, cy); g.fill();
+    g.save(); g.translate(cx, cy); g.scale(1, 0.38);
+    for (let r = 0; r < 3; r++) {
+      g.rotate(menuT * (r % 2 ? -0.6 : 0.5));
+      g.strokeStyle = r === 1 ? "#ffd34d" : "#c58aff"; g.lineWidth = 6; g.setLineDash(r === 0 ? [18, 10] : []);
+      g.beginPath(); g.arc(0, 0, 150 - r * 30, 0, Math.PI * 2); g.stroke();
+    }
+    g.setLineDash([]); g.restore();
+    const bob = Math.sin(menuT * 2) * 6;
+    UI.btn(g, cx - 60, cy - 120 + bob, 120, 96, "#a07a3a");
+    g.fillStyle = "#6b4a22"; g.fillRect(cx - 60, cy - 84 + bob, 120, 8);
+    g.fillStyle = "#ffd34d"; g.fillRect(cx - 12, cy - 92 + bob, 24, 24);
+    g.fillStyle = "#1d1622"; g.fillRect(cx - 4, cy - 84 + bob, 8, 8);
+    for (let i = 0; i < 12; i++) { g.fillStyle = `rgba(255,211,77,${0.4 + 0.4 * Math.sin(menuT * 3 + i)})`; g.fillRect(cx + Math.cos(i + menuT) * 140, cy - 60 + Math.sin(i * 2.1 + menuT) * 90, 4, 4); }
+    // 오른쪽: 나올 수 있는 캐릭터
+    UI.panel(g, 724, 148, 220, 270, "#231a36");
+    RD.text(g, "나올 수 있는 캐릭터", 736, 166, 13, "#ffd34d");
+    [...RD.CHARACTERS].sort((a, b) => ["MY", "SSR", "SR", "R", "C"].indexOf(a.grade) - ["MY", "SSR", "SR", "R", "C"].indexOf(b.grade)).forEach((c, i) => {
+      const y = 186 + i * 28;
+      UI.fitText(g, c.name + (starsOf(c.id) ? ` ★${starsOf(c.id)}` : ""), 736, y + 10, 140, 13, starsOf(c.id) ? "#fff" : "#9a8ab8");
+      UI.chip(g, 888, y + 1, 46, 18, UI.gradeCol(c.grade), RD.GRADES[c.grade].name, 10);
+    });
+    // 아래: 뽑기 버튼
     const can1 = testMode || coins >= G.cost1, can10 = testMode || coins >= G.cost10;
-    button(C.width / 2 - 330, 400, 200, 76, testMode ? "1회 · 무료" : `1회 · ${G.cost1}`, () => gacha(1), can1 ? "#c58aff" : "#4a3d5c");
-    button(C.width / 2 - 100, 400, 200, 76, testMode ? "10회 · 무료" : `10회 · ${G.cost10}`, () => gacha(10), can10 ? "#ffb347" : "#4a3d5c");
-    button(C.width / 2 + 130, 400, 200, 76, "돌아가기", () => { scene = "select"; }, "#5b8ff0");
-    if (!can1) RD.text(g, "코인이 부족해요. 게임을 해서 코인을 모으세요", C.width / 2, 500, 14, "#ff8a8a", "center");
+    UI.btn(g, 16, 438, 104, 40, "#2b2140"); RD.text(g, "확률 상세", 68, 456, 13, "#fff", "center");
+    buttons.push({ x: 16, y: 438, w: 104, h: 40, onClick: () => { gachaInfo = !gachaInfo; } });
+    RD.text(g, "중복 = 각성 ★+1", 16, 500, 11, "#9a8ab8");
+    button(300, 430, 280, 96, "1회 뽑기", () => gacha(1), can1 ? "#7fe6ff" : "#4a3d5c", testMode ? "무료" : `코인 ${G.cost1}`);
+    button(600, 430, 344, 96, "10회 뽑기", () => gacha(10), can10 ? "#ff8a3d" : "#4a3d5c", testMode ? "무료" : `코인 ${G.cost10.toLocaleString()}`);
+    UI.chip(g, 612, 420, 140, 20, "#ffd34d", "희귀 이상 1개 보장", 11);
+    if (!can1) RD.text(g, "코인이 부족해요. 게임을 해서 모으세요", 440, 515, 12, "#ff8a8a", "center");
+    if (gachaInfo) {
+      // 확률 상세 창
+      g.fillStyle = "rgba(6,2,12,0.8)"; g.fillRect(0, 0, C.width, C.height);
+      UI.panel(g, 230, 90, 500, 340);
+      RD.text(g, "확률 상세", 480, 116, 20, "#ffd34d", "center");
+      ["MY", "SSR", "SR", "R", "C"].forEach((gr, i) => {
+        const y = 150 + i * 44, chars = RD.CHARACTERS.filter((c) => c.grade === gr);
+        UI.chip(g, 248, y, 56, 22, UI.gradeCol(gr), RD.GRADES[gr].name, 12);
+        RD.text(g, `${(rate[gr] * 100).toFixed(1)}%`, 330, y + 11, 14, "#fff");
+        UI.fitText(g, chars.map((c) => c.name).join(", ") || "-", 400, y + 11, 310, 13, "#cfc6e0");
+      });
+      RD.text(g, `50회 안에 전설이 안 나오면 다음은 전설 확정 · 10회 뽑기는 희귀 이상 1개 보장`, 480, 386, 12, "#cfc6e0", "center");
+      RD.text(g, `중복은 각성 ★+1 (위력 +6%, 체력 +6), ★6 이후 코인 50 환급`, 480, 408, 12, "#cfc6e0", "center");
+      buttons.length = 0;
+      buttons.push({ x: 0, y: 0, w: C.width, h: C.height, onClick: () => { gachaInfo = false; } });
+    }
   }
 
   // 소환 마법진: 등급에 따라 빛이 바뀐다 (전설은 무지개)
@@ -599,73 +727,111 @@
     }
     R.t += 1 / 60;
     const n = R.list.length;
-    const cw = n === 1 ? 200 : 150, ch = n === 1 ? 250 : 156, gap = 12;
-    const cols = n === 1 ? 1 : 5;
-    const x0 = (C.width - (cw * cols + gap * (cols - 1))) / 2;
+    const cols = n === 1 ? 1 : 5, cw = n === 1 ? 200 : 164, ch = n === 1 ? 250 : 170, gap = 14;
+    const x0 = (C.width - (cw * cols + gap * (cols - 1))) / 2, y0 = n === 1 ? 90 : 66;
     R.list.forEach((r, i) => {
-      const x = x0 + (i % cols) * (cw + gap);
-      const y = 132 + Math.floor(i / cols) * (ch + gap);
-      const show = R.t > 0.3 + i * 0.18;
-      const GR = RD.GRADES[r.grade];
-      if (!show) {
-        g.fillStyle = "#1d1622"; g.fillRect(x - 3, y - 3, cw + 6, ch + 6);
-        g.fillStyle = "#3a2d48"; g.fillRect(x, y, cw, ch);
-        RD.text(g, "?", x + cw / 2, y + ch / 2, 40, "#6a5a80", "center");
-        return;
-      }
-      // 등급 빛
-      if (r.grade === "SSR" || r.grade === "SR" || r.grade === "MY") {
-        g.fillStyle = r.grade !== "SR" ? `hsla(${(R.t * 200) % 360},90%,65%,0.6)` : "rgba(197,138,255,0.5)";
-        g.fillRect(x - 10, y - 10, cw + 20, ch + 20);
-      }
-      g.fillStyle = GR.color; g.fillRect(x - 3, y - 3, cw + 6, ch + 6);
+      const x = x0 + (i % cols) * (cw + gap), y = y0 + Math.floor(i / cols) * (ch + gap + 4);
+      const show = R.t > 0.2 + i * 0.12, gc = UI.gradeCol(r.grade);
+      if (!show) { UI.panel(g, x, y, cw, ch, "#3a2d48"); RD.text(g, "?", x + cw / 2, y + ch / 2, 40, "#6a5a80", "center"); return; }
+      const rare = ["MY", "SSR"].includes(r.grade);
+      g.fillStyle = rare ? `hsl(${(R.t * 200 + i * 40) % 360},90%,65%)` : gc; g.fillRect(x - 5, y - 5, cw + 10, ch + 10);
       g.fillStyle = "#2b2140"; g.fillRect(x, y, cw, ch);
-      const im = RD.img(r.ch.illust);
-      if (im && im.width) {
-        const ih = ch * 0.62, sw = im.height * (cw / ih), sx = (im.width - sw) / 2;
-        g.imageSmoothingEnabled = true;
-        g.drawImage(im, sx, 0, sw, im.height, x, y, cw, ih);
-        g.imageSmoothingEnabled = false;
-      } else { const ss = ch * 0.6; g.drawImage(RD.getCharacterFrame(r.ch.id, "jump", 0), x + (cw - ss) / 2, y, ss, ss); }
-      RD.text(g, GR.name, x + 8, y + 12, 12, GR.color);
-      RD.text(g, r.ch.name, x + cw / 2, y + ch * 0.72, n === 1 ? 18 : 14, "#fff", "center");
-      const tag = r.kind === "new" ? "NEW!" : r.kind === "star" ? `각성 ★${r.stars}` : "코인 +50";
-      RD.text(g, tag, x + cw / 2, y + ch * 0.87, n === 1 ? 18 : 14, r.kind === "new" ? "#ff8a3d" : "#ffd34d", "center");
+      UI.portrait(g, r.ch, x + 8, y + 8, cw - 16, ch * 0.62);
+      UI.fitText(g, r.ch.name, x + cw / 2, y + ch * 0.74, cw - 10, n === 1 ? 18 : 14, "#fff", "center");
+      if (r.kind === "new") UI.chip(g, x + cw / 2 - 24, y + ch * 0.82, 48, 20, gc, RD.GRADES[r.grade].name, 11);
+      else {
+        UI.chip(g, x + cw / 2 - 52, y + ch * 0.82, 40, 20, gc, RD.GRADES[r.grade].name, 10);
+        UI.chip(g, x + cw / 2 - 6, y + ch * 0.82, 58, 20, "#3d2f5a", r.kind === "star" ? `각성 ★${r.stars}` : "코인 +50", 10, "#ffd34d");
+      }
+      if (r.kind === "new") UI.chip(g, x + cw - 56, y - 10, 52, 18, "#ff4d5e", "NEW!", 11, "#fff");
     });
-    if (R.t > 0.4 + n * 0.18) button(C.width / 2 - 100, C.height - 58, 200, 46, "확인", () => { gachaResult = null; });
+    if (R.t > 0.3 + n * 0.12) {
+      // 등급별 개수
+      UI.panel(g, 16, 450, 260, 64, "#231a36");
+      ["MY", "SSR", "SR", "R", "C"].forEach((gr, k) => {
+        const c = R.list.filter((r) => r.grade === gr).length;
+        RD.text(g, `${RD.GRADES[gr].name} ${c}`, 28 + k * 50, 482, 12, UI.gradeCol(gr));
+      });
+      button(380, 446, 220, 74, "확인", () => { gachaResult = null; }, "#3d2f5a");
+      const again = n === 10 ? G.cost10 : G.cost1;
+      button(616, 446, 328, 74, `${n}회 더 뽑기`, () => { gachaResult = null; gacha(n); }, testMode || coins >= again ? "#ff8a3d" : "#4a3d5c", testMode ? "무료" : `코인 ${again.toLocaleString()}`);
+    }
   }
 
+  // 결과 화면
   function drawResult() {
-    if (run.isAdv) {
-      RD.drawAdv(g, run);
-      g.fillStyle = "rgba(10,8,20,0.72)"; g.fillRect(0, 0, C.width, C.height);
-      RD.text(g, "어드벤처 런 결과", C.width / 2, 100, 40, "#ffd34d", "center");
-      RD.text(g, run.score.toLocaleString() + " 점", C.width / 2, 190, 52, "#fff", "center");
-      if (run.newBest) RD.text(g, "최고 기록!", C.width / 2, 240, 22, "#ff8a3d", "center");
-      RD.text(g, `달린 거리 ${Math.floor(run.player.x / 100)}m   ${Math.floor(run.t)}초`, C.width / 2, 290, 20, "#ffd34d", "center");
-      RD.text(g, `코인 +${run.coins}  (보유 ${coins.toLocaleString()})`, C.width / 2, 330, 16, "#ffd34d", "center");
-      button(C.width / 2 - 230, 390, 210, 66, "다시 달리기", startRun);
-      button(C.width / 2 + 20, 390, 210, 66, "메뉴로", () => { scene = "select"; }, "#5b8ff0");
-      return;
-    }
-    RD.drawRun(g, run);
-    g.fillStyle = "rgba(10,8,20,0.72)";
-    g.fillRect(0, 0, C.width, C.height);
-    const title = run.raid ? (run.win ? "레이드 성공!" : "레이드 종료") : run.win
+    if (run.isAdv) RD.drawAdv(g, run); else RD.drawRun(g, run);
+    run.rt = (run.rt || 0) + 1 / 60;
+    const win = run.win || (run.isAdv && run.newBest);
+    g.fillStyle = "rgba(10,6,20,0.86)"; g.fillRect(0, 0, C.width, C.height);
+    // 승리면 빛살
+    if (run.win) {
+      g.save(); g.translate(C.width / 2, 60);
+      for (let i = 0; i < 14; i++) { g.rotate(Math.PI / 7 + run.rt * 0.02); g.fillStyle = "rgba(255,211,77,0.06)"; g.beginPath(); g.moveTo(0, 0); g.lineTo(700, -60); g.lineTo(700, 60); g.fill(); }
+      g.restore();
+    } else { const gr = g.createRadialGradient(C.width / 2, 60, 20, C.width / 2, 60, 400); gr.addColorStop(0, "rgba(255,40,60,0.25)"); gr.addColorStop(1, "rgba(255,40,60,0)"); g.fillStyle = gr; g.fillRect(0, 0, C.width, C.height); }
+    const title = run.isAdv ? "어드벤처 런 결과" : run.raid ? (run.win ? "레이드 성공!" : "레이드 종료") : run.win
       ? (run.mode === "timeattack" ? "TIME UP" : run.mode === "stageselect" ? "STAGE CLEAR!" : run.mode === "dream" ? "좋은 꿈 꿨어!" : run.mode === "trumpets" ? "심판 완료" : "ALL CLEAR!")
       : run.mode === "dream" ? "잠에서 깼다…" : "GAME OVER";
-    RD.text(g, title, C.width / 2, 96, 48, run.win ? "#ffd34d" : "#ff4d5e", "center");
-    RD.text(g, `${RD.MODES[run.mode].name} · ${run.D.name}`, C.width / 2, 140, 18, run.D.color, "center");
-    RD.text(g, run.score.toLocaleString() + " 점", C.width / 2, 200, 52, "#fff", "center");
-    if (run.newBest) RD.text(g, "최고 기록!", C.width / 2, 248, 22, "#ff8a3d", "center");
-    const reach = run.raid ? `준 피해 ${Math.round(run.raid.dmg).toLocaleString()} (${Math.round((100 * run.raid.dmg) / Math.max(1, (run.boss || { maxHp: run.raid.dmg }).maxHp))}%)` : run.mode === "trumpets" ? (run.tr >= 0 ? RD.TRUMPETS[run.tr].name : "시작") : run.mode === "dream" ? `${Math.floor(run.t)}초 동안 꿈꿈` : ["story", "hardcore", "stageselect"].includes(run.mode) ? `${run.stage.name}` : run.mode === "bossrush" ? `${run.loop}라운드` : `${Math.floor(run.t)}초 생존`;
-    RD.text(g, `격추 ${run.kills}   Lv.${run.level}   ${reach}`, C.width / 2, 290, 20, "#ffd34d", "center");
-    // 고른 강화 목록
-    const ups = (run.raid ? RD.BRAWL_UPS[run.charId] : RD.UPGRADES).filter((u) => run.lv(u.id)).map((u) => `${u.id === "sig" ? run.char.sig.name : u.name} ${run.lv(u.id)}`);
-    RD.text(g, ups.join(" · ") || "강화 없음", C.width / 2, 328, 13, "#cfd8ff", "center");
-    RD.text(g, `코인 +${run.coins}  (보유 ${coins.toLocaleString()})`, C.width / 2, 356, 16, "#ffd34d", "center");
-    button(C.width / 2 - 230, 390, 210, 66, "다시 출격", startRun);
-    button(C.width / 2 + 20, 390, 210, 66, "메뉴로", () => { scene = "select"; }, "#5b8ff0");
+    RD.text(g, title, C.width / 2, 48, 48, run.win || run.isAdv ? "#ffd34d" : "#ff4d5e", "center");
+    UI.chip(g, C.width / 2 - 92, 80, 88, 22, "#ff8a3d", RD.MODES[run.mode].name, 12, "#fff");
+    UI.chip(g, C.width / 2 + 4, 80, 88, 22, "#3d2f5a", run.D.name, 12, "#fff");
+    // 왼쪽: 캐릭터
+    const ch = RD.CHARACTERS.find((c) => c.id === run.charId);
+    UI.panel(g, 16, 120, 196, 270, "#1d1428");
+    UI.portrait(g, ch, 19, 123, 190, 264);
+    if (!run.win && !run.isAdv) { g.fillStyle = "rgba(40,0,10,0.35)"; g.fillRect(19, 123, 190, 264); }
+    // 점수
+    UI.panel(g, 228, 120, 360, 130, "#231a36");
+    RD.text(g, "SCORE", 244, 140, 12, "#9a8ab8");
+    RD.text(g, String(run.score).padStart(7, "0"), 244, 190, 46, run.win || run.isAdv ? "#ffd34d" : "#fff");
+    if (run.newBest) { g.save(); g.translate(500, 150); g.rotate(-0.08); UI.chip(g, -50, -14, 100, 28, "#ffe066", "최고 기록!", 14); g.restore(); }
+    else RD.text(g, `최고 기록까지 -${Math.max(0, best - run.score).toLocaleString()}`, 244, 230, 12, "#ff8a8a");
+    // 기록 칸 4개
+    const reach = run.isAdv ? `${Math.floor(run.player.x / 100)}m` : run.raid ? `${Math.round((100 * run.raid.dmg) / Math.max(1, (run.boss || { maxHp: run.raid.dmg }).maxHp))}% 피해` : run.mode === "trumpets" ? (run.tr >= 0 ? RD.TRUMPETS[run.tr].name : "시작") : ["story", "hardcore", "stageselect"].includes(run.mode) ? run.stage.name : run.mode === "bossrush" ? `${run.loop}라운드` : `${Math.floor(run.t)}초`;
+    const mm = Math.floor(run.t / 60), ss = Math.floor(run.t % 60);
+    const tiles = run.isAdv
+      ? [["달린 거리", reach, "#9fffb0", "run"], ["코인", `+${run.coins}`, "#ffd34d", "coin"], ["플레이 시간", `${String(mm).padStart(2, "0")}:${String(ss).padStart(2, "0")}`, "#fff", "clock"], ["캐릭터", ch.name, "#7fe6ff", "star"]]
+      : [["격추 수", String(run.kills), "#fff", "sword"], ["레벨", `Lv.${run.level}`, "#7fe6ff", "up"], [run.raid ? "준 피해" : "도달", reach, "#9fffb0", "flag"], ["플레이 시간", `${String(mm).padStart(2, "0")}:${String(ss).padStart(2, "0")}`, "#fff", "clock"]];
+    tiles.forEach(([k, v, col, ic], i) => {
+      const x = 604 + (i % 2) * 172, y = 120 + Math.floor(i / 2) * 68;
+      UI.panel(g, x, y, 164, 60, "#2b2140");
+      UI.icon(g, ic, x + 10, y + 10, 14, "#cfc6e0");
+      RD.text(g, k, x + 30, y + 17, 11, "#9a8ab8");
+      UI.fitText(g, v, x + 12, y + 42, 144, 18, col);
+    });
+    // 이번 판 강화
+    UI.panel(g, 228, 266, 440, 124, "#231a36");
+    RD.text(g, "이번 판 강화", 242, 284, 13, "#ffd34d");
+    const list = run.isAdv ? [] : (run.raid ? RD.BRAWL_UPS[run.charId] : RD.UPGRADES).filter((u) => run.lv(u.id));
+    let cx = 242, cy = 300;
+    for (const u of list) {
+      const name = u.id === "sig" ? run.char.sig.name : u.id === "multi" ? run.upgradeInfo(u).name : u.name;
+      const label = `${name} ${UI.roman(run.lv(u.id))}`;
+      g.font = `bold 12px ${RD.FONT}`;
+      const w = g.measureText(label).width + 22;
+      if (cx + w > 656) { cx = 242; cy += 28; }
+      if (cy > 362) break;
+      g.fillStyle = "#1d1622"; g.fillRect(cx - 2, cy - 2, w + 4, 24); g.fillStyle = "#2b2140"; g.fillRect(cx, cy, w, 20); g.fillStyle = u.color; g.fillRect(cx, cy, 4, 20);
+      RD.text(g, label, cx + 10, cy + 10, 12, "#fff");
+      cx += w + 8;
+    }
+    if (!list.length) RD.text(g, run.isAdv ? "어드벤처 런은 강화가 없어요" : "강화 없음", 242, 312, 12, "#9a8ab8");
+    // 획득 보상
+    UI.panel(g, 684, 266, 260, 124, "#231a36");
+    RD.text(g, "획득 보상", 698, 284, 13, "#ffd34d");
+    const rewards = [["coin", "코인", `+${run.coins}`, "#ffd34d"], ["star", "보유 코인", coins.toLocaleString(), "#fff"]];
+    if (run.raid) rewards.push(["sword", "레이드 레벨업", run.win ? `Lv.${run.raid.lv} → Lv.${run.raid.lv + 1}` : "클리어 시 획득", run.win ? "#ffd34d" : "#6a5a80"]);
+    rewards.forEach(([ic, k, v, col], i) => {
+      const y = 298 + i * 30;
+      g.fillStyle = "#2b2140"; g.fillRect(696, y, 236, 24);
+      UI.icon(g, ic, 702, y + 4, 16, col === "#6a5a80" ? "#6a5a80" : "#ffd34d");
+      RD.text(g, k, 724, y + 12, 12, col === "#6a5a80" ? "#6a5a80" : "#fff");
+      RD.text(g, v, 926, y + 12, 13, col, "right");
+    });
+    // 버튼
+    button(400, 420, 256, 90, "로비로", () => { scene = "select"; }, "#3d2f5a");
+    button(672, 420, 272, 90, run.isAdv ? "다시 달리기" : "다시 출격", startRun, "#ff8a3d");
   }
 
   function drawTouchHints() {
@@ -684,14 +850,27 @@
       return;
     }
     if (run.t < 5) RD.text(g, "화면을 대고 끌어서 이동 · 사격은 자동", C.width / 2, C.height / 2 + 90, 18, "#fff", "center");
-    g.globalAlpha = 0.45;
-    g.fillStyle = "#1d1622";
-    g.beginPath(); g.arc(BOMB_BTN.x, BOMB_BTN.y, BOMB_BTN.r, 0, Math.PI * 2); g.fill();
-    g.globalAlpha = 1;
-    g.strokeStyle = "#4aa8ff"; g.lineWidth = 3;
-    g.beginPath(); g.arc(BOMB_BTN.x, BOMB_BTN.y, BOMB_BTN.r, 0, Math.PI * 2); g.stroke();
-    RD.text(g, "궁극기", BOMB_BTN.x, BOMB_BTN.y - 8, 16, "#fff", "center");
-    RD.text(g, "x" + run.bombs, BOMB_BTN.x, BOMB_BTN.y + 14, 15, "#9fd0ff", "center");
+    // 노란 도트 원 궁극기 버튼
+    const has = run.bombs > 0, B = BOMB_BTN;
+    const col = has ? "#ffe34d" : "#6a5a40";
+    if (has) { g.globalAlpha = 0.25 + 0.15 * Math.sin(performance.now() / 200); g.fillStyle = col; g.beginPath(); g.arc(B.x, B.y, B.r + 8, 0, Math.PI * 2); g.fill(); g.globalAlpha = 1; }
+    g.fillStyle = "#1d1622"; g.beginPath(); g.arc(B.x, B.y, B.r + 3, 0, Math.PI * 2); g.fill();
+    g.fillStyle = col; g.beginPath(); g.arc(B.x, B.y, B.r, 0, Math.PI * 2); g.fill();
+    g.fillStyle = "rgba(0,0,0,0.18)"; g.beginPath(); g.arc(B.x, B.y + 4, B.r - 4, 0.15 * Math.PI, 0.85 * Math.PI); g.fill();
+    UI.icon(g, "bolt", B.x - 12, B.y - 26, 24, has ? "#fff" : "#9a8a70");
+    RD.text(g, `궁극기 ×${run.bombs}`, B.x, B.y + 14, 13, "#1d1622", "center", col);
+  }
+
+  // 일시정지 화면
+  function drawPause() {
+    g.fillStyle = "rgba(10,6,20,0.75)";
+    g.fillRect(0, 0, C.width, C.height);
+    const w = 340, h = 250, x = (C.width - w) / 2, y = (C.height - h) / 2;
+    UI.panel(g, x, y, w, h);
+    RD.text(g, "일시정지", C.width / 2, y + 38, 28, UI.COL.gold, "center");
+    RD.text(g, `${RD.MODES[run.mode].name} · ${RD.DIFFICULTY[run.diff] ? RD.DIFFICULTY[run.diff].name : ""} · 점수 ${run.score.toLocaleString()}`, C.width / 2, y + 72, 13, "#b9add0", "center");
+    button(x + 30, y + 98, w - 60, 52, "계속하기", () => { run.paused = false; }, UI.COL.orange);
+    button(x + 30, y + 170, w - 60, 46, "그만두고 로비로", () => { run.paused = false; scene = "select"; }, "#5a4a78");
   }
 
   // ---------- 루프 ----------
@@ -715,14 +894,16 @@
       RD.text(g, "불러오는 중...", C.width / 2, C.height / 2, 28, "#fff", "center");
     } else if (scene === "select") {
       drawSelect();
-      RD.drawSoundButton(g);
     } else if (scene === "play") {
-      run.update(dt);
-      if (run.isAdv) { RD.drawAdv(g, run); RD.drawSoundButton(g); } else RD.drawRun(g, run);
+      if (!run.paused) run.update(dt);
+      if (run.isAdv) { RD.drawAdv(g, run); RD.drawSoundButton(g); RD.drawPauseButton(g); } else RD.drawRun(g, run);
       drawTouchHints();
+      if (run.paused) drawPause();
       if (run.over && run.overTimer > (run.win ? 3 : 1.5)) endRun();
     } else if (scene === "result") {
       drawResult();
+    } else if (scene === "chars") {
+      drawChars();
     } else if (scene === "gacha") {
       drawGacha();
       RD.drawSoundButton(g);

@@ -87,6 +87,8 @@
       this.expNeed = this.needFor(1);
       this.pendingLevels = 0;
       this.choosing = null; // 레벨업 카드 선택 중이면 { options }
+      this.rerolls = 2; // 강화 카드 새로 뽑기 횟수
+      this.paused = false;
 
       this.player = { vx: 0, vy: 0, x: 160, y: 260, hp: C.maxHp + RD.GACHA.starHp * (this.stars - 1), invuln: C.respawnInvuln, hurt: 0, dead: 0, animT: 0, shotCd: 0, tilt: 0 };
       this.pet = { x: 100, y: 260, t: 0, cd: 0 };
@@ -206,7 +208,16 @@
         if (mains.length) options[2] = pick(mains);
       }
       if (!options.length) { this.pendingLevels = 0; this.player.hp = this.maxHp; return; }
-      this.choosing = { options, t: 0 };
+      this.choosing = { options, t: 0, sel: null };
+    }
+
+    // 강화 카드 새로 뽑기 (판마다 정해진 횟수)
+    reroll() {
+      if (!this.choosing || !(this.rerolls > 0)) return;
+      this.rerolls--;
+      this.choosing = null;
+      this.openChoice();
+      RD.audio && RD.audio.sfx("click");
     }
 
     choose(i) {
