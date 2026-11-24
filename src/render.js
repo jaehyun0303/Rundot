@@ -89,6 +89,39 @@
     }
   }
 
+  // 레이드 경기장: 위에서 내려다본 바닥 (지역 색)
+  const arenaCache = {};
+  function drawArena(g, run) {
+    const st = run.stage;
+    if (!arenaCache[st.id]) {
+      const cv = document.createElement("canvas"); cv.width = C.width; cv.height = C.height;
+      const a = cv.getContext("2d"), r = rng(st.id.length * 77 + 3);
+      // 바닥은 지역의 어두운 색으로 (너무 밝으면 탄이 안 보인다)
+      const top = st.mid, deep = st.far;
+      a.fillStyle = deep; a.fillRect(0, 0, C.width, C.height);
+      const T = 48;
+      for (let y = 0; y < C.height; y += T) for (let x = 0; x < C.width; x += T) {
+        a.fillStyle = (x / T + y / T) % 2 ? top : deep; a.globalAlpha = 0.35; a.fillRect(x, y, T, T); a.globalAlpha = 1;
+        for (let k = 0; k < 3; k++) { a.fillStyle = r() < 0.5 ? "rgba(0,0,0,0.12)" : "rgba(255,255,255,0.08)"; a.fillRect(x + Math.floor(r() * 11) * 4, y + Math.floor(r() * 11) * 4, 4, 4); }
+      }
+      // 장식: 바위와 덤불 (원 모양 그림자 포함)
+      for (let k = 0; k < 14; k++) {
+        const x = r() * C.width, y = r() * C.height, s = 10 + r() * 18;
+        a.fillStyle = "rgba(0,0,0,0.25)"; a.beginPath(); a.ellipse(x + 3, y + s * 0.6, s, s * 0.45, 0, 0, Math.PI * 2); a.fill();
+        a.fillStyle = st.groundCol[0]; a.globalAlpha = 0.55; a.beginPath(); a.arc(x, y, s, 0, Math.PI * 2); a.fill(); a.globalAlpha = 1;
+        a.fillStyle = "rgba(255,255,255,0.15)"; a.beginPath(); a.arc(x - s * 0.3, y - s * 0.3, s * 0.35, 0, Math.PI * 2); a.fill();
+      }
+      // 테두리 벽
+      a.fillStyle = "rgba(10,6,20,0.65)";
+      a.fillRect(0, 0, C.width, 14); a.fillRect(0, C.height - 14, C.width, 14); a.fillRect(0, 0, 14, C.height); a.fillRect(C.width - 14, 0, 14, C.height);
+      const vg = a.createRadialGradient(C.width / 2, C.height / 2, 200, C.width / 2, C.height / 2, 620);
+      vg.addColorStop(0, "rgba(0,0,0,0)"); vg.addColorStop(1, "rgba(0,0,0,0.45)");
+      a.fillStyle = vg; a.fillRect(0, 0, C.width, C.height);
+      arenaCache[st.id] = cv;
+    }
+    g.drawImage(arenaCache[st.id], 0, 0);
+  }
+
   function drawBackground(g, scroll, stage) {
     const st = stage || RD.STAGES[0];
     if (hasImg(st.bg)) {
@@ -139,8 +172,9 @@
         if (e.type === "beetle" && (e.wind || e.dashing)) fi = 3;
         // 보스는 고유 색, 나머지는 지역 색으로
         const im = def.boss ? RD.img(def.img[fi]) : RD.tintImage(def.img[fi], e.variant);
-        const h = def.drawH, w = (im.width / im.height) * h;
-        const top = def.ground ? e.y + def.h / 2 - h + 6 : e.y - h / 2;
+        const h = def.drawH * (run.raid && def.boss ? 0.72 : 1), w = (im.width / im.height) * h; // 레이드 보스는 조금 작게
+        const top = def.ground && !run.raid ? e.y + def.h / 2 - h + 6 : e.y - h / 2;
+        if (run.raid) { g.fillStyle = "rgba(0,0,0,0.3)"; g.beginPath(); g.ellipse(e.x, e.y + h * 0.45, w * 0.35, 8, 0, 0, Math.PI * 2); g.fill(); }
         g.imageSmoothingEnabled = true;
         g.save();
         // flip: 그림이 오른쪽을 보고 있으면 좌우로 뒤집어 플레이어(왼쪽)를 보게 한다
@@ -166,7 +200,8 @@
       }
       if (e.healed) { g.fillStyle = "rgba(127,224,138,0.35)"; g.beginPath(); g.arc(e.x, e.y, def.w * 0.7, 0, Math.PI * 2); g.fill(); }
       if (e.type === "beetle" && e.wind) text(g, "!", e.x, e.y - 34, 24, "#ff4d5e", "center");
-      const top = def.ground ? e.y + def.h / 2 - 30 * sc : e.y - 15 * sc;
+      const top = def.ground && !run.raid ? e.y + def.h / 2 - 30 * sc : e.y - 15 * sc;
+      if (run.raid) { g.fillStyle = "rgba(0,0,0,0.3)"; g.beginPath(); g.ellipse(e.x, e.y + def.h * 0.5, def.w * 0.45, 6, 0, 0, Math.PI * 2); g.fill(); }
       g.drawImage(spr, Math.round(e.x - size / 2), Math.round(top), size, size);
       // 단단한 적은 체력바
       if (!def.boss && !def.midboss && e.maxHp >= 10 && e.hp < e.maxHp) {
@@ -212,6 +247,16 @@
         P(-16, -6, 8, 12, "rgba(197,138,255,0.6)");
         P(-9, -9, 18, 18, s.color);
         P(-5, -5, 8, 8, "#fff");
+      } else if (s.kind === "juggle") {
+        // 저글링 공: 줄무늬 공
+        g.rotate(s.t * 10);
+        g.fillStyle = s.color; g.beginPath(); g.arc(0, 0, 9, 0, Math.PI * 2); g.fill();
+        g.fillStyle = "#ffffff"; g.fillRect(-9, -2, 18, 4);
+        g.fillStyle = "rgba(255,255,255,0.7)"; g.fillRect(-4, -6, 3, 3);
+      } else if (s.kind === "card") {
+        // 쇼타임 카드
+        g.rotate(s.t * 14);
+        P(-7, -10, 14, 20, "#ffffff"); P(-7, -10, 14, 2, "#ff3048"); P(-2, -3, 4, 6, (Math.floor(s.x) % 2) ? "#ff3048" : "#1d1622");
       } else if (s.kind === "leaf") {
         // 판다: 잎사귀 다트
         g.rotate(Math.atan2(s.vy, s.vx) + Math.sin(s.t * 20) * 0.3);
@@ -272,6 +317,10 @@
         g.fillStyle = s.color;
         g.beginPath(); g.ellipse(0, 0, ww + 8, hh + 6, 0, 0, Math.PI * 2); g.fill();
         g.globalAlpha = 1;
+      } else if (s.kind === "lob" && s.arc) {
+        g.fillStyle = "rgba(0,0,0,0.3)"; g.beginPath(); g.ellipse(0, 4, 12, 5, 0, 0, Math.PI * 2); g.fill();
+        g.translate(0, -(s.z || 0)); g.rotate(s.t * 14);
+        P(-4, -2, 18, 5, "#8a5a35"); P(-14, -10, 12, 20, "#aab1ba"); P(-14, -10, 12, 4, "#eef1f5");
       } else if (s.kind === "lob" || s.kind === "hammer") {
         // 곰: 빙글빙글 도는 쇠망치
         g.rotate(s.t * 18);
@@ -521,6 +570,10 @@
     g.fillStyle = "rgba(255,255,255,0.25)";
     g.fillRect(-46 - Math.random() * 6, 6, 22, 3);
     g.fillRect(-40 - Math.random() * 6, 14, 14, 2);
+    if (run.raid) {
+      g.fillStyle = "rgba(0,0,0,0.3)"; g.beginPath(); g.ellipse(0, 30, 22, 7, 0, 0, Math.PI * 2); g.fill();
+      if (run.brawl && Math.cos(run.brawl.aimAng) < 0) g.scale(-1, 1); // 조준한 쪽을 본다
+    }
     g.drawImage(spr, -20 * s, -24 * s, size, size);
     g.restore();
     // 여우 베기 (부채꼴 궤적)
@@ -583,6 +636,9 @@
         g.fillStyle = "#d8b48a";
         g.fillRect(e.x - 46, C.groundY - 4, 92, 10);
         g.globalAlpha = 1;
+      } else if (e.type === "confetti") {
+        const k = e.t / e.life;
+        for (let i = 0; i < 6; i++) { g.fillStyle = ["#ff5ad8", "#ffd34d", "#7fe6ff", "#9fff6a"][i % 4]; g.fillRect(e.x + Math.cos(i * 1.1 + e.x) * 30 * k - 2, e.y + Math.sin(i * 1.1 + e.y) * 30 * k + 20 * k * k - 2, 4, 4); }
       } else if (e.type === "arcslash") {
         const k = e.t / e.life;
         g.save(); g.globalAlpha = 1 - k * 0.7;
@@ -1008,6 +1064,20 @@
   function drawHazards(g, run) {
     for (const h of run.hazards) {
       const warn = h.t < h.warn, on = !warn && h.t < h.warn + h.active;
+      if (h.circle) {
+        // 레이드: 원형 장판 (예고 → 폭발)
+        const col = h.type === "lava" ? (h.quake ? "160,110,60" : "255,90,20") : h.type === "bolt" ? "255,230,107" : h.type === "flame" ? "255,90,20" : "140,220,80";
+        if (warn) {
+          const k = h.t / h.warn;
+          g.fillStyle = `rgba(${col},0.18)`; g.beginPath(); g.arc(h.x, h.y, h.r, 0, Math.PI * 2); g.fill();
+          g.strokeStyle = `rgba(${col},0.9)`; g.lineWidth = 3; g.beginPath(); g.arc(h.x, h.y, h.r, 0, Math.PI * 2); g.stroke();
+          g.fillStyle = `rgba(${col},0.35)`; g.beginPath(); g.arc(h.x, h.y, h.r * k, 0, Math.PI * 2); g.fill();
+        } else if (on) {
+          g.fillStyle = `rgba(${col},0.75)`; g.beginPath(); g.arc(h.x, h.y, h.r, 0, Math.PI * 2); g.fill();
+          g.fillStyle = "rgba(255,255,255,0.6)"; g.beginPath(); g.arc(h.x, h.y, h.r * 0.45, 0, Math.PI * 2); g.fill();
+        }
+        continue;
+      }
       if (h.type === "lava") {
         if (warn) {
           const blink = Math.floor(h.t * 8) % 2;
@@ -1285,7 +1355,7 @@
   RD.drawRun = function (g, run) {
     g.save();
     if (run.shake > 0) g.translate((Math.random() - 0.5) * 12 * run.shake * 2, (Math.random() - 0.5) * 10 * run.shake * 2);
-    drawBackground(g, run.scroll, run.stage);
+    if (run.raid) drawArena(g, run); else drawBackground(g, run.scroll, run.stage);
     drawUltBack(g, run);
     drawItems(g, run);
     drawEnemies(g, run);

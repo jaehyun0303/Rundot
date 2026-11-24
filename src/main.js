@@ -95,8 +95,8 @@
     let grade;
     if (pity >= G.pity - 1) grade = "SSR";
     else {
-      const r = Math.random();
-      grade = r < G.rates.SSR ? "SSR" : r < G.rates.SSR + G.rates.SR ? "SR" : r < G.rates.SSR + G.rates.SR + G.rates.R ? "R" : "C";
+      let r = Math.random();
+      grade = r < G.rates.MY ? "MY" : (r -= G.rates.MY) < G.rates.SSR ? "SSR" : r < G.rates.SSR + G.rates.SR ? "SR" : r < G.rates.SSR + G.rates.SR + G.rates.R ? "R" : "C";
     }
     if (forceMin && grade === "C") grade = "R";
     pity = grade === "SSR" ? 0 : pity + 1;
@@ -130,9 +130,9 @@
     save.set("coins", coins);
     save.set("pity", pity);
     // 뽑기 컷씬: 소환 → 번쩍 → (전설/영웅 새 캐릭터 등장 장면) → 카드 공개
-    const rank = { C: 0, R: 1, SR: 2, SSR: 3 };
+    const rank = { C: 0, R: 1, SR: 2, SSR: 3, MY: 4 };
     const best = list.reduce((a, r) => (rank[r.grade] > rank[a] ? r.grade : a), "C");
-    const cutins = list.filter((r) => (r.grade === "SSR" || r.grade === "SR") && r.kind === "new");
+    const cutins = list.filter((r) => ["MY", "SSR", "SR"].includes(r.grade) && r.kind === "new");
     gachaResult = { list, t: 0, state: "summon", best, cutins, ci: 0, st: 0 };
     RD.audio && RD.audio.sfx("gacha_charge");
   }
@@ -485,12 +485,12 @@
     if (gachaResult) { drawGachaResult(); return; }
 
     // 확률표
-    const order = ["SSR", "SR", "R", "C"];
-    const rate = { SSR: G.rates.SSR, SR: G.rates.SR, R: G.rates.R, C: 1 - G.rates.SSR - G.rates.SR - G.rates.R };
+    const order = ["MY", "SSR", "SR", "R", "C"];
+    const rate = { MY: G.rates.MY, SSR: G.rates.SSR, SR: G.rates.SR, R: G.rates.R, C: 1 - G.rates.MY - G.rates.SSR - G.rates.SR - G.rates.R };
     order.forEach((gr, i) => {
       const GR = RD.GRADES[gr];
       const chars = RD.CHARACTERS.filter((c) => c.grade === gr);
-      const y = 158 + i * 44;
+      const y = 150 + i * 38;
       g.fillStyle = "rgba(255,255,255,0.06)";
       g.fillRect(210, y - 18, 540, 36);
       g.fillStyle = GR.color; g.fillRect(210, y - 18, 6, 36);
@@ -510,13 +510,13 @@
   }
 
   // 소환 마법진: 등급에 따라 빛이 바뀐다 (전설은 무지개)
-  const GRADE_GLOW = { C: [207, 216, 230], R: [95, 184, 255], SR: [197, 138, 255], SSR: [255, 211, 77] };
+  const GRADE_GLOW = { C: [207, 216, 230], R: [95, 184, 255], SR: [197, 138, 255], SSR: [255, 211, 77], MY: [255, 90, 216] };
   function drawSummon(R) {
     const k = Math.min(1, R.st / 2);
     const cx = C.width / 2, cy = 270;
     // 처음엔 파란빛, 점점 최고 등급 색으로 (영웅/전설은 막판에 바뀐다)
     let col = R.st < 1.2 || R.best === "C" ? GRADE_GLOW.R : GRADE_GLOW[R.best];
-    if (R.best === "SSR" && R.st > 1.5) { const h = (R.st * 400) % 360; col = null; g.strokeStyle = `hsl(${h},90%,65%)`; }
+    if ((R.best === "SSR" || R.best === "MY") && R.st > 1.5) { const h = (R.st * 400) % 360; col = null; g.strokeStyle = `hsl(${h},90%,65%)`; }
     const c = col ? `rgb(${col.join(",")})` : null;
     g.fillStyle = "rgba(4,2,12,0.85)"; g.fillRect(0, 0, C.width, C.height);
     const glow = g.createRadialGradient(cx, cy, 10, cx, cy, 260 * k + 40);
@@ -538,7 +538,7 @@
       g.fillStyle = c || `hsl(${(q * 40 + R.st * 300) % 360},90%,65%)`;
       g.fillRect(cx + Math.cos(a) * d - 2, cy + Math.sin(a) * d - 2, 4, 4);
     }
-    RD.text(g, R.st < 1.2 ? "소환 중…" : R.best === "SSR" ? "!!! 전설의 기운 !!!" : R.best === "SR" ? "영웅의 기운!" : "소환 중…", cx, 470, 22, c || "#ffd34d", "center");
+    RD.text(g, R.st < 1.2 ? "소환 중…" : R.best === "MY" ? "!!!! 신화의 기운 !!!!" : R.best === "SSR" ? "!!! 전설의 기운 !!!" : R.best === "SR" ? "영웅의 기운!" : "소환 중…", cx, 470, 22, c || "#ffd34d", "center");
     RD.text(g, "터치해서 건너뛰기", cx, 505, 12, "#9a8aa8", "center");
   }
 
@@ -551,7 +551,7 @@
     g.save(); g.translate(C.width * 0.62, 260); g.rotate(R.st * 0.4);
     for (let q = 0; q < 12; q++) {
       g.rotate(Math.PI / 6);
-      g.fillStyle = r.grade === "SSR" ? `hsla(${(q * 30 + R.st * 120) % 360},90%,65%,0.18)` : "rgba(197,138,255,0.16)";
+      g.fillStyle = r.grade !== "SR" ? `hsla(${(q * 30 + R.st * 120) % 360},90%,65%,0.18)` : "rgba(197,138,255,0.16)";
       g.beginPath(); g.moveTo(0, 0); g.lineTo(600, -60); g.lineTo(600, 60); g.fill();
     }
     g.restore();
@@ -614,8 +614,8 @@
         return;
       }
       // 등급 빛
-      if (r.grade === "SSR" || r.grade === "SR") {
-        g.fillStyle = r.grade === "SSR" ? `hsla(${(R.t * 200) % 360},90%,65%,0.6)` : "rgba(197,138,255,0.5)";
+      if (r.grade === "SSR" || r.grade === "SR" || r.grade === "MY") {
+        g.fillStyle = r.grade !== "SR" ? `hsla(${(R.t * 200) % 360},90%,65%,0.6)` : "rgba(197,138,255,0.5)";
         g.fillRect(x - 10, y - 10, cw + 20, ch + 20);
       }
       g.fillStyle = GR.color; g.fillRect(x - 3, y - 3, cw + 6, ch + 6);

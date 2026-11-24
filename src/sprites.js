@@ -241,6 +241,27 @@
         p(L.tx + L.tw, L.ty + 1, 5, 2, "#aab1ba"); p(L.tx + L.tw + 4, L.ty - 1, 2, 2, "#aab1ba"); p(L.tx + L.tw + 4, L.ty + 3, 2, 2, "#aab1ba"); // 렌치
       },
     },
+    // 개구리 광대: 초록 몸, 툭 튀어나온 큰 눈, 빨간 코, 주름 칼라, 방울 달린 광대 모자
+    frog: {
+      body: "#5fc04a", belly: "#d8f0a0", leg: "#3f8a30",
+      torso(p, L) {
+        p(L.tx, L.ty, L.tw, L.th, "#ff5ad8"); p(L.tx + 2, L.ty, 2, L.th, "#ffd34d"); p(L.tx + 6, L.ty, 2, L.th, "#7fe6ff");
+        p(L.tx - 2, L.ty - 1, L.tw + 4, 2, "#ffffff"); p(L.tx - 1, L.ty + 1, 2, 1, "#ffffff"); p(L.tx + L.tw - 1, L.ty + 1, 2, 1, "#ffffff"); // 주름 칼라
+      },
+      head(p, L) {
+        const { hx, hy } = L;
+        p(hx + 1, hy + 1, 5, 5, "#5fc04a"); p(hx + 8, hy + 1, 5, 5, "#5fc04a"); // 튀어나온 눈
+        p(hx + 2, hy + 2, 3, 3, "#ffffff"); p(hx + 9, hy + 2, 3, 3, "#ffffff"); p(hx + 3, hy + 3, 1, 2, "#1d1622"); p(hx + 10, hy + 3, 1, 2, "#1d1622");
+        p(hx + 12, hy + 7, 3, 3, "#ff3048"); // 빨간 코
+        p(hx + 3, hy + 10, 8, 1, "#c03040"); // 큰 웃음
+        p(hx + 1, hy - 4, 5, 4, "#ff5ad8"); p(hx + 8, hy - 4, 5, 4, "#7a3aa0"); p(hx - 1, hy - 5, 2, 2, "#ffd34d"); p(hx + 13, hy - 5, 2, 2, "#ffd34d"); // 광대 모자와 방울
+      },
+      front(p, L, pose, f) {
+        if (L.slide) return;
+        const b = f % 2;
+        p(L.tx + L.tw + 1, L.ty - 6 - b * 2, 3, 3, "#ff5ad8"); p(L.tx + L.tw + 4, L.ty - 9 + b * 2, 3, 3, "#ffd34d"); p(L.tx + L.tw + 2, L.ty - 12, 3, 3, "#7fe6ff"); // 저글링 공
+      },
+    },
   };
 
   function outline(cv) {

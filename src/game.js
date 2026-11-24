@@ -181,7 +181,7 @@
       if (u.brawl) return { name: u.name, desc: u.desc() };
       if (u.id === "sig") return { name: this.char.sig.name, desc: this.char.sig.desc };
       if (u.id === "multi") {
-        const names = { fox: "베기 강화", rabbit: "단검 추가", bear: "망치 추가", owl: "회오리 추가", cat: "구슬 추가", panda: "정령 추가", mech: "총열 추가" };
+        const names = { fox: "베기 강화", rabbit: "단검 추가", bear: "망치 추가", owl: "회오리 추가", cat: "구슬 추가", panda: "정령 추가", mech: "총열 추가", frog: "공 추가" };
         return { name: names[this.charId], desc: this.char.shot.multiDesc(this.lv("multi")) };
       }
       return { name: u.name, desc: u.desc(this.lv(u.id)) };
@@ -349,7 +349,7 @@
         const name = RD.RAID_BOSSES.find((r) => r[0] === type)[2];
         this.loop = 1 + 0.35 * (R.lv - 1);
         const y = def.ground ? C.groundY - def.h / 2 : 240;
-        const b = this.addEnemy(type, C.width + 160, y, { path: "boss", phase: 1, name: `[레이드 Lv.${R.lv}] ${name}`, baseY: y, raidBoss: true });
+        const b = this.addEnemy(type, C.width - 170, 270, { path: "boss", phase: 1, name: `[레이드 Lv.${R.lv}] ${name}`, baseY: y, raidBoss: true });
         b.maxHp = b.hp = RC.baseHp * (1 + RC.lvHp * (R.lv - 1)) * this.D.enemyHp; // 보스와 상관없이 같은 체력
         if (def.style === "crystal") this.spawnShards(b);
         RD.audio && RD.audio.sfx("warning");
@@ -363,7 +363,14 @@
       // 경험치를 얻을 잡몹
       if (R.spawned && (this.spawnT -= dt) <= 0) {
         this.spawnT = rand(5, 7);
-        pick(PATTERNS)(this, 2);
+        const pool = ["bat", "slime", "mushroom", ...this.stage.mobs.filter((m) => m !== "fairy")];
+        const n = 3 + Math.floor(Math.random() * 3);
+        for (let i = 0; i < n; i++) {
+          const side = Math.floor(Math.random() * 4);
+          const x = side === 0 ? -20 : side === 1 ? C.width + 20 : rand(40, C.width - 40);
+          const y = side === 2 ? 30 : side === 3 ? C.height + 10 : rand(60, C.height - 60);
+          this.addEnemy(pick(pool), x, y, { path: "chase", spd: rand(60, 100), fireT: rand(1.5, 3) });
+        }
       }
     }
 
@@ -672,6 +679,15 @@
           }
           break;
         }
+        case "juggle": {
+          // 개구리: 저글링 공을 포물선으로 던진다 (튕기며 여러 번 때린다)
+          const n = s.multi[pw - 1];
+          for (let i = 0; i < n; i++) {
+            this.addShot({ kind: "juggle", main: true, x: p.x + 20, y: p.y - 10, vx: s.speed * (0.85 + i * 0.12), vy: -260 - i * 90, w: 20, h: 20, dmg, pierce: 99,
+              bounces: 3, boom: sig, color: ["#ff5ad8", "#ffd34d", "#7fe6ff", "#9fff6a"][i % 4] });
+          }
+          break;
+        }
         case "leaf": {
           // 판다: 잎사귀 다트 (정령은 updateSummons 에서 따로 쏜다)
           this.addShot({ kind: "leaf", main: true, x: p.x + 30, y: p.y, vx: s.speed, vy: 0, w: 22, h: 12, dmg, pierce: 1, color: s.color });
@@ -782,18 +798,25 @@
         }
       } else if (this.charId === "bear") {
         // 조준 방향으로 포물선 투척 (조준 거리만큼)
-        const n = 1 + this.bst("count"), G = 1500;
+        const n = 1 + this.bst("count");
         for (let i = 0; i < n; i++) {
           const dist = W.dist + i * 70;
-          const tx = p.x + Math.cos(ang) * dist, ty = Math.min(C.groundY - 10, p.y + Math.sin(ang) * dist);
-          const T = 0.7, sx = p.x + 10, sy = p.y - 10;
-          this.addShot({ ...base, kind: "lob", x: sx, y: sy, vx: (tx - sx) / T, vy: (ty - sy - 0.5 * G * T * T) / T, w: 28, h: 28, dmg, pierce: 0, radius: W.radius * (1 + this.bst("size")), boom: 1, gravity: G });
+          const tx = p.x + Math.cos(ang) * dist, ty = Math.max(40, Math.min(C.height - 30, p.y + Math.sin(ang) * dist));
+          this.addShot({ ...base, kind: "lob", arc: { sx: p.x, sy: p.y, tx, ty, T: 0.6 }, x: p.x, y: p.y, vx: 0, vy: 0, w: 28, h: 28, dmg, pierce: 0, radius: W.radius * (1 + this.bst("size")), boom: 1 });
         }
       } else if (this.charId === "owl") {
         const n = 1 + this.bst("count"), size = 1 + this.bst("size");
         for (let i = 0; i < n; i++) {
           const a = ang + (i - (n - 1) / 2) * 0.3;
           this.addShot({ ...base, kind: "tornado", x: p.x + Math.cos(a) * 30, y: p.y + Math.sin(a) * 30, vx: Math.cos(a) * W.speed, vy: Math.sin(a) * W.speed, w: 54 * size, h: 96 * size, dmg, pierce: 99, life: W.life * (1 + this.bst("life")), tick: new Map() });
+        }
+      } else if (this.charId === "frog") {
+        // 레이드: 조준 방향으로 공을 던지면 경기장 벽에 튕긴다
+        const n = W.count + this.bst("count");
+        for (let i = 0; i < n; i++) {
+          const a = ang + (i - (n - 1) / 2) * 0.22;
+          this.addShot({ ...base, kind: "juggle", flat: true, x: p.x + 10, y: p.y, vx: Math.cos(a) * 620, vy: Math.sin(a) * 620, w: 20, h: 20, dmg, pierce: 99,
+            bounces: 2 + this.bst("life"), boom: this.bst("split"), color: ["#ff5ad8", "#ffd34d", "#7fe6ff", "#9fff6a"][i % 4] });
         }
       } else if (this.charId === "panda") {
         for (let i = 0; i < W.count; i++) {
@@ -1003,7 +1026,7 @@
       const p = this.player;
       if (!fromSuper) this.bombs--;
       const sdur = this.raid ? this.bst("sdur") : 0;
-      const life = { fox: 1.0, rabbit: 3.0, bear: 1.5, owl: 2.8, cat: 3.0, panda: 6, mech: 7 }[this.charId] + (this.charId === "fox" ? 0 : this.charId === "bear" ? 0.3 * sdur : sdur);
+      const life = { fox: 1.0, rabbit: 3.0, bear: 1.5, owl: 2.8, cat: 3.0, panda: 6, mech: 7, frog: 5 }[this.charId] + (this.charId === "fox" ? 0 : this.charId === "bear" ? 0.3 * sdur : sdur);
       this.bombT = life;
       this.ult = { kind: this.charId, t: 0, life, x0: p.x, y0: p.y, done: {}, spawnT: 0, mul: 1 + 0.3 * this.lv("bomb") + (this.raid ? this.bst("spow") : 0), sdur };
       p.invuln = Math.max(p.invuln, life + 0.6);
@@ -1117,6 +1140,23 @@
           this.bullets = this.bullets.filter((b) => Math.hypot(b.x - p.x, b.y - p.y) > 60);
           break;
         }
+        case "frog": {
+          // 광대 쇼타임: 카드가 소용돌이치며 날아가고, 주변 적 탄이 색종이(코인)로
+          u.spawnT -= dt;
+          while (u.spawnT <= 0 && u.t < u.life - 0.2) {
+            u.spawnT += 0.07;
+            u.spin = (u.spin || 0) + 0.55;
+            this.addShot({ kind: "card", x: p.x, y: p.y, vx: Math.cos(u.spin) * 620, vy: Math.sin(u.spin) * 620, w: 16, h: 22, dmg: 3.5 * u.mul, pierce: 2, homing: u.t > 0.5, color: "#ffffff" });
+          }
+          let made = 0;
+          this.bullets = this.bullets.filter((b) => {
+            if (Math.hypot(b.x - p.x, b.y - p.y) > 230) return true;
+            if (made++ < 6) this.items.push({ type: "coin", x: b.x, y: b.y, vx: rand(-40, 40), vy: rand(-80, -20) });
+            this.effects.push({ type: "confetti", x: b.x, y: b.y, t: 0, life: 0.6 });
+            return false;
+          });
+          break;
+        }
         case "panda": {
           // 정령왕 강림: 거대한 정령왕이 곁에서 싸운다
           u.kx = p.x + 90; u.ky = Math.max(90, p.y - 50);
@@ -1165,6 +1205,12 @@
     // ---------- 피격과 체력 ----------
     hurt(amount) {
       const p = this.player;
+      if (this.charId === "frog" && Math.random() < 0.2) {
+        // 익살꾼의 운
+        p.invuln = Math.max(p.invuln, 0.5);
+        this.text("빗나감!", "#ff5ad8");
+        return;
+      }
       if (p.shielded) {
         // 고양이 마력 보호막
         p.shielded = false;
@@ -1209,7 +1255,7 @@
       if (this.cutscene) { this.cutscene.t += dt; this.cutscene.lt += dt; return; } // 컷씬 동안 멈춘다
       if (this.choosing) { this.choosing.t += dt; return; } // 강화를 고르는 동안 멈춘다
       this.t += dt;
-      this.scroll += C.scrollSpeed * dt;
+      if (!this.raid) this.scroll += C.scrollSpeed * dt; // 레이드는 고정된 경기장
       this.shake = Math.max(0, this.shake - dt);
       const p = this.player;
 
@@ -1262,7 +1308,7 @@
         p.tilt += (Math.max(-1, Math.min(1, my / Math.max(1, sp * dt))) - p.tilt) * Math.min(1, dt * 10);
         inp.moveX = inp.moveY = 0;
         p.x = Math.max(30, Math.min(C.width - 40, p.x));
-        p.y = Math.max(50, Math.min(C.groundY - 20, p.y));
+        p.y = Math.max(50, Math.min(this.raid ? C.height - 34 : C.groundY - 20, p.y));
         if (this.tr !== 6) p.hp = Math.min(this.maxHp, p.hp + this.lv("regen") * dt); // 종말: 자연 회복 없음
         if (this.judgFire > 0) this.judgFire -= dt;
         if (p.burn > 0) { p.burn -= dt; p.hp -= 6 * dt; if (p.hp <= 0 && p.invuln <= 0) this.die(); } // 화상
@@ -1364,6 +1410,34 @@
           continue;
         }
 
+        if (s.kind === "juggle") {
+          // 튕기는 공: 옆 화면은 중력과 바닥, 레이드(flat)는 벽에 반사
+          if (!s.flat) s.vy += 1100 * dt;
+          s.x += s.vx * dt; s.y += s.vy * dt;
+          const floor = s.flat ? C.height - 20 : C.groundY - 10;
+          let bounced = false;
+          if (s.y > floor) { s.y = floor; s.vy = -Math.abs(s.vy) * (s.flat ? 1 : 0.82); if (!s.flat) s.vy = Math.min(s.vy, -380); bounced = true; }
+          if (s.y < 20) { s.y = 20; s.vy = Math.abs(s.vy); bounced = true; }
+          if (s.x > C.width - 10) { s.x = C.width - 10; s.vx = -Math.abs(s.vx); bounced = true; }
+          if (s.flat && s.x < 10) { s.x = 10; s.vx = Math.abs(s.vx); bounced = true; }
+          if (bounced) {
+            s.hit = [];
+            if (--s.bounces < 0) {
+              s.gone = true;
+              if (s.boom) this.explode(s.x, s.y, 50 + 15 * s.boom, s.dmg * (1 + 0.5 * s.boom), s.brawl ? s.charge : 0);
+              continue;
+            }
+          }
+          for (const e of this.enemies) if (live(e) && !s.hit.includes(e) && boxHit(s, e)) { s.hit.push(e); this.mainHit(s, e, spawned); }
+          if (s.t > 5 || s.x < -60) s.gone = true;
+          continue;
+        }
+        if (s.kind === "lob" && s.arc) {
+          const A = s.arc, k = Math.min(1, s.t / A.T);
+          s.x = A.sx + (A.tx - A.sx) * k; s.y = A.sy + (A.ty - A.sy) * k; s.z = Math.sin(Math.PI * k) * 90;
+          if (k >= 1) { this.explode(s.x, s.y, s.radius, s.dmg * s.boom, s.charge); s.gone = true; }
+          continue;
+        }
         if (s.kind === "lob") {
           s.vy += 1500 * dt;
           s.x += s.vx * dt; s.y += s.vy * dt;
@@ -1629,7 +1703,29 @@
             if (e.t < e.life) e.x += (e.stopX - e.x) * Math.min(1, dt * 1.2);
             else e.x -= C.scrollSpeed * dt; // 시간이 지나면 떠난다
             break;
+          case "chase": {
+            // 레이드 잡몹: 플레이어 쪽으로 걸어온다
+            const p = this.player, a = Math.atan2(p.y - e.y, p.x - e.x);
+            e.x += Math.cos(a) * e.spd * dt; e.y += Math.sin(a) * e.spd * dt;
+            break;
+          }
           case "boss": {
+            if (e.raidBoss) {
+              // 레이드 보스: 경기장을 돌아다닌다 (플레이어와 거리를 둔다)
+              const p = this.player;
+              if (!e.tgt || Math.hypot(e.tgt.x - e.x, e.tgt.y - e.y) < 20 || (e.tgtT = (e.tgtT || 0) - dt) <= 0) {
+                let tx, ty, tries = 0;
+                do { tx = rand(180, C.width - 120); ty = rand(110, C.height - 110); } while (Math.hypot(tx - p.x, ty - p.y) < 260 && ++tries < 12);
+                e.tgt = { x: tx, y: ty }; e.tgtT = rand(2.5, 4);
+              }
+              const sp = 70 * (1 + 0.15 * (this.raid.rage || 0)), a = Math.atan2(e.tgt.y - e.y, e.tgt.x - e.x);
+              e.x += Math.cos(a) * sp * dt; e.y += Math.sin(a) * sp * dt;
+              if (RD.ENEMIES[e.type].style === "fire" && (e.slamT = (e.slamT || 2.5) - dt) <= 0) {
+                // 마그마 슬라임 왕: 쿵 뛰어 내려앉으며 원형 탄
+                e.slamT = 2.6; this._firing = e; this.ring(e, 16, bs * 0.7, rand(0, 1), "#ff7a3d"); this._firing = null; this.shake = 0.2;
+              }
+              break;
+            }
             const def = RD.ENEMIES[e.type];
             if (!(def.style === "storm" && e.lastPh >= 2)) e.x += (760 - e.x) * Math.min(1, dt * 0.8);
             if (def.style === "fire") {
@@ -1746,8 +1842,8 @@
         b.x = rand(560, 880); b.baseY = rand(110, 360);
         this.effects.push({ type: "ring", x: b.x, y: b.baseY, t: 0, life: 0.4 });
       }
-      if (style === "storm" && ph >= 2 && b.baseY != null) b.y += (b.baseY - b.y) * Math.min(1, dt * 6);
-      if (style === "bat" && ph === 3) b.y = 240 + Math.sin(b.t * 2.2) * 150; // 분노: 빨라진다
+      if (style === "storm" && ph >= 2 && b.baseY != null && !b.raidBoss) b.y += (b.baseY - b.y) * Math.min(1, dt * 6);
+      if (style === "bat" && ph === 3 && !b.raidBoss) b.y = 240 + Math.sin(b.t * 2.2) * 150; // 분노: 빨라진다
     }
 
     // ---------- 보스 전용 탄 ----------
@@ -2085,6 +2181,10 @@
 
     // 용암 덩이: 플레이어 근처로 포물선을 그리며 떨어지고, 땅에 닿으면 용암 자국
     lavaLob(e, n, bs) {
+      if (this.raid) {
+        for (let i = 0; i < n; i++) this.hazards.push({ type: "lava", x: this.player.x + rand(-80, 80), y: this.player.y + rand(-80, 80), t: 0, warn: 1.1, active: 0.6, w: 70 });
+        return;
+      }
       const p = this.player, G = 700;
       for (let i = 0; i < n; i++) {
         const tx = p.x + (i - (n - 1) / 2) * 90 + rand(-20, 20), T = 1.1 + i * 0.08;
@@ -2139,6 +2239,14 @@
           if ((this.wind.t += dt) > this.wind.life) this.wind = null;
         }
       }
+      if (this.raid) for (const h of this.hazards) {
+        if (["lava", "bolt", "zone", "flame", "star"].includes(h.type) && !h.circle) {
+          h.circle = true;
+          if (h.y == null) h.y = Math.max(60, Math.min(C.height - 50, p.y + rand(-50, 50)));
+          h.r = Math.max(40, (h.w || 60) * 0.75);
+          if (h.type === "star") h.type = "bolt";
+        }
+      }
       for (const h of this.hazards) {
         h.t += dt;
         const on = h.t > h.warn && h.t < h.warn + h.active;
@@ -2165,7 +2273,7 @@
           for (let q = 0; q < 8; q++) this.shot(h.x, C.groundY - 20, -Math.PI + (q / 7) * Math.PI, 170, "drop", { color: "#8ad840", r: 7 });
           this.hazards.push({ type: "zone", x: h.x, w: 120, top: C.groundY - 170, t: 0, warn: 0.01, active: 4, dmg: 14 });
         }
-        const inside = h.type === "meteor" ? Math.hypot(p.x - h.x, p.y - h.y) < h.r :
+        const inside = h.circle ? Math.hypot(p.x - h.x, p.y - h.y) < h.r : h.type === "meteor" ? Math.hypot(p.x - h.x, p.y - h.y) < h.r :
           h.type === "beam" ? segDist(h.x, h.y, h.x2, h.y2) < h.w / 2
           : h.type === "line" ? segDist(h.x1, h.y1, h.x2, h.y2) < h.w / 2
           : h.type === "zone" || h.type === "flame" ? Math.abs(p.x - h.x) < h.w / 2 && p.y > h.top
@@ -2233,6 +2341,7 @@
           it.x += (p.x - it.x) * Math.min(1, dt * 10);
           it.y += (p.y - it.y) * Math.min(1, dt * 10);
         } else {
+          if (this.raid) { it.vx *= 0.9; it.vy *= 0.9; it.x += it.vx * dt; it.y += it.vy * dt; continue; }
           it.vy = Math.min(120, it.vy + 400 * dt);
           it.vx += (-C.scrollSpeed * 0.6 - it.vx) * Math.min(1, dt * 2);
           it.x += it.vx * dt;

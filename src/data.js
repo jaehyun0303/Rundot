@@ -214,6 +214,7 @@ RD.GRADES = {
   R: { name: "희귀", color: "#5fb8ff" },
   SR: { name: "영웅", color: "#c58aff" },
   SSR: { name: "전설", color: "#ffd34d" },
+  MY: { name: "신화", color: "#ff5ad8" },
 };
 
 // 캐릭터: 공격 방식이 모두 다르다. starter 는 처음부터 가진 캐릭터
@@ -330,6 +331,22 @@ RD.CHARACTERS = [
     sig: { name: "로켓 포드", desc: "로켓이 더 자주, 한 번에 1발 더 나간다" },
     bomb: { name: "메카 탑승", desc: "거대 메카에 7초 동안 탑승. 무적, 주포와 미사일 난사, 몸으로 들이받는다", color: "#ffb347" },
   },
+  {
+    id: "frog",
+    name: "개구리 광대",
+    grade: "MY",
+    type: "곡예형",
+    desc: "통통 튀는 저글링 공을 던진다. 공은 바닥과 벽에 튕기며 여러 번 때린다",
+    passive: "익살꾼의 운: 20% 확률로 공격이 빗나간다 (피해 없음)",
+    illust: "illust_frog",
+    shot: {
+      name: "저글링 공", kind: "juggle", cd: 0.34, dmg: 3.2, speed: 560, color: "#ff5ad8", pierceAll: true,
+      multi: [1, 2, 3, 4], // 던지는 공 수
+      multiDesc: (lv) => `한 번에 던지는 공 ${lv + 1}개 → ${lv + 2}개`,
+    },
+    sig: { name: "폭죽 공", desc: "공이 마지막으로 튕길 때 폭죽처럼 터진다" },
+    bomb: { name: "광대 쇼타임", desc: "5초 동안 카드가 소용돌이치며 날아가고, 주변 적 탄이 색종이로 변한다", color: "#ff5ad8" },
+  },
 ];
 
 // 여우: 탄을 베는 데 쓰는 베기 게이지
@@ -344,7 +361,7 @@ RD.GACHA = {
   cost10: 1350, // 10회 코인 (희귀 이상 1개 보장)
   startCoins: 600, // 처음 시작할 때 주는 코인
   pity: 50, // 이 횟수 안에 전설이 안 나오면 다음에 전설 확정
-  rates: { SSR: 0.025, SR: 0.08, R: 0.22 }, // 나머지는 일반
+  rates: { MY: 0.006, SSR: 0.025, SR: 0.08, R: 0.22 }, // 나머지는 일반
   maxStars: 6, // 같은 캐릭터가 또 나오면 각성 (별 +1)
   starDmg: 0.06, // 별 하나당 위력 +6%
   starHp: 6, // 별 하나당 최대 체력 +6
@@ -435,6 +452,7 @@ RD.BRAWL = {
   rabbit: { name: "부메랑 단검 3개", ammo: 3, reload: 1.2, charge: 0.05, dmg: 7, count: 3, speed: 1100 },
   bear: { name: "망치 투척", ammo: 3, reload: 1.5, charge: 0.14, dmg: 50, radius: 80, dist: 380 },
   owl: { name: "회오리", ammo: 3, reload: 1.4, charge: 0.025, dmg: 9, size: 1, life: 1.8, speed: 300 },
+  frog: { name: "저글링 공 3개", ammo: 3, reload: 1.15, charge: 0.06, dmg: 11, count: 3 },
   panda: { name: "잎사귀 다트 + 정령", ammo: 3, reload: 1.2, charge: 0.07, dmg: 14, count: 2 },
   mech: { name: "개틀링 연사", ammo: 3, reload: 1.3, charge: 0.025, dmg: 7.5, count: 6 },
   cat: { name: "유도 구슬 3개", ammo: 3, reload: 1.1, charge: 0.05, dmg: 21, count: 3 },
@@ -489,6 +507,16 @@ RD.BRAWL_UPS = {
     bu("o_storm", "sup", "회오리 바람 강화", 3, { spow: 0.35 }, "회오리 바람 위력 +35%"),
     bu("o_eye", "sup", "태풍의 눈", 2, { sdur: 1 }, "회오리 바람이 1초 더 분다"),
     bu("o_gather", "sup", "바람 모으기", 3, { charge: 0.25 }, "궁극기 충전 +25%"),
+    ...BRAWL_COMMON,
+  ],
+  frog: [
+    bu("g_more", "atk", "공 추가", 3, { count: 1 }, "한 번에 던지는 공 +1"),
+    bu("g_bounce", "atk", "고무공", 3, { life: 1 }, "공이 1번 더 튕긴다"),
+    bu("g_boom", "atk", "폭죽 공", 2, { split: 1 }, "공이 마지막에 폭죽처럼 터진다"),
+    bu("g_quick", "atk", "빠른 저글링", 3, { reload: 0.15 }, "재장전 -15%"),
+    bu("g_show", "sup", "앙코르", 3, { spow: 0.35 }, "쇼타임 위력 +35%"),
+    bu("g_long", "sup", "커튼콜", 2, { sdur: 1 }, "쇼타임 1초 연장"),
+    bu("g_clap", "sup", "박수갈채", 3, { charge: 0.25 }, "궁극기 충전 +25%"),
     ...BRAWL_COMMON,
   ],
   panda: [
@@ -552,8 +580,8 @@ RD.ADV = {
     log: { img: "obs_log_hanging", kind: "hanging", w: 210 },
   },
   // 캐릭터별 스킬 (게이지가 차면 자동 발동)
-  SKILLS: { fox: "돌진", cat: "자석 마법", bear: "거대화", rabbit: "3단 점프", owl: "비행", panda: "정령 자석", mech: "메카 탑승" },
-  SKILL_AS: { panda: "cat", mech: "bear" }, // 새 캐릭터의 스킬은 기존 스킬 방식을 빌려 쓴다
+  SKILLS: { fox: "돌진", cat: "자석 마법", bear: "거대화", rabbit: "3단 점프", owl: "비행", panda: "정령 자석", mech: "메카 탑승", frog: "개구리 점프" },
+  SKILL_AS: { panda: "cat", mech: "bear", frog: "rabbit" }, // 새 캐릭터의 스킬은 기존 스킬 방식을 빌려 쓴다
 };
 
 RD.IMAGES = [
@@ -570,4 +598,4 @@ RD.IMAGES = [
   "item_gem", "item_star", "item_coin", "item_heart",
   "pet_0", "pet_1", "pet_2", "pet_3",
 ];
-RD.ILLUSTS = ["illust_fox", "illust_cat", "illust_bear", "illust_rabbit", "illust_owl", "illust_panda", "illust_mech"];
+RD.ILLUSTS = ["illust_fox", "illust_cat", "illust_bear", "illust_rabbit", "illust_owl", "illust_panda", "illust_mech", "illust_frog"];
