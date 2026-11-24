@@ -90,6 +90,7 @@
       this.rerolls = 2; // 강화 카드 새로 뽑기 횟수
       this.paused = false;
 
+      this.mech = charId === "mech" ? { evo: 0, hp: RD.MECH.hp[0], parts: 0, alive: true, prog: 0, flash: 0 } : null;
       this.player = { vx: 0, vy: 0, x: 160, y: 260, hp: C.maxHp + RD.GACHA.starHp * (this.stars - 1), invuln: C.respawnInvuln, hurt: 0, dead: 0, animT: 0, shotCd: 0, tilt: 0 };
       this.pet = { x: 100, y: 260, t: 0, cd: 0 };
       this.sub = { missile: 1, laser: 2, rear: 0.5, lightning: 1.5, laserOn: 0 };
@@ -156,7 +157,50 @@
     get power() { return 1 + this.lv("multi"); }
     get dmgMul() { return (1 + 0.2 * this.lv("dmg")) * (1 + RD.GACHA.starDmg * (this.stars - 1)); }
     get maxHp() { return C.maxHp + 25 * this.lv("hp") + RD.GACHA.starHp * (this.stars - 1); }
-    get armor() { return (1 - 0.15 * this.lv("armor")) * (this.charId === "mech" ? 0.8 : 1); } // 다람쥐: 강화 장갑
+    get armor() { return 1 - 0.15 * this.lv("armor"); }
+    get mechMax() { return RD.MECH.hp[this.mech.evo] * (1 + 0.15 * this.lv("hp")); }
+
+    // ---------- 다람쥐 메카 ----------
+    breakMech() {
+      const M = this.mech, p = this.player;
+      M.alive = false; M.hp = 0; M.prog = 0;
+      p.invuln = Math.max(p.invuln, 2);
+      this.shake = 0.35;
+      this.effects.push({ type: "boom", x: p.x, y: p.y, t: 0, life: 1, big: true });
+      this.banner = { text: "메카 파괴!", sub: "부품을 모으면 다시 조립한다 · 궁극기를 쓰면 바로 복구", color: "#ff8a3d", t: 0, life: 2, small: true };
+      RD.audio && RD.audio.sfx("boom");
+    }
+    rebuildMech(k, quiet) {
+      const M = this.mech;
+      const was = M.alive;
+      M.alive = true; M.prog = 0;
+      M.hp = Math.max(M.hp, this.mechMax * k);
+      M.flash = 0.6;
+      if (!quiet) {
+        this.text(was ? "메카 수리 완료!" : "메카 재조립!", "#ffb347");
+        this.effects.push({ type: "ring", x: this.player.x, y: this.player.y, t: 0, life: 0.5 });
+        RD.audio && RD.audio.sfx("power");
+      }
+    }
+    addParts(n) {
+      const M = this.mech, C2 = RD.MECH;
+      if (!M.alive) { M.prog += n / C2.rebuildParts; if (M.prog >= 1) this.rebuildMech(C2.rebuildHp); return; }
+      M.parts += n;
+      if (M.evo < 2 && M.parts >= C2.evoParts[M.evo]) {
+        M.evo++;
+        M.hp = this.mechMax;
+        M.flash = 1;
+        this.banner = { text: "메카 진화!", sub: C2.names[M.evo], sub2: M.evo === 1 ? "총열 +1 · 위력 +15% · 체력 증가" : "총열 +2 · 위력 +30% · 로켓 연사", color: "#ffb347", t: 0, life: 2.2, small: true };
+        this.effects.push({ type: "ring", x: this.player.x, y: this.player.y, t: 0, life: 0.6 });
+        RD.audio && RD.audio.sfx("levelup");
+      }
+    }
+    updateMech(dt) {
+      const M = this.mech;
+      M.flash = Math.max(0, M.flash - dt);
+      if (!M.alive && this.player.dead <= 0) { M.prog += dt / RD.MECH.rebuildTime; if (M.prog >= 1) this.rebuildMech(RD.MECH.rebuildHp); }
+    }
+    get mechOn() { return this.mech && this.mech.alive; }
     get magnetR() { return 100 * (1 + 0.6 * this.lv("magnet")); }
     get scoreMul() { return this.D.score * (this.M.scoreMul || 1) * (1 + 0.15 * this.lv("luck")); }
     get bossAlive() { return this.enemies.some((e) => !e.dead && (RD.ENEMIES[e.type].boss || RD.ENEMIES[e.type].midboss)); }
@@ -705,14 +749,16 @@
           break;
         }
         case "gatling": {
-          // 다람쥐: 개틀링 (총열 수만큼) + 몇 번에 한 번 로켓
-          const n = s.multi[pw - 1];
+          // 다람쥐: 개틀링 (총열 수만큼) + 몇 번에 한 번 로켓. 메카가 없으면 권총 한 발
+          const on = this.mechOn, evo = on ? this.mech.evo : 0;
+          const n = on ? s.multi[pw - 1] + evo : 1;
+          const md = on ? dmg * (1 + 0.15 * evo) : dmg * 0.8;
           for (let i = 0; i < n; i++) {
             const oy = (i - (n - 1) / 2) * 9, a = rand(-0.05, 0.05);
-            this.addShot({ kind: "bullet", main: true, x: p.x + 34, y: p.y + 4 + oy, vx: Math.cos(a) * s.speed, vy: Math.sin(a) * s.speed, w: 14, h: 6, dmg, pierce: 0, color: s.color });
+            this.addShot({ kind: "bullet", main: true, x: p.x + 34, y: p.y + 4 + oy, vx: Math.cos(a) * s.speed, vy: Math.sin(a) * s.speed, w: 14, h: 6, dmg: md, pierce: 0, color: on ? s.color : "#fff3a0" });
           }
           p.volley = (p.volley || 0) + 1;
-          if (p.volley % (sig ? 6 : 9) === 0) for (let i = 0; i <= (sig ? 1 + Math.floor(sig / 2) : 0); i++) {
+          if (on && p.volley % ((sig ? 6 : 9) - (evo >= 2 ? 3 : 0)) === 0) for (let i = 0; i <= (sig ? 1 + Math.floor(sig / 2) : 0); i++) {
             this.addShot({ kind: "missile", x: p.x, y: p.y - 10, vx: 300, vy: -200 + i * 120, w: 18, h: 12, dmg: 6 * this.dmgMul * (1 + 0.25 * sig), homing: true, color: "#ffd34d" });
           }
           break;
@@ -835,12 +881,14 @@
           this.addShot({ ...base, kind: "leaf", x: p.x + 10, y: p.y, vx: Math.cos(a) * 900, vy: Math.sin(a) * 900, w: 22, h: 12, dmg, pierce: 1 });
         }
       } else if (this.charId === "mech") {
-        const n = W.count + this.bst("count");
+        const on = this.mechOn, evo = on ? this.mech.evo : 0;
+        const n = on ? W.count + this.bst("count") + evo * 2 : 3;
+        const md = on ? dmg * (1 + 0.15 * evo) : dmg * 0.8;
         for (let i = 0; i < n; i++) {
           const a = ang + rand(-0.12, 0.12);
-          this.addShot({ ...base, kind: "bullet", x: p.x + 20 + i * 6, y: p.y + rand(-6, 6), vx: Math.cos(a) * 1000, vy: Math.sin(a) * 1000, w: 14, h: 6, dmg, pierce: 0 });
+          this.addShot({ ...base, kind: "bullet", x: p.x + 20 + i * 6, y: p.y + rand(-6, 6), vx: Math.cos(a) * 1000, vy: Math.sin(a) * 1000, w: 14, h: 6, dmg: md, pierce: 0 });
         }
-        for (let i = 0; i < this.bst("wave"); i++) this.addShot({ ...base, kind: "missile", x: p.x, y: p.y - 10, vx: Math.cos(ang + 0.6 - i * 0.6) * 400, vy: Math.sin(ang + 0.6 - i * 0.6) * 400, w: 18, h: 12, dmg: dmg * 2.5, pierce: 0, homing: true, charge: ch * 2 });
+        if (on) for (let i = 0; i < this.bst("wave") + (evo >= 2 ? 1 : 0); i++) this.addShot({ ...base, kind: "missile", x: p.x, y: p.y - 10, vx: Math.cos(ang + 0.6 - i * 0.6) * 400, vy: Math.sin(ang + 0.6 - i * 0.6) * 400, w: 18, h: 12, dmg: dmg * 2.5, pierce: 0, homing: true, charge: ch * 2 });
       } else {
         const n = W.count + this.bst("count");
         for (let i = 0; i < n; i++) {
@@ -1210,7 +1258,10 @@
           break;
         }
       }
-      if (u.t >= u.life) this.ult = null;
+      if (u.t >= u.life) {
+        if (u.kind === "mech" && this.mech) this.rebuildMech(1); // 거대 메카에서 내리면 메카가 새것처럼 정비된다
+        this.ult = null;
+      }
     }
 
     // ---------- 피격과 체력 ----------
@@ -1231,6 +1282,15 @@
         return;
       }
       RD.audio && RD.audio.sfx("hurt");
+      if (this.mechOn) {
+        // 메카가 대신 맞는다 (다람쥐 체력은 그대로)
+        const M = this.mech;
+        M.hp -= amount * this.D.damage * this.armor * RD.MECH.armor * (1 - 0.1 * M.evo) * (this.judgFire > 0 ? 1.3 : 1);
+        p.invuln = C.hitInvuln; p.hurt = 0.3; M.flash = 0.15;
+        this.shake = Math.max(this.shake, 0.12);
+        if (M.hp <= 0) this.breakMech();
+        return;
+      }
       p.hp -= amount * this.D.damage * this.armor * (this.judgFire > 0 ? 1.3 : 1);
       p.invuln = C.hitInvuln;
       p.hurt = 0.3;
@@ -1297,11 +1357,11 @@
       const inp = this.input;
       if (p.dead > 0) {
         p.dead -= dt;
-        if (p.dead <= 0) { p.x = 120; p.y = 260; p.hp = this.maxHp; p.invuln = C.respawnInvuln; }
+        if (p.dead <= 0) { p.x = 120; p.y = 260; p.hp = this.maxHp; p.invuln = C.respawnInvuln; if (this.mech) this.rebuildMech(1, true); }
         inp.moveX = inp.moveY = 0;
       } else {
         p.slow = Math.max(0, (p.slow || 0) - dt);
-        const sp = (inp.focus ? C.focusSpeed : C.moveSpeed) * (1 + 0.12 * this.lv("speed")) * (p.slow > 0 ? 0.5 : 1);
+        const sp = (inp.focus ? C.focusSpeed : C.moveSpeed) * (1 + 0.12 * this.lv("speed")) * (p.slow > 0 ? 0.5 : 1) * (this.mech && !this.mech.alive ? 1.15 : 1); // 메카 없는 다람쥐는 조금 빠르다
         let mx = inp.dx * sp * dt + inp.moveX;
         let my = inp.dy * sp * dt + inp.moveY;
         p.inverted = Math.max(0, (p.inverted || 0) - dt);
@@ -1357,6 +1417,7 @@
       this.updateEffects(dt);
 
       this.updateUlt(dt);
+      if (this.mech) this.updateMech(dt);
 
       // 피격 판정 (판정은 캐릭터 가운데의 작은 점)
       if (p.dead <= 0 && p.invuln <= 0) {
@@ -1527,6 +1588,7 @@
       const def = RD.ENEMIES[e.type];
       e.dead = true;
       this.kills++;
+      if (this.mech) this.addParts(def.boss ? 10 : def.midboss ? 5 : 1);
       RD.audio && RD.audio.sfx(def.boss || def.midboss ? "boom" : "kill");
       this.addScore(def.score * this.loop);
       this.gainExp(def.exp);
@@ -2375,6 +2437,7 @@
         const heal = this.judgFire > 0 ? 0 : this.tr === 6 ? Math.ceil(def.heal / 2) : def.heal; // 종말: 회복 절반, 심판의 불꽃: 회복 불가
         this.player.hp = Math.min(this.maxHp, this.player.hp + heal);
         this.text("+" + heal, "#ff8aa8");
+        if (this.mechOn) this.mech.hp = Math.min(this.mechMax, this.mech.hp + heal); // 메카도 같이 수리
       }
       if (def.sugar && this.rush <= 0) {
         this.sugar += def.sugar;

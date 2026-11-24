@@ -558,6 +558,23 @@
       P(-60, -40, 16, 40, "#3a4a5a"); P(-58, -30, 12, 6, "#ffd34d"); // 미사일 포드
       P(-36, 16 + step, 22, 26, "#3a4a5a"); P(14, 16 - step, 22, 26, "#3a4a5a"); P(-40, 40 + step, 30, 8, "#2a3440"); P(10, 40 - step, 30, 8, "#2a3440");
     }
+    // 다람쥐 메카 (진화 단계마다 커지고 색이 바뀐다)
+    if (run.mech && run.mech.alive && !(run.ult && run.ult.kind === "mech")) {
+      const M = run.mech, k = [0.62, 0.72, 0.84][M.evo], [c1, c2, c0] = RD.MECH.colors[M.evo];
+      const fl = M.flash > 0 && Math.floor(run.t * 20) % 2 === 0;
+      const flip = run.raid && run.brawl && Math.cos(run.brawl.aimAng) < 0 ? -1 : 1;
+      const step = Math.floor(run.t * 8) % 2 ? 2 : 0;
+      const P = (x, y, w, h, c) => { g.fillStyle = fl ? "#ffffff" : c; g.fillRect(p.x + (flip > 0 ? x * k : -(x + w) * k), p.y + 6 + y * k, w * k, h * k); };
+      P(-36, 16 + step, 22, 26, c0); P(14, 16 - step, 22, 26, c0); P(-40, 40 + step, 30, 8, "#2a3440"); P(10, 40 - step, 30, 8, "#2a3440");
+      P(-46, -56, 92, 72, c0); P(-42, -52, 84, 64, c1); P(-42, -52, 84, 8, c2);
+      P(40, -30, 44, 16, c0); P(80, -34, 14, 24, "#8a93a0"); P(84, -28, 8, 12, c2);
+      if (M.evo >= 1) { P(-60, -40, 16, 40, c0); P(-58, -30, 12, 6, "#ffd34d"); }
+      if (M.evo >= 2) { P(40, -2, 40, 12, c0); P(76, -6, 10, 20, "#8a93a0"); P(-20, -70, 40, 14, c0); P(-6, -80, 12, 12, "#ff4d5e"); }
+      // 메카 체력 (머리 위 작은 막대)
+      const hk = M.hp / run.mechMax;
+      g.fillStyle = "#1d1622"; g.fillRect(p.x - 26, p.y - 52, 52, 7);
+      g.fillStyle = hk < 0.3 ? "#ff4d5e" : "#ffb347"; g.fillRect(p.x - 25, p.y - 51, 50 * hk, 5);
+    }
     const riding = run.ult && run.ult.kind === "mech";
     if (!riding && p.invuln > 0 && Math.floor(run.t * 16) % 2 === 0) return;
     const frame = run.charId === "owl" ? Math.floor(p.animT * 12) % 4 : 0;
@@ -798,7 +815,7 @@
     if (run.raid) drawRaidTop(g, run, hpK);
     else {
       // ── 왼쪽 위: 점수 · 체력 · 레벨 · 패시브
-      const extra = run.charId === "fox" || run.charId === "cat" || run.M.special === "dream";
+      const extra = run.charId === "fox" || run.charId === "cat" || run.mech || run.M.special === "dream";
       UI.panel(g, 14, 12, 244, extra ? 92 : 70, "rgba(35,26,54,0.88)");
       text(g, "SCORE", 24, 28, 11, UI.COL.dim);
       text(g, String(run.score).padStart(7, "0"), 72, 28, 20, UI.COL.gold);
@@ -823,6 +840,8 @@
       } else if (run.charId === "cat") {
         text(g, "보호막", 22, 88, 12, UI.COL.purple);
         UI.segBar(g, 70, 84, 178, 7, p.shielded ? 1 : run.shield / RD.CAT_SHIELD.every, p.shielded ? UI.COL.purple : "#6a4a90");
+      } else if (run.mech) {
+        drawMechRow(g, run, 22, 88, 226);
       } else if (run.M.special === "dream") {
         text(g, run.rush > 0 ? "슈가 러시!" : "사탕", 22, 88, 12, "#ff9ad8");
         UI.segBar(g, 82, 84, 166, 7, run.rush > 0 ? run.rush / 6 : run.sugar / 30, "#ff9ad8");
@@ -911,6 +930,26 @@
     RD.drawPauseButton(g);
   }
 
+  // 메카 상태 한 줄: 살아 있으면 메카 체력 + 진화 부품, 파괴되면 재조립 진행도
+  function drawMechRow(g, run, x, y, w) {
+    const UI = RD.UI, M = run.mech;
+    if (M.alive) {
+      text(g, "Mk." + UI.roman(M.evo + 1), x, y, 12, "#ffb347");
+      const hk = M.hp / run.mechMax;
+      UI.segBar(g, x + 46, y - 5, w - 110, 8, hk, hk < 0.3 ? UI.COL.red : "#ffb347", 10);
+      if (M.evo < 2) {
+        const need = RD.MECH.evoParts[M.evo], prev = M.evo ? RD.MECH.evoParts[M.evo - 1] : 0;
+        UI.icon(g, "gear", x + w - 58, y - 7, 13, "#c8d0e0");
+        text(g, `${Math.min(need, M.parts) - prev}/${need - prev}`, x + w, y, 10, "#c8d0e0", "right");
+      } else text(g, "최종 진화", x + w, y, 10, UI.COL.gold, "right");
+    } else {
+      const blink = Math.floor(run.t * 4) % 2 === 0;
+      text(g, "재조립", x, y, 12, blink ? UI.COL.red : "#ff8a8a");
+      UI.segBar(g, x + 46, y - 5, w - 96, 8, M.prog, "#ff8a3d");
+      text(g, `${Math.floor(M.prog * 100)}%`, x + w, y, 10, "#ff8a8a", "right");
+    }
+  }
+
   // 빨강·검정 사선 띠 WARNING
   function drawWarning(g, b) {
     const w = 520, h = 84, x = (C.width - w) / 2, y = 120;
@@ -948,6 +987,7 @@
     text(g, "Lv." + run.level, 228, 26, 11, UI.COL.cyan, "right");
     UI.segBar(g, 82, 38, 142, 8, hpK, hpK < 0.3 ? UI.COL.red : "#7fe08a");
     UI.segBar(g, 82, 52, 142, 3, run.exp / run.expNeed, UI.COL.cyan);
+    if (run.mech) { UI.panel(g, 14, 72, 222, 22, "rgba(35,26,54,0.9)"); drawMechRow(g, run, 22, 83, 206); }
     // 보스
     const boss = run.enemies.find((e) => e.raidBoss && !e.dead);
     const x = 250, w = 460;
