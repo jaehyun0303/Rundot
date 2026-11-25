@@ -654,5 +654,7 @@ RD.IMAGES = [
   "mon_beetle_0", "mon_beetle_1", "mon_beetle_2", "mon_beetle_3",
   "item_gem", "item_star", "item_coin", "item_heart",
   "pet_0", "pet_1", "pet_2", "pet_3",
+  // 플레이 캐릭터 그림 (4프레임: 날기 2, 공격, 피격). 없으면 코드로 그린 도트를 쓴다
+  ...["fox", "rabbit", "bear", "owl", "cat", "panda", "mech", "frog"].flatMap((id) => [0, 1, 2, 3].map((f) => `player_${id}_${f}`)),
 ];
-RD.ILLUSTS = ["illust_fox", "illust_cat", "illust_bear", "illust_rabbit", "illust_owl", "illust_panda", "illust_mech", "illust_frog"];
+RD.ILLUSTS = ["illust_fox", "illust_cat", "illust_bear", "illust_rabbit", "illust_owl", "illust_panda", "illust_mech", "illust_frog", "illust_megafrog"];

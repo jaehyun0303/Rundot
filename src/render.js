@@ -615,7 +615,8 @@
     const riding = run.ult && run.ult.kind === "mech";
     if (!riding && p.invuln > 0 && Math.floor(run.t * 16) % 2 === 0) return;
     const frame = run.charId === "owl" ? Math.floor(p.animT * 12) % 4 : 0;
-    const spr = RD.getCharacterFrame(run.charId, run.charId === "owl" ? "run" : "jump", frame);
+    const pic = RD.playerPic(run.charId, p.hurt > 0 ? 3 : p.atkT > 0 ? 2 : Math.floor(run.t * 6) % 2);
+    const spr = pic || RD.getCharacterFrame(run.charId, run.charId === "owl" ? "run" : "jump", frame);
     const s = C.spriteScale * (run.mega ? 1.55 : 1), size = RD.SPRITE_SIZE * s;
     g.save();
     g.translate(Math.round(p.x), Math.round(p.y));
@@ -629,11 +630,21 @@
       if (run.brawl && Math.cos(run.brawl.aimAng) < 0) g.scale(-1, 1); // 조준한 쪽을 본다
     }
     if (run.mega) g.filter = "saturate(1.6) hue-rotate(-25deg) brightness(0.9)";
-    g.drawImage(spr, -20 * s, -24 * s, size, size);
+    let topY = -24 * s;
+    if (pic) {
+      // 그림 캐릭터: 높이 84 (메가 1.55배, 메카 조종석 안에서는 작게)
+      const inMech = run.mech && run.mech.alive && !riding;
+      const hh = (inMech ? 56 : 90) * (run.mega ? 1.45 : 1), ww = pic.width * hh / pic.height;
+      const oy = inMech ? -26 * [0.62, 0.72, 0.84][run.mech.evo] - hh / 2 + 6 : -hh / 2 - 4;
+      g.imageSmoothingEnabled = true;
+      g.drawImage(pic, -ww / 2 - 4, oy, ww, hh);
+      topY = oy + hh * 0.12;
+      g.imageSmoothingEnabled = false;
+    } else g.drawImage(spr, -20 * s, -24 * s, size, size);
     g.filter = "none";
     if (run.mega) { // 왕관
-      g.fillStyle = "#ffd34d"; g.fillRect(-14, -24 * s - 6, 28, 8); g.fillRect(-14, -24 * s - 14, 6, 8); g.fillRect(-3, -24 * s - 16, 6, 10); g.fillRect(8, -24 * s - 14, 6, 8);
-      g.fillStyle = "#ff4d5e"; g.fillRect(-2, -24 * s - 4, 4, 4);
+      g.fillStyle = "#ffd34d"; g.fillRect(-14, topY - 6, 28, 8); g.fillRect(-14, topY - 14, 6, 8); g.fillRect(-3, topY - 16, 6, 10); g.fillRect(8, topY - 14, 6, 8);
+      g.fillStyle = "#ff4d5e"; g.fillRect(-2, topY - 4, 4, 4);
     }
     g.restore();
     // 여우 베기 (부채꼴 궤적)
@@ -861,6 +872,26 @@
     g.fillRect(x, y, w * Math.max(0, Math.min(1, k)), Math.ceil(h / 3));
   }
 
+  // 플레이 캐릭터 그림 (그림 파일이 있으면)
+  RD.playerPic = function (id, f) {
+    const im = RD.img && RD.img(`player_${id}_${f}`);
+    return im && im.complete && im.naturalWidth ? im : null;
+  };
+
+  // 메가 프로그 변신 컷인
+  function drawMegaCut(g, run) {
+    const t = 2.6 - run.megaCut, im = RD.img("illust_megafrog");
+    if (!(im && im.naturalWidth)) return;
+    const k = Math.min(1, t * 4), out = Math.min(1, run.megaCut * 3);
+    const h = 230, w = h * im.width / im.height, x = C.width - w - 20 + (1 - k) * 400, y = C.height - h - 70;
+    g.save(); g.globalAlpha = out;
+    g.fillStyle = "#1d1622"; g.fillRect(x - 4, y - 4, w + 8, h + 8);
+    g.fillStyle = "#9fff6a"; g.fillRect(x - 4, y - 4, w + 8, 3);
+    g.imageSmoothingEnabled = true; g.drawImage(im, x, y, w, h); g.imageSmoothingEnabled = false;
+    text(g, "MEGA FROG!", x + 14, y + h - 20, 26, "#9fff6a");
+    g.restore();
+  }
+
   function drawHud(g, run) {
     const UI = RD.UI, p = run.player;
     const D = run.D, M = RD.MODES[run.mode];
@@ -944,8 +975,11 @@
       const bx = 14, by = C.height - 74;
       UI.panel(g, bx, by, 176, 60, "rgba(35,26,54,0.88)");
       text(g, "목숨", bx + 10, by + 17, 11, UI.COL.dim);
-      const head = RD.getCharacterFrame(run.charId, "jump", 0);
-      for (let i = 0; i < Math.min(run.lives, 5); i++) g.drawImage(head, bx + 40 + i * 24, by + 2, 28, 28);
+      const head = RD.playerPic(run.charId, 0) || RD.getCharacterFrame(run.charId, "jump", 0);
+      const hw = head.width * 26 / head.height;
+      g.imageSmoothingEnabled = true;
+      for (let i = 0; i < Math.min(run.lives, 5); i++) g.drawImage(head, bx + 40 + i * 24, by + 3, Math.min(30, hw), 26);
+      g.imageSmoothingEnabled = false;
       if (run.lives > 5) text(g, `×${run.lives}`, bx + 168, by + 17, 11, "#fff", "right");
       text(g, "궁", bx + 10, by + 43, 11, UI.COL.dim);
       const nb = Math.min(run.bombs, 4);
@@ -981,6 +1015,7 @@
         if (b.sub2) text(g, b.sub2, C.width / 2, C.height / 2 + 62, 15, "#ffc49a", "center");
       }
     }
+    if (run.megaCut > 0) drawMegaCut(g, run);
     if (run.mech && !run.choosing && !run.cutscene) drawTechButton(g, run);
     if (run.choosing) drawChoice(g, run);
     if (run.techOpen) drawTech(g, run);

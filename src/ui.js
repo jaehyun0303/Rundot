@@ -121,6 +121,14 @@
       g.drawImage(im, sx, sy, sw, sh, x, y, w, h);
       g.imageSmoothingEnabled = false;
     } else {
+      const pic = RD.playerPic && RD.playerPic(ch.id, 0);
+      if (pic) {
+        const k = Math.min(w / pic.width, h / pic.height) * 0.9;
+        g.imageSmoothingEnabled = true;
+        g.drawImage(pic, x + (w - pic.width * k) / 2, y + (h - pic.height * k) / 2, pic.width * k, pic.height * k);
+        g.imageSmoothingEnabled = false;
+        return;
+      }
       const s = Math.min(w, h) * 0.95;
       g.drawImage(RD.getCharacterFrame(ch.id, "jump", frame), x + (w - s) / 2, y + (h - s) / 2, s, s);
     }

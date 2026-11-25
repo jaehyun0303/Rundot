@@ -234,6 +234,7 @@
     becomeMega() {
       const p = this.player;
       this.mega = true;
+      this.megaCut = 2.6; // 변신 일러스트 컷인
       this.hunger = RD.MEGA_FROG.hunger;
       p.hp = this.maxHp;
       p.invuln = Math.max(p.invuln, 3);
@@ -763,6 +764,7 @@
       const sig = this.lv("sig");
       const pw = this.power;
       const dmg = s.dmg * this.dmgMul;
+      p.atkT = 0.14; // 공격 프레임
       if (this.mega) { p.shotCd = RD.MEGA_FROG.roarCd * Math.pow(0.88, this.lv("rate")); this.roar(RD.MEGA_FROG.roarDmg * this.dmgMul); return; }
       RD.audio && RD.audio.sfx("shot_" + this.charId);
 
@@ -912,6 +914,7 @@
       }
       B.ammo -= 1;
       B.aimAng = ang;
+      p.atkT = 0.2;
       const W = RD.BRAWL[this.charId];
       const dmg = W.dmg * this.dmgMul * (1 + this.bst("dmg"));
       const ch = W.charge;
@@ -1580,6 +1583,8 @@
         if (B.ammo < max) B.ammo = Math.min(max, B.ammo + dt / (RD.BRAWL[this.charId].reload * (1 - Math.min(0.6, this.bst("reload")))));
       }
       p.hurt = Math.max(0, p.hurt - dt);
+      p.atkT = Math.max(0, (p.atkT || 0) - dt);
+      if (this.megaCut > 0) this.megaCut -= dt;
       // 패시브
       if (this.charId === "fox") this.parry = Math.min(RD.FOX_PARRY.max, this.parry + dt / RD.FOX_PARRY.regen);
       if (this.charId === "cat" && !p.shielded) {
