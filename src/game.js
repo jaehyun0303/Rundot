@@ -234,13 +234,26 @@
     becomeMega() {
       const p = this.player;
       this.mega = true;
+      this.hunger = RD.MEGA_FROG.hunger;
       p.hp = this.maxHp;
       p.invuln = Math.max(p.invuln, 3);
       this.shake = 0.5;
       this.effects.push({ type: "ring", x: p.x, y: p.y, t: 0, life: 0.8 });
       this.effects.push({ type: "flash", t: 0, life: 0.4 });
-      this.banner = { text: "메가 프로그!", sub: "포효로 적 공격을 되돌리고 체력을 회복한다", sub2: "궁극기: 적을 꿀꺽 삼켜 보호막과 공격력을 얻는다 (보스 제외)", color: "#9fff6a", t: 0, life: 3 };
+      this.banner = { text: "메가 프로그!", sub: "포효로 적 공격을 되돌린다 · 배고픔 게이지가 바닥나면 원래대로", sub2: "궁극기 꿀꺽: 삼키면 배고픔이 차고 보호막과 공격력을 얻는다 (보스 제외)", color: "#9fff6a", t: 0, life: 3 };
       RD.audio && RD.audio.sfx("levelup");
+    }
+    updateHunger(dt) {
+      if (!this.mega || this.player.dead > 0) return;
+      if ((this.hunger -= dt) > 0) return;
+      // 배고파서 원래 광대 개구리로 (삼켜서 얻은 공격력과 보호막은 남는다)
+      const p = this.player;
+      this.mega = false; this.hunger = 0; this.roars = [];
+      p.hp = Math.min(p.hp, this.maxHp);
+      p.invuln = Math.max(p.invuln, 1.5);
+      this.effects.push({ type: "ring", x: p.x, y: p.y, t: 0, life: 0.6 });
+      this.banner = { text: "배고파...", sub: "메가 프로그가 원래 광대 개구리로 돌아왔다", color: "#ff8a3d", t: 0, life: 1.8, small: true };
+      RD.audio && RD.audio.sfx("shieldbreak");
     }
     roar(dmg) {
       const MF = RD.MEGA_FROG, p = this.player;
@@ -260,6 +273,7 @@
           if (Math.hypot(e.x - p.x, e.y - p.y) > rad + RD.ENEMIES[e.type].w / 2) continue;
           r.hit.add(e);
           this.damage(e, r.dmg, true);
+          if (this.mega && (RD.ENEMIES[e.type].boss || e.raidBoss)) this.hunger = Math.min(MF.hungerMax, this.hunger + MF.feedBossHit);
           p.hp = Math.min(this.maxHp, p.hp + MF.healPerHit);
           if (this.brawl) this.gainCharge && this.gainCharge(RD.BRAWL.frog.charge * 0.5);
         }
@@ -1371,6 +1385,7 @@
               const big = def.midboss || def.elite;
               p.gulp = Math.min(this.maxHp * MF.shieldCap, p.gulp + Math.max(e.hp, 1));
               this.megaPow = Math.min(MF.powMax, this.megaPow + (big ? MF.powBig : MF.powSmall));
+              this.hunger = Math.min(MF.hungerMax, (this.hunger || 0) + (big ? MF.feedBig : MF.feedSmall));
               this.damage(e, e.hp + 1, true);
               this.effects.push({ type: "text", x: p.x, y: p.y - 70, text: big ? "꿀꺽!! 공격력 크게 증가" : "꿀꺽", color: "#9fff6a", t: 0, life: 0.6 });
               RD.audio && RD.audio.sfx("power");
@@ -1430,7 +1445,7 @@
     // ---------- 피격과 체력 ----------
     hurt(amount) {
       const p = this.player;
-      if (this.charId === "frog" && Math.random() < 0.2) {
+      if (this.charId === "frog" && Math.random() < 0.25) {
         // 익살꾼의 운
         p.invuln = Math.max(p.invuln, 0.5);
         this.text("빗나감!", "#ff5ad8");
@@ -1592,6 +1607,7 @@
       this.updateUlt(dt);
       if (this.mech) this.updateMech(dt);
       this.updateRoars(dt);
+      this.updateHunger(dt);
 
       // 피격 판정 (판정은 캐릭터 가운데의 작은 점)
       if (p.dead <= 0 && p.invuln <= 0) {
@@ -1763,6 +1779,7 @@
       e.dead = true;
       this.kills++;
       if (this.mech) this.addParts(def.boss ? 10 : def.midboss ? 5 : 1);
+      if (this.mega) this.hunger = Math.min(RD.MEGA_FROG.hungerMax, this.hunger + RD.MEGA_FROG.feedKill); // 메가 프로그: 쓰러뜨릴 때마다 조금 찬다
       RD.audio && RD.audio.sfx(def.boss || def.midboss ? "boom" : "kill");
       this.addScore(def.score * this.loop);
       this.gainExp(def.exp);

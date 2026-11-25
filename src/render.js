@@ -607,6 +607,7 @@
       gl.addColorStop(0, "rgba(159,255,106,0.35)"); gl.addColorStop(1, "rgba(159,255,106,0)");
       g.fillStyle = gl; g.fillRect(p.x - 70, p.y - 70, 140, 140);
     }
+    if (run.mega && run.hunger < 6 && Math.floor(run.t * 3) % 2 === 0) text(g, "배고파!", p.x, p.y - 72, 14, "#ff8a3d", "center");
     if (p.gulp > 0) {
       g.strokeStyle = `rgba(159,255,106,${0.5 + Math.sin(run.t * 5) * 0.2})`; g.lineWidth = 4;
       g.beginPath(); g.arc(p.x, p.y, 58, 0, Math.PI * 2); g.stroke();
@@ -990,10 +991,11 @@
 
   // 메가 프로그: 꿀꺽 보호막 + 공격력
   function drawMegaRow(g, run, x, y, w) {
-    const UI = RD.UI, p = run.player;
-    text(g, "메가", x, y, 12, "#9fff6a");
-    UI.segBar(g, x + 40, y - 5, w - 116, 8, p.gulp / (run.maxHp * RD.MEGA_FROG.shieldCap), "#9fff6a");
-    text(g, `공격 +${Math.round(run.megaPow * 100)}%`, x + w, y, 10, "#ffd34d", "right");
+    const UI = RD.UI, p = run.player, MF = RD.MEGA_FROG;
+    const k = run.hunger / MF.hungerMax, low = run.hunger < 6;
+    text(g, "배고픔", x, y, 12, low && Math.floor(run.t * 4) % 2 ? UI.COL.red : "#9fff6a");
+    UI.segBar(g, x + 48, y - 5, w - 120, 8, k, low ? UI.COL.red : k < 0.4 ? UI.COL.orange : "#9fff6a", 10);
+    text(g, p.gulp > 0 ? `막 ${Math.ceil(p.gulp)} · +${Math.round(run.megaPow * 100)}%` : `공격 +${Math.round(run.megaPow * 100)}%`, x + w, y, 10, "#ffd34d", "right");
   }
 
   // 메카 테크트리 버튼 (왼쪽 위 패널 아래)

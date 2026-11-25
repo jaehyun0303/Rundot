@@ -338,10 +338,10 @@ RD.CHARACTERS = [
     grade: "MY",
     type: "곡예형",
     desc: "통통 튀는 저글링 공을 던진다. 공은 바닥과 벽에 튕기며 여러 번 때린다",
-    passive: "익살꾼의 운: 20% 확률로 공격이 빗나간다 · 마지막 목숨이 되면 메가 프로그로 변신",
+    passive: "익살꾼의 운: 25% 확률로 공격이 빗나간다 · 마지막 목숨이 되면 메가 프로그로 변신",
     illust: "illust_frog",
     shot: {
-      name: "저글링 공", kind: "juggle", cd: 0.3, dmg: 3.8, speed: 560, color: "#ff5ad8", pierceAll: true,
+      name: "저글링 공", kind: "juggle", cd: 0.3, dmg: 4.2, speed: 560, color: "#ff5ad8", pierceAll: true,
       multi: [1, 2, 3, 4], // 던지는 공 수
       multiDesc: (lv) => `한 번에 던지는 공 ${lv + 1}개 → ${lv + 2}개`,
     },
@@ -490,7 +490,11 @@ RD.CHAR_HP = { fox: 110, rabbit: 85, bear: 140, owl: 90, cat: 80, panda: 100, me
 RD.MEGA_FROG = {
   hpMul: 1.3, // 최대 체력 +30%
   roarCd: 0.75, roarR: 240, roarLife: 0.38, roarDmg: 5.5, // 포효: 넓게 퍼지며 적을 때리고 탄을 되돌린다
-  healPerBullet: 0.5, healPerHit: 0.2,
+  healPerBullet: 0, healPerHit: 0.3, // 탄을 되돌릴 때는 회복하지 않는다 (적을 맞혔을 때만)
+  hunger: 25, hungerMax: 30, // 배고픔 게이지(초): 계속 줄고, 바닥나면 원래 개구리로 돌아간다
+  feedSmall: 2, feedBig: 10, // 삼키면 채워지는 양 (일반 몹 / 중간 보스)
+  feedKill: 0.3, // 적을 쓰러뜨릴 때마다 조금 찬다
+  feedBossHit: 0.6, // 포효로 보스를 맞히면 찬다 (가까이 붙어야 한다)
   gulpR: 430, gulpLife: 2.2, // 꿀꺽: 이 거리 안의 적(보스 제외)을 삼킨다
   shieldCap: 2, // 보호막 최대 = 최대 체력 x2
   powSmall: 0.04, powBig: 0.25, powMax: 1, // 삼킬 때마다 공격력 증가 (최대 +100%)
