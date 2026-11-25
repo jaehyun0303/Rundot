@@ -461,11 +461,11 @@ RD.MECH = {
 };
 // 판다 아군 정령 (진짜 몬스터처럼 돌아다니며 싸우는 아군). 순서대로 합류
 RD.ALLIES = [
-  { id: "fairy", sprite: "fairy", name: "숲 요정", hp: 55, speed: 190, role: "shoot", range: 300, cd: 0.5, dmg: 1.0, scale: 1.8 },
-  { id: "slime", sprite: "slime", name: "정령 슬라임", hp: 130, speed: 150, role: "melee", dps: 7, scale: 2.0 },
-  { id: "wisp", sprite: "wisp", name: "도깨비불", hp: 50, speed: 170, role: "shoot", range: 360, cd: 0.85, dmg: 1.9, homing: true, scale: 1.7 },
-  { id: "beetle", sprite: "beetle", name: "풍뎅이 기사", hp: 90, speed: 300, role: "melee", dps: 11, scale: 1.9 },
-  { id: "mushroom", sprite: "mushroom", name: "포자 버섯", hp: 80, speed: 120, role: "spore", radius: 130, cd: 1.3, dmg: 2.4, scale: 1.9 },
+  { id: "fairy", sprite: "fairy", picH: 54, name: "숲 요정", hp: 55, speed: 190, role: "shoot", range: 300, cd: 0.5, dmg: 1.0, scale: 1.8 },
+  { id: "slime", sprite: "slime", picH: 46, name: "정령 슬라임", hp: 130, speed: 150, role: "melee", dps: 7, scale: 2.0 },
+  { id: "wisp", sprite: "wisp", picH: 52, name: "도깨비불", hp: 50, speed: 170, role: "shoot", range: 360, cd: 0.85, dmg: 1.9, homing: true, scale: 1.7 },
+  { id: "beetle", sprite: "beetle", picH: 54, name: "풍뎅이 기사", hp: 90, speed: 300, role: "melee", dps: 11, scale: 1.9 },
+  { id: "mushroom", sprite: "mushroom", picH: 54, name: "포자 버섯", hp: 80, speed: 120, role: "spore", radius: 130, cd: 1.3, dmg: 2.4, scale: 1.9 },
 ];
 RD.ALLY_RESPAWN = 5; // 쓰러지면 5초 뒤 다시 소환
 
@@ -656,5 +656,9 @@ RD.IMAGES = [
   "pet_0", "pet_1", "pet_2", "pet_3",
   // 플레이 캐릭터 그림 (4프레임: 날기 2, 공격, 피격). 없으면 코드로 그린 도트를 쓴다
   ...["fox", "rabbit", "bear", "owl", "cat", "panda", "mech", "frog"].flatMap((id) => [0, 1, 2, 3].map((f) => `player_${id}_${f}`)),
+  "player_megafrog_0", "player_megafrog_1", "player_megafrog_2", "player_megafrog_3",
+  // 다람쥐 메카 Mk.I~III (4프레임), 판다 아군 정령 (서 있기 2, 공격 1)
+  ...[1, 2, 3].flatMap((n) => [0, 1, 2, 3].map((f) => `mech_mk${n}_${f}`)),
+  ...["fairy", "slime", "wisp", "beetle", "mushroom"].flatMap((id) => [0, 1, 2].map((f) => `ally_${id}_${f}`)),
 ];
 RD.ILLUSTS = ["illust_fox", "illust_cat", "illust_bear", "illust_rabbit", "illust_owl", "illust_panda", "illust_mech", "illust_frog", "illust_megafrog"];

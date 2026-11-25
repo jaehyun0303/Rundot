@@ -1097,7 +1097,7 @@
       const minY = 60, maxY = this.raid ? C.height - 40 : C.groundY - 20;
       this.summons.forEach((m, i) => {
         const A = m.A;
-        m.anim += dt; m.flash = Math.max(0, m.flash - dt);
+        m.anim += dt; m.flash = Math.max(0, m.flash - dt); m.atkT = Math.max(0, (m.atkT || 0) - dt);
         m.maxHp = A.hp * hpMul;
         if (m.dead > 0) {
           // 쓰러진 정령: 잠시 뒤 플레이어 곁에 다시 소환
@@ -1125,7 +1125,7 @@
         const rad = 12 * A.scale;
         // 공격
         if (A.role === "shoot" && tg && bd < A.range + 200 && (m.cd -= dt) <= 0) {
-          m.cd = A.cd * cdMul;
+          m.cd = A.cd * cdMul; m.atkT = 0.2;
           const a = Math.atan2(tg.y - m.y, tg.x - m.x);
           this.addShot({ kind: "spirit", x: m.x, y: m.y, vx: Math.cos(a) * 640, vy: Math.sin(a) * 640, w: 14, h: 14, dmg: base * A.dmg, pierce: 0, homing: !!A.homing, color: A.id === "wisp" ? "#7fe6ff" : "#9fffb0", brawl: !!this.raid, charge: 0.02 });
         }
@@ -1133,7 +1133,7 @@
           for (const e of live) {
             const ew = RD.ENEMIES[e.type].w / 2;
             if (Math.hypot(e.x - m.x, e.y - m.y) < rad + ew) {
-              this.damage(e, base * A.dps * dt, true);
+              this.damage(e, base * A.dps * dt, true); m.atkT = 0.15;
               if (this.raid) this.gainCharge(0.02 * dt);
               m.hp -= 10 * this.D.damage * dt; // 몸싸움 피해
             }
@@ -1143,7 +1143,7 @@
           m.cd = A.cd * cdMul;
           let hit = false;
           for (const e of live) if (Math.hypot(e.x - m.x, e.y - m.y) < A.radius + RD.ENEMIES[e.type].w / 2) { this.damage(e, base * A.dmg, true); hit = true; }
-          if (hit) this.effects.push({ type: "ring", x: m.x, y: m.y, t: 0, life: 0.35 });
+          if (hit) { this.effects.push({ type: "ring", x: m.x, y: m.y, t: 0, life: 0.35 }); m.atkT = 0.3; }
         }
         // 몸으로 적 탄을 막는다 (막을 때마다 체력이 깎인다)
         this.bullets = this.bullets.filter((b) => {

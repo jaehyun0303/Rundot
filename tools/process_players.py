@@ -15,7 +15,8 @@ from PIL import Image
 ROOT = Path(__file__).resolve().parent.parent
 SRC = ROOT / "assets" / "raw" / "sheets"
 OUT = ROOT / "assets" / "game"
-OUT_H = 150
+OUT_H = 150  # 메카는 아래에서 MECH_H
+MECH_H = 200
 
 
 def key_mask(rgb):
@@ -84,12 +85,58 @@ def process(path):
     for i in range(4):
         x0 = int(round(i * cw))
         fr = Image.fromarray(rgba[by0:by1 + 1, x0 + bx0:x0 + bx1 + 1], "RGBA")
-        k = OUT_H / fr.height
-        fr = fr.resize((max(1, round(fr.width * k)), OUT_H), Image.LANCZOS)
+        oh = MECH_H if name.startswith("mech_") else OUT_H
+        k = oh / fr.height
+        fr = fr.resize((max(1, round(fr.width * k)), oh), Image.LANCZOS)
         fr.save(OUT / f"{name}_{i}.png", optimize=True)
     print(name, "cells", boxes, "→", fr.size)
 
 
+def process_grid(path, cols, rows, names, out_h=110):
+    """여러 줄 격자 시트 (아군 정령 등): names[열] 마다 <이름>_<줄>.png"""
+    im = Image.open(path).convert("RGB")
+    rgb = np.array(im)
+    H, W = rgb.shape[:2]
+    fg = ~key_mask(rgb)
+    # 빛번짐과 마젠타가 섞인 보라빛 가장자리를 2px 깎는다
+    r_, g_, b_ = (rgb[..., i].astype(int) for i in range(3))
+    purple = (r_ > g_ + 12) & (b_ > g_ + 12)
+    for _ in range(3):
+        bg = ~fg
+        near = np.zeros_like(bg)
+        near[1:, :] |= bg[:-1, :]; near[:-1, :] |= bg[1:, :]; near[:, 1:] |= bg[:, :-1]; near[:, :-1] |= bg[:, 1:]
+        fg &= ~(near & purple)
+    cw, ch = W / cols, H / rows
+    for c in range(cols):
+        cells = []
+        for r in range(rows):
+            x0, x1 = int(round(c * cw)), int(round((c + 1) * cw))
+            y0, y1 = int(round(r * ch)), int(round((r + 1) * ch))
+            cell = fg[y0:y1, x0:x1].copy()
+            cc = components(cell)
+            cbig = max(len(q) for q in cc)
+            for q in cc:
+                ys = [a[0] for a in q]; xs = [a[1] for a in q]
+                edge = min(xs) <= 2 or max(xs) >= x1 - x0 - 3 or min(ys) <= 2 or max(ys) >= y1 - y0 - 3
+                if len(q) < cbig * (0.03 if edge else 0.004):
+                    for y, x in q:
+                        cell[y, x] = False
+            cells.append((x0, y0, cell))
+        # 같은 열의 줄들은 같은 상자로 (움직여도 제자리)
+        bx0 = min(np.nonzero(cl)[1].min() for _, _, cl in cells); bx1 = max(np.nonzero(cl)[1].max() for _, _, cl in cells)
+        by0 = min(np.nonzero(cl)[0].min() for _, _, cl in cells); by1 = max(np.nonzero(cl)[0].max() for _, _, cl in cells)
+        for r, (x0, y0, cl) in enumerate(cells):
+            a = (cl[by0:by1 + 1, bx0:bx1 + 1] * 255).astype(np.uint8)
+            fr = Image.fromarray(np.dstack([rgb[y0 + by0:y0 + by1 + 1, x0 + bx0:x0 + bx1 + 1], a]), "RGBA")
+            k = out_h / fr.height
+            fr = fr.resize((max(1, round(fr.width * k)), out_h), Image.LANCZOS)
+            fr.save(OUT / f"{names[c]}_{r}.png", optimize=True)
+        print(names[c], fr.size)
+
+
 if __name__ == "__main__":
-    for p in sorted(SRC.glob("player_*.png")):
+    for p in sorted(SRC.glob("player_*.png")) + sorted(SRC.glob("mech_mk*.png")):
         process(p)
+    g = SRC / "grid_ally.png"
+    if g.exists():
+        process_grid(g, 5, 3, ["ally_fairy", "ally_slime", "ally_wisp", "ally_beetle", "ally_mushroom"])

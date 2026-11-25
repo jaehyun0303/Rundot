@@ -534,17 +534,21 @@
       // 판다의 아군 정령 몬스터 (초록빛, 머리 위 새싹과 체력바)
       if (m.dead > 0 || !m.A) continue;
       const A = m.A, f = Math.floor(m.anim * 6) % 2;
-      const spr = RD.getMonsterFrame(A.sprite, f, false, "ally");
-      const w = spr.width * A.scale, h = spr.height * A.scale;
+      const apic = RD.img(`ally_${A.id}_${m.atkT > 0 ? 2 : Math.floor(m.anim * 3) % 2}`);
+      const hasPic = apic && apic.complete && apic.naturalWidth;
+      const spr = hasPic ? apic : RD.getMonsterFrame(A.sprite, f, false, "ally");
+      const h = hasPic ? A.picH : spr.height * A.scale, w = hasPic ? spr.width * h / spr.height : spr.width * A.scale;
       g.save();
       g.fillStyle = "rgba(159,255,176,0.22)"; g.beginPath(); g.ellipse(m.x, m.y + h * 0.3, w * 0.35, 6, 0, 0, Math.PI * 2); g.fill();
       g.translate(Math.round(m.x), 0);
-      if (m.face > 0) g.scale(-1, 1); // 몬스터 그림은 왼쪽을 본다 → 적 쪽(오른쪽)을 보게
+      if (hasPic ? m.face < 0 : m.face > 0) g.scale(-1, 1); // 그림 정령은 오른쪽, 도트 몬스터는 왼쪽을 본다
+      g.imageSmoothingEnabled = !!hasPic;
       g.drawImage(spr, Math.round(-w / 2), Math.round(m.y - h / 2), w, h);
       if (m.flash > 0) { g.globalCompositeOperation = "lighter"; g.globalAlpha = 0.6; g.drawImage(spr, Math.round(-w / 2), Math.round(m.y - h / 2), w, h); }
       g.restore();
-      const top = m.y - h * 0.42;
-      g.fillStyle = "#5fcf6a"; g.fillRect(m.x - 2, top - 10, 4, 7); g.fillRect(m.x + 1, top - 12, 6, 3); // 새싹 표시
+      g.imageSmoothingEnabled = false;
+      const top = m.y - h * (hasPic ? 0.5 : 0.42);
+      if (!hasPic) { g.fillStyle = "#5fcf6a"; g.fillRect(m.x - 2, top - 10, 4, 7); g.fillRect(m.x + 1, top - 12, 6, 3); } // 새싹 표시
       g.fillStyle = "#1d1622"; g.fillRect(m.x - 17, top - 4, 34, 6);
       g.fillStyle = "#9fffb0"; g.fillRect(m.x - 16, top - 3, 32 * Math.max(0, m.hp / m.maxHp), 4);
     }
@@ -560,7 +564,14 @@
       g.restore();
     }
     // 메카 탑승: 캐릭터를 감싼 거대 메카
-    if (run.ult && run.ult.kind === "mech") {
+    const bigPic = run.ult && run.ult.kind === "mech" && run.mech ? RD.mechPic(run.mech.evo, Math.floor(run.t * 10) % 3 === 0 ? 2 : Math.floor(run.t * 4) % 2) : null;
+    if (bigPic) {
+      // 거대 메카: 지금 진화 단계 그림을 크게
+      const hh = [190, 210, 230][run.mech.evo], ww = bigPic.width * hh / bigPic.height;
+      g.imageSmoothingEnabled = true;
+      g.drawImage(bigPic, p.x - ww / 2, p.y - hh / 2 - 20, ww, hh);
+      g.imageSmoothingEnabled = false;
+    } else if (run.ult && run.ult.kind === "mech") {
       // 지금 진화 단계의 색과 장비 그대로 커진다
       const evo = run.mech ? run.mech.evo : 0, [c1, c2, c0] = RD.MECH.colors[evo], K = 1 + 0.12 * evo;
       const P = (x, y, w, h, c) => { g.fillStyle = c; g.fillRect(p.x + x * K, p.y + y * K, w * K, h * K); };
@@ -573,7 +584,21 @@
       P(-36, 16 + step, 22, 26, c0); P(14, 16 - step, 22, 26, c0); P(-40, 40 + step, 30, 8, "#2a3440"); P(10, 40 - step, 30, 8, "#2a3440");
     }
     // 다람쥐 메카 (진화 단계마다 커지고 색이 바뀐다)
-    if (run.mech && run.mech.alive && !(run.ult && run.ult.kind === "mech")) {
+    const mechPic = run.mech ? RD.mechPic(run.mech.evo, p.hurt > 0 ? 3 : p.atkT > 0 ? 2 : Math.floor(run.t * 6) % 2) : null;
+    if (run.mech && run.mech.alive && !(run.ult && run.ult.kind === "mech") && mechPic) {
+      // 그림 메카 (다람쥐가 타고 있는 그림이라 다람쥐는 따로 안 그린다)
+      const M = run.mech, hh = [96, 112, 124][M.evo], ww = mechPic.width * hh / mechPic.height;
+      const flip = run.raid && run.brawl && Math.cos(run.brawl.aimAng) < 0 ? -1 : 1;
+      g.save(); g.translate(Math.round(p.x), Math.round(p.y - 10)); g.scale(flip, 1);
+      g.imageSmoothingEnabled = true;
+      g.drawImage(mechPic, -ww / 2, -hh / 2, ww, hh);
+      if (M.flash > 0 && Math.floor(run.t * 20) % 2 === 0) { g.globalCompositeOperation = "lighter"; g.globalAlpha = 0.6; g.drawImage(mechPic, -ww / 2, -hh / 2, ww, hh); }
+      g.restore(); g.imageSmoothingEnabled = false;
+      if (M.barrier) { g.strokeStyle = `rgba(127,230,255,${0.55 + Math.sin(run.t * 6) * 0.25})`; g.lineWidth = 3; g.beginPath(); g.arc(p.x, p.y - 10, hh * 0.55, 0, Math.PI * 2); g.stroke(); }
+      const hk = M.hp / run.mechMax, ty = p.y - 10 - hh / 2 - 10;
+      g.fillStyle = "#1d1622"; g.fillRect(p.x - 26, ty, 52, 7);
+      g.fillStyle = hk < 0.3 ? "#ff4d5e" : "#ffb347"; g.fillRect(p.x - 25, ty + 1, 50 * hk, 5);
+    } else if (run.mech && run.mech.alive && !(run.ult && run.ult.kind === "mech")) {
       const M = run.mech, k = [0.62, 0.72, 0.84][M.evo], [c1, c2, c0] = RD.MECH.colors[M.evo];
       const fl = M.flash > 0 && Math.floor(run.t * 20) % 2 === 0;
       const flip = run.raid && run.brawl && Math.cos(run.brawl.aimAng) < 0 ? -1 : 1;
@@ -615,7 +640,9 @@
     const riding = run.ult && run.ult.kind === "mech";
     if (!riding && p.invuln > 0 && Math.floor(run.t * 16) % 2 === 0) return;
     const frame = run.charId === "owl" ? Math.floor(p.animT * 12) % 4 : 0;
-    const pic = RD.playerPic(run.charId, p.hurt > 0 ? 3 : p.atkT > 0 ? 2 : Math.floor(run.t * 6) % 2);
+    // 메가 프로그: 0 둥실, 1 포효, 2 혀 (꿀꺽), 3 피격
+    const megaPic = run.mega ? RD.playerPic("megafrog", p.hurt > 0 ? 3 : run.ult && run.ult.kind === "megafrog" ? 2 : p.atkT > 0 || run.roars.length ? 1 : 0) : null;
+    const pic = megaPic || RD.playerPic(run.charId, p.hurt > 0 ? 3 : p.atkT > 0 ? 2 : Math.floor(run.t * 6) % 2);
     const spr = pic || RD.getCharacterFrame(run.charId, run.charId === "owl" ? "run" : "jump", frame);
     const s = C.spriteScale * (run.mega ? 1.55 : 1), size = RD.SPRITE_SIZE * s;
     g.save();
@@ -629,9 +656,11 @@
       g.fillStyle = "rgba(0,0,0,0.3)"; g.beginPath(); g.ellipse(0, 30, 22, 7, 0, 0, Math.PI * 2); g.fill();
       if (run.brawl && Math.cos(run.brawl.aimAng) < 0) g.scale(-1, 1); // 조준한 쪽을 본다
     }
-    if (run.mega) g.filter = "saturate(1.6) hue-rotate(-25deg) brightness(0.9)";
+    if (run.mega && !megaPic) g.filter = "saturate(1.6) hue-rotate(-25deg) brightness(0.9)";
     let topY = -24 * s;
-    if (pic) {
+    if (pic && run.mech && mechPic && (run.mech.alive || riding)) {
+      // 메카 그림 안에 다람쥐가 이미 그려져 있다
+    } else if (pic) {
       // 그림 캐릭터: 높이 84 (메가 1.55배, 메카 조종석 안에서는 작게)
       const inMech = run.mech && run.mech.alive && !riding;
       const hh = (inMech ? 56 : 90) * (run.mega ? 1.45 : 1), ww = pic.width * hh / pic.height;
@@ -642,7 +671,7 @@
       g.imageSmoothingEnabled = false;
     } else g.drawImage(spr, -20 * s, -24 * s, size, size);
     g.filter = "none";
-    if (run.mega) { // 왕관
+    if (run.mega && !megaPic) { // 왕관 (메가 프로그 그림이 없을 때)
       g.fillStyle = "#ffd34d"; g.fillRect(-14, topY - 6, 28, 8); g.fillRect(-14, topY - 14, 6, 8); g.fillRect(-3, topY - 16, 6, 10); g.fillRect(8, topY - 14, 6, 8);
       g.fillStyle = "#ff4d5e"; g.fillRect(-2, topY - 4, 4, 4);
     }
@@ -873,6 +902,10 @@
   }
 
   // 플레이 캐릭터 그림 (그림 파일이 있으면)
+  RD.mechPic = function (evo, f) {
+    const im = RD.img && RD.img(`mech_mk${evo + 1}_${f}`);
+    return im && im.complete && im.naturalWidth ? im : null;
+  };
   RD.playerPic = function (id, f) {
     const im = RD.img && RD.img(`player_${id}_${f}`);
     return im && im.complete && im.naturalWidth ? im : null;
