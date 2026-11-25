@@ -531,11 +531,22 @@
     }
     // 판다: 함께 다니는 정령
     if (run.summons) for (const m of run.summons) {
-      const bob = Math.sin(run.t * 4 + m.ph) * 3;
-      g.fillStyle = "rgba(159,255,176,0.3)"; g.beginPath(); g.arc(m.x, m.y + bob, 16, 0, Math.PI * 2); g.fill();
-      g.fillStyle = "#c8ffd0"; g.beginPath(); g.arc(m.x, m.y + bob, 10, 0, Math.PI * 2); g.fill();
-      g.fillStyle = "#5fcf6a"; g.fillRect(m.x - 2, m.y - 15 + bob, 4, 6); g.fillRect(m.x + 1, m.y - 17 + bob, 5, 3); // 새싹
-      g.fillStyle = "#1d1622"; g.fillRect(m.x - 4, m.y - 2 + bob, 2, 3); g.fillRect(m.x + 2, m.y - 2 + bob, 2, 3);
+      // 판다의 아군 정령 몬스터 (초록빛, 머리 위 새싹과 체력바)
+      if (m.dead > 0 || !m.A) continue;
+      const A = m.A, f = Math.floor(m.anim * 6) % 2;
+      const spr = RD.getMonsterFrame(A.sprite, f, false, "ally");
+      const w = spr.width * A.scale, h = spr.height * A.scale;
+      g.save();
+      g.fillStyle = "rgba(159,255,176,0.22)"; g.beginPath(); g.ellipse(m.x, m.y + h * 0.3, w * 0.35, 6, 0, 0, Math.PI * 2); g.fill();
+      g.translate(Math.round(m.x), 0);
+      if (m.face > 0) g.scale(-1, 1); // 몬스터 그림은 왼쪽을 본다 → 적 쪽(오른쪽)을 보게
+      g.drawImage(spr, Math.round(-w / 2), Math.round(m.y - h / 2), w, h);
+      if (m.flash > 0) { g.globalCompositeOperation = "lighter"; g.globalAlpha = 0.6; g.drawImage(spr, Math.round(-w / 2), Math.round(m.y - h / 2), w, h); }
+      g.restore();
+      const top = m.y - h * 0.42;
+      g.fillStyle = "#5fcf6a"; g.fillRect(m.x - 2, top - 10, 4, 7); g.fillRect(m.x + 1, top - 12, 6, 3); // 새싹 표시
+      g.fillStyle = "#1d1622"; g.fillRect(m.x - 17, top - 4, 34, 6);
+      g.fillStyle = "#9fffb0"; g.fillRect(m.x - 16, top - 3, 32 * Math.max(0, m.hp / m.maxHp), 4);
     }
     // 정령왕
     if (run.ult && run.ult.kind === "panda" && run.ult.kx != null) {

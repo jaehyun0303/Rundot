@@ -213,16 +213,16 @@
     addParts(n) {
       const M = this.mech, C2 = RD.MECH;
       // 부품은 파괴된 메카를 다시 조립할 때만 쓴다
-      if (!M.alive) { M.prog += n / (C2.rebuildParts * (this.tech.has.quick ? 0.6 : 1)); if (M.prog >= 1) this.rebuildMech(C2.rebuildHp); }
+      if (!M.alive) { M.prog += n / (C2.rebuildParts * (this.tech.has.quick ? 0.75 : 1)); if (M.prog >= 1) this.rebuildMech(C2.rebuildHp); }
     }
     updateMech(dt) {
       const M = this.mech;
       M.flash = Math.max(0, M.flash - dt);
-      if (!M.alive && this.player.dead <= 0) { M.prog += dt / (RD.MECH.rebuildTime * (this.tech.has.quick ? 0.6 : 1)); if (M.prog >= 1) this.rebuildMech(RD.MECH.rebuildHp); }
+      if (!M.alive && this.player.dead <= 0) { M.prog += dt / (RD.MECH.rebuildTime * (this.tech.has.quick ? 0.75 : 1)); if (M.prog >= 1) this.rebuildMech(RD.MECH.rebuildHp); }
       if (!M.alive || this.player.dead > 0) return;
       const T = this.tech.has;
-      if (T.repair) M.hp = Math.min(this.mechMax, M.hp + 1.2 * dt);
-      if (T.barrier && !M.barrier && (M.barrierT += dt) >= 8) { M.barrier = true; M.barrierT = 0; }
+      if (T.repair) M.hp = Math.min(this.mechMax, M.hp + 1 * dt);
+      if (T.barrier && !M.barrier && (M.barrierT += dt) >= 12) { M.barrier = true; M.barrierT = 0; }
       if (T.cannon && (M.cannonT -= dt) <= 0) {
         M.cannonT = 1.2;
         const a = this.autoAim(), p = this.player;
@@ -1062,26 +1062,82 @@
       return this.raid ? 1 + this.bst("count") : this.power;
     }
     updateSummons(dt) {
-      const n = this.summonCount, p = this.player;
+      const n = Math.min(RD.ALLIES.length, this.summonCount), p = this.player;
       if (!this.summons) this.summons = [];
-      while (this.summons.length < n) this.summons.push({ x: p.x, y: p.y, cd: rand(0, 0.5), ph: this.summons.length });
-      this.summons.length = n;
-      if (!n || p.dead > 0) return;
       const sig = this.raid ? 0 : this.lv("sig");
-      const cdBase = 0.62 / (1 + 0.25 * sig) * (this.raid ? 1 - Math.min(0.5, this.bst("reload")) : 1);
-      const dmg = (this.raid ? 4.5 : 2.4) * this.dmgMul * (1 + 0.2 * sig) * (this.raid ? 1 + this.bst("dmg") : 1);
-      const guard = 18 * (1 + (this.raid ? this.bst("size") : 0));
+      const hpMul = (1 + 0.25 * sig) * (this.raid ? 2 : 1) * (1 + 0.1 * (this.stars - 1));
+      // 새 정령 합류 (정해진 순서)
+      while (this.summons.length < n) {
+        const A = RD.ALLIES[this.summons.length];
+        this.summons.push({ A, x: p.x - 20, y: p.y + rand(-40, 40), hp: A.hp * hpMul, maxHp: A.hp * hpMul, cd: rand(0, 0.5), ph: this.summons.length, dead: 0, face: 1, flash: 0, anim: rand(0, 1) });
+        this.effects.push({ type: "ring", x: p.x, y: p.y, t: 0, life: 0.4 });
+      }
+      this.summons.length = n;
+      if (!n) return;
+      const cdMul = 1 / (1 + 0.25 * sig) * (this.raid ? 1 - Math.min(0.5, this.bst("reload")) : 1);
+      const base = (this.raid ? 7 : 3.6) * this.dmgMul * (1 + 0.2 * sig) * (this.raid ? 1 + this.bst("dmg") : 1);
+      const live = this.enemies.filter((e) => !e.dead && !(e.delay > 0) && e.x < C.width - 10 && e.x > 0 && e.y > 0 && e.y < C.height);
+      const minY = 60, maxY = this.raid ? C.height - 40 : C.groundY - 20;
       this.summons.forEach((m, i) => {
-        // 플레이어 뒤쪽에서 둥실둥실 떠다닌다
-        const a = this.t * 1.6 + (i / n) * Math.PI * 2;
-        const tx = p.x - 30 + Math.cos(a) * 46, ty = p.y + Math.sin(a) * 52;
-        m.x += (tx - m.x) * Math.min(1, dt * 7); m.y += (ty - m.y) * Math.min(1, dt * 7);
-        if ((m.cd -= dt) <= 0) {
-          m.cd = cdBase;
-          this.addShot({ kind: "spirit", x: m.x, y: m.y, vx: 620, vy: rand(-80, 80), w: 14, h: 14, dmg, pierce: 0, homing: true, color: "#9fffb0", brawl: !!this.raid, charge: 0.02 });
+        const A = m.A;
+        m.anim += dt; m.flash = Math.max(0, m.flash - dt);
+        m.maxHp = A.hp * hpMul;
+        if (m.dead > 0) {
+          // 쓰러진 정령: 잠시 뒤 플레이어 곁에 다시 소환
+          if (p.dead <= 0 && (m.dead -= dt) <= 0) { m.dead = 0; m.hp = m.maxHp; m.x = p.x; m.y = p.y + rand(-40, 40); this.effects.push({ type: "ring", x: m.x, y: m.y, t: 0, life: 0.4 }); }
+          return;
         }
-        // 정령의 가호: 닿은 적 탄을 막는다
-        this.bullets = this.bullets.filter((b) => b.boss && b.r > 9 || Math.hypot(b.x - m.x, b.y - m.y) > guard + b.r);
+        if (p.dead > 0) return;
+        // 목표: 가장 가까운 적
+        let tg = null, bd = 1e9;
+        for (const e of live) { const d = Math.hypot(e.x - m.x, e.y - m.y); if (d < bd) { bd = d; tg = e; } }
+        // 이동할 곳
+        let tx, ty;
+        const slotY = p.y + ((i % 3) - 1) * 60;
+        if (!tg) { tx = p.x + 50 + (i % 2) * 40; ty = slotY; }
+        else if (A.role === "melee") { tx = tg.x; ty = tg.y; }
+        else if (A.role === "spore") { tx = p.x + 70; ty = slotY; if (bd < 400) { tx = (p.x + tg.x) / 2; ty = (p.y + tg.y) / 2; } }
+        else { // 원거리: 플레이어 앞쪽에 서서 쏜다
+          tx = p.x + 90 + (i % 2) * 30; ty = slotY;
+          if (this.raid) { const a = Math.atan2(tg.y - p.y, tg.x - p.x) + (i % 2 ? 0.5 : -0.5); tx = p.x + Math.cos(a) * 110; ty = p.y + Math.sin(a) * 110; }
+        }
+        const dx = tx - m.x, dy = ty - m.y, dl = Math.hypot(dx, dy);
+        if (dl > 4) { const st = Math.min(dl, A.speed * dt); m.x += (dx / dl) * st; m.y += (dy / dl) * st; if (Math.abs(dx) > 6) m.face = dx > 0 ? 1 : -1; }
+        if (tg && A.role !== "melee") m.face = tg.x > m.x ? 1 : -1;
+        m.x = Math.max(20, Math.min(C.width - 20, m.x)); m.y = Math.max(minY, Math.min(maxY, m.y));
+        const rad = 12 * A.scale;
+        // 공격
+        if (A.role === "shoot" && tg && bd < A.range + 200 && (m.cd -= dt) <= 0) {
+          m.cd = A.cd * cdMul;
+          const a = Math.atan2(tg.y - m.y, tg.x - m.x);
+          this.addShot({ kind: "spirit", x: m.x, y: m.y, vx: Math.cos(a) * 640, vy: Math.sin(a) * 640, w: 14, h: 14, dmg: base * A.dmg, pierce: 0, homing: !!A.homing, color: A.id === "wisp" ? "#7fe6ff" : "#9fffb0", brawl: !!this.raid, charge: 0.02 });
+        }
+        if (A.role === "melee") {
+          for (const e of live) {
+            const ew = RD.ENEMIES[e.type].w / 2;
+            if (Math.hypot(e.x - m.x, e.y - m.y) < rad + ew) {
+              this.damage(e, base * A.dps * dt, true);
+              if (this.raid) this.gainCharge(0.02 * dt);
+              m.hp -= 10 * this.D.damage * dt; // 몸싸움 피해
+            }
+          }
+        }
+        if (A.role === "spore" && (m.cd -= dt) <= 0) {
+          m.cd = A.cd * cdMul;
+          let hit = false;
+          for (const e of live) if (Math.hypot(e.x - m.x, e.y - m.y) < A.radius + RD.ENEMIES[e.type].w / 2) { this.damage(e, base * A.dmg, true); hit = true; }
+          if (hit) this.effects.push({ type: "ring", x: m.x, y: m.y, t: 0, life: 0.35 });
+        }
+        // 몸으로 적 탄을 막는다 (막을 때마다 체력이 깎인다)
+        this.bullets = this.bullets.filter((b) => {
+          if (Math.hypot(b.x - m.x, b.y - m.y) > rad + b.r) return true;
+          m.hp -= (b.boss ? 16 : 9) * this.D.damage; m.flash = 0.08;
+          return false;
+        });
+        if (m.hp <= 0) {
+          m.dead = RD.ALLY_RESPAWN * (1 - 0.1 * sig);
+          this.effects.push({ type: "boom", x: m.x, y: m.y, t: 0, life: 0.4 });
+        }
       });
     }
 

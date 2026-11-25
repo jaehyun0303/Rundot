@@ -192,6 +192,7 @@ RD.TRUMPET_SCENES = {
 // 몬스터 색 바꾸기 (색상 회전, 채도, 밝기)
 // hueTo: 끌어당길 색상(0~360), mix: 얼마나 끌어당길지(0~1)
 RD.VARIANTS = {
+  ally: { hueTo: 135, mix: 0.8, sat: 1.15, light: 0.06 }, // 판다의 아군 정령
   crystal: { hueTo: 265, mix: 0.75, sat: 1.2, light: 0.04 },
   fire: { hueTo: 18, mix: 0.85, sat: 1.5, light: 0 },
   ice: { hueTo: 200, mix: 0.85, sat: 0.7, light: 0.16 },
@@ -276,7 +277,7 @@ RD.CHARACTERS = [
     desc: "천천히 나아가는 회오리. 닿은 적을 계속 때리고 적 탄을 날려 버린다 (회오리 하나당 5발, 보스 탄은 못 막음)",
     illust: "illust_owl",
     shot: {
-      name: "회오리", kind: "tornado", cd: 0.9, dmg: 2.0, speed: 250, w: 54, h: 96, life: 2.4, color: "#bff5d8", pierceAll: true,
+      name: "회오리", kind: "tornado", cd: 0.7, dmg: 2.8, speed: 250, w: 54, h: 96, life: 2.4, color: "#bff5d8", pierceAll: true,
       multi: [1, 2, 3, 4], // 한 번에 만드는 회오리 수
       multiDesc: (lv) => `한 번에 만드는 회오리 ${lv + 1}개 → ${lv + 2}개`,
     },
@@ -304,15 +305,15 @@ RD.CHARACTERS = [
     name: "판다 정령술사",
     grade: "SR",
     type: "소환형",
-    desc: "숲의 정령을 불러 함께 싸운다. 정령이 알아서 적을 쏘고 탄을 막는다",
-    passive: "정령의 가호: 정령이 닿은 적 탄을 막는다",
+    desc: "숲의 정령 몬스터를 아군으로 불러 함께 싸운다. 요정·슬라임·도깨비불·풍뎅이·버섯이 저마다 다르게 싸운다",
+    passive: "정령의 가호: 아군 정령이 몸으로 적 탄을 막는다. 쓰러지면 잠시 뒤 다시 소환",
     illust: "illust_panda",
     shot: {
-      name: "잎사귀 다트", kind: "leaf", cd: 0.32, dmg: 2.2, speed: 820, color: "#9fff8a", pierceAll: true,
+      name: "잎사귀 다트", kind: "leaf", cd: 0.28, dmg: 3.0, speed: 820, color: "#9fff8a", pierceAll: true,
       multi: [1, 2, 3, 4], // 소환하는 정령 수
-      multiDesc: (lv) => `함께 싸우는 정령 ${lv + 1}마리 → ${lv + 2}마리`,
+      multiDesc: (lv) => `아군 정령 ${lv + 1}마리 → ${lv + 2}마리 (${["숲 요정", "정령 슬라임", "도깨비불", "풍뎅이 기사", "포자 버섯"][lv + 1]} 합류)`,
     },
-    sig: { name: "정령 강화", desc: "정령의 공격 속도 +25%, 위력 +20%" },
+    sig: { name: "정령 강화", desc: "아군 정령의 공격 속도 +25%, 위력 +20%, 체력 +25%" },
     bomb: { name: "정령왕 강림", desc: "거대한 정령왕이 6초 동안 함께 싸우며 탄을 막는다", color: "#9fffb0" },
   },
   {
@@ -340,7 +341,7 @@ RD.CHARACTERS = [
     passive: "익살꾼의 운: 20% 확률로 공격이 빗나간다 · 마지막 목숨이 되면 메가 프로그로 변신",
     illust: "illust_frog",
     shot: {
-      name: "저글링 공", kind: "juggle", cd: 0.34, dmg: 3.2, speed: 560, color: "#ff5ad8", pierceAll: true,
+      name: "저글링 공", kind: "juggle", cd: 0.3, dmg: 3.8, speed: 560, color: "#ff5ad8", pierceAll: true,
       multi: [1, 2, 3, 4], // 던지는 공 수
       multiDesc: (lv) => `한 번에 던지는 공 ${lv + 1}개 → ${lv + 2}개`,
     },
@@ -453,23 +454,33 @@ RD.MECH = {
   names: ["Mk.I 정찰 메카", "Mk.II 강습 메카", "Mk.III 요새 메카"],
   hp: [70, 100, 140], // 진화 단계별 메카 최대 체력
   armor: 0.8, // 메카 장갑: 메카가 받는 피해 -20% (진화할 때마다 10% 더 단단)
-  rebuildParts: 12, // 파괴된 뒤 부품 12개면 다시 조립
-  rebuildTime: 22, // 부품을 못 모아도 22초면 저절로 조립
-  rebuildHp: 0.6, // 다시 조립하면 체력 60%로 돌아온다
+  rebuildParts: 18, // 파괴된 뒤 부품 18개면 다시 조립
+  rebuildTime: 35, // 부품을 못 모아도 35초면 저절로 조립
+  rebuildHp: 0.4, // 다시 조립하면 체력 40%로 돌아온다
   colors: [["#5a7a9a", "#8ab0d0", "#3a4a5a"], ["#c8702a", "#ffb347", "#6a3a1a"], ["#c8a030", "#ffe27a", "#6a5010"]],
 };
-// 메카 테크트리: 레벨이 오를 때마다 테크 포인트 1점 (전투 중 테크트리 버튼으로 해금)
+// 판다 아군 정령 (진짜 몬스터처럼 돌아다니며 싸우는 아군). 순서대로 합류
+RD.ALLIES = [
+  { id: "fairy", sprite: "fairy", name: "숲 요정", hp: 55, speed: 190, role: "shoot", range: 300, cd: 0.5, dmg: 1.0, scale: 1.8 },
+  { id: "slime", sprite: "slime", name: "정령 슬라임", hp: 130, speed: 150, role: "melee", dps: 7, scale: 2.0 },
+  { id: "wisp", sprite: "wisp", name: "도깨비불", hp: 50, speed: 170, role: "shoot", range: 360, cd: 0.85, dmg: 1.9, homing: true, scale: 1.7 },
+  { id: "beetle", sprite: "beetle", name: "풍뎅이 기사", hp: 90, speed: 300, role: "melee", dps: 11, scale: 1.9 },
+  { id: "mushroom", sprite: "mushroom", name: "포자 버섯", hp: 80, speed: 120, role: "spore", radius: 130, cd: 1.3, dmg: 2.4, scale: 1.9 },
+];
+RD.ALLY_RESPAWN = 5; // 쓰러지면 5초 뒤 다시 소환
+
+// 메카 테크트리: 레벨이 오를 때마다 테크 포인트 1점 (모두 찍으려면 28점) (전투 중 테크트리 버튼으로 해금)
 RD.MECH_TECH_COLS = [["진화", "#ffb347"], ["방어", "#7fe6ff"], ["정비", "#9fffb0"]];
 RD.MECH_TECH = [
-  { id: "mk2", col: 0, row: 0, cost: 2, icon: "up", name: "Mk.II 강습 메카", desc: "메카 진화: 총열 +1 · 위력 +15% · 메카 체력 100" },
-  { id: "mk3", col: 0, row: 1, cost: 3, req: "mk2", icon: "star", name: "Mk.III 요새 메카", desc: "최종 진화: 총열 +2 · 위력 +30% · 로켓 연사 · 메카 체력 140" },
-  { id: "cannon", col: 0, row: 2, cost: 2, req: "mk3", icon: "target", name: "주포 탑재", desc: "1.2초마다 가장 가까운 적에게 강력한 주포를 쏜다" },
-  { id: "plate", col: 1, row: 0, cost: 1, icon: "shield", name: "강화 장갑", desc: "메카 최대 체력 +30%" },
-  { id: "repair", col: 1, row: 1, cost: 2, req: "plate", icon: "heart", name: "자동 수리", desc: "메카가 1초마다 체력 1.2를 회복한다" },
-  { id: "barrier", col: 1, row: 2, cost: 2, req: "repair", icon: "shield", name: "방어막 발생기", desc: "8초마다 적 공격 1번을 막는 방어막이 생긴다" },
-  { id: "quick", col: 2, row: 0, cost: 1, icon: "gear", name: "빠른 재조립", desc: "다시 조립하는 데 필요한 부품과 시간 -40%" },
-  { id: "eject", col: 2, row: 1, cost: 1, req: "quick", icon: "skull", name: "비상 탈출", desc: "메카가 부서질 때 크게 폭발해 주변 탄을 지우고 적에게 피해" },
-  { id: "call", col: 2, row: 2, cost: 2, req: "eject", icon: "bolt", name: "긴급 호출", desc: "궁극기 +1 · 거대 메카 탑승 시간 +2초" },
+  { id: "mk2", col: 0, row: 0, cost: 3, icon: "up", name: "Mk.II 강습 메카", desc: "메카 진화: 총열 +1 · 위력 +15% · 메카 체력 100" },
+  { id: "mk3", col: 0, row: 1, cost: 5, req: "mk2", icon: "star", name: "Mk.III 요새 메카", desc: "최종 진화: 총열 +2 · 위력 +30% · 로켓 연사 · 메카 체력 140" },
+  { id: "cannon", col: 0, row: 2, cost: 4, req: "mk3", icon: "target", name: "주포 탑재", desc: "1.2초마다 가장 가까운 적에게 강력한 주포를 쏜다" },
+  { id: "plate", col: 1, row: 0, cost: 2, icon: "shield", name: "강화 장갑", desc: "메카 최대 체력 +30%" },
+  { id: "repair", col: 1, row: 1, cost: 3, req: "plate", icon: "heart", name: "자동 수리", desc: "메카가 1초마다 체력 1을 회복한다" },
+  { id: "barrier", col: 1, row: 2, cost: 4, req: "repair", icon: "shield", name: "방어막 발생기", desc: "12초마다 적 공격 1번을 막는 방어막이 생긴다" },
+  { id: "quick", col: 2, row: 0, cost: 2, icon: "gear", name: "빠른 재조립", desc: "다시 조립하는 데 필요한 부품과 시간 -25%" },
+  { id: "eject", col: 2, row: 1, cost: 2, req: "quick", icon: "skull", name: "비상 탈출", desc: "메카가 부서질 때 크게 폭발해 주변 탄을 지우고 적에게 피해" },
+  { id: "call", col: 2, row: 2, cost: 3, req: "eject", icon: "bolt", name: "긴급 호출", desc: "궁극기 +1 · 거대 메카 탑승 시간 +2초" },
 ];
 
 // 캐릭터마다 다른 기본 체력
@@ -490,12 +501,12 @@ RD.RAID = { baseHp: 6500, lvHp: 0.45, rageEvery: 40, reward: 120, lvReward: 60 }
 // 일반 공격은 직접 조준해서 쏘고 탄환(ammo)을 쓴다. 탄환은 시간이 지나면 다시 찬다.
 // 일반 공격을 적에게 맞히면 궁극기 게이지가 찬다. (charge = 한 번 맞힐 때 차는 양, 1이면 가득)
 RD.BRAWL = {
-  fox: { name: "검 베기", ammo: 3, reload: 1.1, charge: 0.14, dmg: 34, range: 150, arc: 0.65 },
+  fox: { name: "검 베기", ammo: 3, reload: 1.1, charge: 0.11, dmg: 23, range: 150, arc: 0.65 },
   rabbit: { name: "부메랑 단검 3개", ammo: 3, reload: 1.2, charge: 0.05, dmg: 7, count: 3, speed: 1100 },
   bear: { name: "망치 투척", ammo: 3, reload: 1.5, charge: 0.14, dmg: 50, radius: 80, dist: 380 },
-  owl: { name: "회오리", ammo: 3, reload: 1.4, charge: 0.025, dmg: 9, size: 1, life: 1.8, speed: 300 },
-  frog: { name: "저글링 공 3개", ammo: 3, reload: 1.15, charge: 0.06, dmg: 11, count: 3 },
-  panda: { name: "잎사귀 다트 + 정령", ammo: 3, reload: 1.2, charge: 0.07, dmg: 14, count: 2 },
+  owl: { name: "회오리", ammo: 3, reload: 1.35, charge: 0.028, dmg: 10, size: 1, life: 1.8, speed: 300 },
+  frog: { name: "저글링 공 3개", ammo: 3, reload: 1.05, charge: 0.07, dmg: 13, count: 3 },
+  panda: { name: "잎사귀 다트 + 정령", ammo: 3, reload: 1.1, charge: 0.08, dmg: 17, count: 2 },
   mech: { name: "개틀링 연사", ammo: 3, reload: 1.3, charge: 0.025, dmg: 7.5, count: 6 },
   cat: { name: "유도 구슬 3개", ammo: 3, reload: 1.1, charge: 0.05, dmg: 21, count: 3 },
 };
