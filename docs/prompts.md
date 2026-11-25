@@ -149,3 +149,41 @@ Claude에 하나씩 붙여 넣는다. 맨 앞의 "공통 조건"은 매번 같�
 - 그 아래: 이번 판에 고른 강화 칩 목록, 획득 보상(코인, 경험치, 레이드 레벨업).
 - 아래: "다시 출격", "로비로" 버튼.
 ```
+
+## 3. 추가 이미지: 메카 진화 · 메가 프로그 · 판다 아군 정령 (Gemini)
+
+지금 게임에 실제 그림이 들어간 캐릭터 일러스트는 여우·토끼·곰·부엉이·고양이 5장뿐이다.
+판다·다람쥐·개구리 일러스트와 8명 전원의 플레이 스프라이트는 아직 도트를 코드로 그리고 있다.
+위 1장의 프롬프트(player_*, illust_*)에 더해 아래 그림이 필요하다.
+배경은 모두 마젠타(#FF00FF). 받은 그림은 파일 이름과 함께 보내 주면 잘라서 연결한다.
+
+### Mk.I 정찰 메카 (mech_mk1)
+```
+Generate an image: 16-bit pixel art sprite sheet for a retro arcade side-scrolling shoot 'em up. A small cute scout mech piloted by a tiny orange squirrel mechanic with cyan goggles, sitting in an open cockpit on top so the squirrel's head and fluffy tail are visible. Steel blue-gray armor with light blue highlights, one short gatling arm pointing right, two stubby legs, a small jet thruster. Side view facing right. 4 frames in a single horizontal row, each in an equal-sized square cell, evenly spaced: 1) hovering, legs tucked, 2) hovering, legs stretched, 3) firing the gatling forward with a yellow muzzle flash, 4) damaged, sparks and grey smoke, squirrel flinching. Same size and same position in every frame. Chunky cute proportions, bold dark 1-pixel outline, limited 16-color palette, flat shading, no anti-aliasing, crisp hard pixel edges. Solid flat pure magenta (#FF00FF) background filling the whole image, no checkerboard, no shadow, no ground, no text, no frame borders.
+```
+
+### Mk.II 강습 메카 (mech_mk2)
+```
+Generate an image: 16-bit pixel art sprite sheet for a retro arcade side-scrolling shoot 'em up. A bigger assault mech piloted by a tiny orange squirrel mechanic with cyan goggles in an open cockpit on top. Bright orange armor with dark brown joints and yellow hazard stripes, twin gatling arm pointing right, a missile pod with red-tipped rockets on the back, stronger legs, two jet thrusters. Side view facing right. 4 frames in a single horizontal row, each in an equal-sized square cell, evenly spaced: 1) hovering, legs tucked, 2) hovering, legs stretched, 3) firing the twin gatling and launching a rocket, 4) damaged, sparks and grey smoke, squirrel flinching. Same size and same position in every frame. Chunky proportions, bold dark 1-pixel outline, limited 16-color palette, flat shading, no anti-aliasing, crisp hard pixel edges. Solid flat pure magenta (#FF00FF) background filling the whole image, no checkerboard, no shadow, no ground, no text, no frame borders.
+```
+
+### Mk.III 요새 메카 (mech_mk3)
+```
+Generate an image: 16-bit pixel art sprite sheet for a retro arcade side-scrolling shoot 'em up. A heavy fortress mech, the final evolution, piloted by a tiny orange squirrel mechanic with cyan goggles in a glass-domed cockpit on top. Gold and cream armor plates with dark bronze joints, a huge main cannon arm pointing right, a second gatling under it, a large missile pod on the back, an antenna with a blinking red light, thick armored legs, glowing blue thrusters. Side view facing right. 4 frames in a single horizontal row, each in an equal-sized square cell, evenly spaced: 1) hovering, legs tucked, 2) hovering, legs stretched, 3) firing the main cannon with a big orange blast and recoil, 4) damaged, sparks and grey smoke, squirrel flinching. Same size and same position in every frame. Chunky heroic proportions, bold dark 1-pixel outline, limited 16-color palette, flat shading, no anti-aliasing, crisp hard pixel edges. Solid flat pure magenta (#FF00FF) background filling the whole image, no checkerboard, no shadow, no ground, no text, no frame borders.
+```
+
+### 메가 프로그 (player_megafrog)
+```
+Generate an image: 16-bit pixel art player character sprite sheet for a retro arcade side-scrolling shoot 'em up. Mega Frog, the awakened form of a frog clown jester: a huge muscular deep-green frog king with glowing yellow eyes, a heavy golden crown, a torn pink, yellow and cyan jester cape, golden bells on the wrists, a giant wide mouth, a faint green aura. Floating in a powerful side view, facing right. 4 frames in a single horizontal row, each in an equal-sized square cell, evenly spaced: 1) floating, cape streaming back, 2) roaring with the mouth wide open and green sound-wave rings, 3) shooting a long pink sticky tongue forward to swallow, 4) hurt, flinching backward with eyes shut. Same size and same position in every frame. Bold dark 1-pixel outline, limited 16-color palette, flat shading, no anti-aliasing, crisp hard pixel edges. Solid flat pure magenta (#FF00FF) background filling the whole image, no checkerboard, no shadow, no ground, no text, no frame borders.
+```
+
+### 판다의 아군 정령 몬스터 5종 (ally_spirits)
+```
+Generate an image: 16-bit pixel art sprite sheet for a retro arcade shoot 'em up, 5 friendly forest spirit monsters, all glowing mint-green with a small leaf sprout on the head and kind round eyes, all facing right. A grid of 2 rows and 5 columns, each in an equal-sized square cell, evenly spaced. Columns from left: 1) a tiny forest fairy with leaf wings holding a seed wand, 2) a round bouncy spirit slime, 3) a will-o'-the-wisp flame spirit, 4) a small beetle knight with a leaf shield and acorn helmet, 5) a spore mushroom with a spotted cap. Top row: idle pose. Bottom row: attacking pose (fairy casting a leaf, slime squashing, wisp flaring, beetle charging, mushroom puffing green spores). Same size and same position in each cell. Cute proportions, bold dark 1-pixel outline, limited palette, flat shading, no anti-aliasing, crisp hard pixel edges. Solid flat pure magenta (#FF00FF) background filling the whole image, no checkerboard, no shadow, no text, no frame borders.
+```
+
+### 메가 프로그 일러스트 (illust_megafrog)
+변신 연출과 캐릭터 화면에 쓴다. 기존 일러스트와 같은 수채화풍으로 맞춘다.
+```
+A dramatic fantasy storybook illustration of Mega Frog, the awakened form of a mythic frog clown jester, standing on a broken circus stage in a dark magical forest at night: a huge muscular deep-green frog king with glowing yellow eyes, a heavy golden crown, a torn pink, yellow and cyan jester cape, golden bells on the wrists, roaring with a giant wide mouth, green sound-wave rings and scattered playing cards around, a strong green and rainbow aura. Soft watercolor and digital painting style, full body, front three-quarter view, centered.
+```
