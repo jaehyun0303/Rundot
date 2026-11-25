@@ -320,8 +320,8 @@ RD.CHARACTERS = [
     name: "다람쥐 메카닉",
     grade: "SSR",
     type: "메카형",
-    desc: "메카에 타고 개틀링과 로켓을 쏜다. 부품을 모으면 메카가 진화하고, 궁극기로 거대 메카에 탑승한다",
-    passive: "메카 조종: 메카 체력이 먼저 닳고, 파괴되면 부품을 모아 다시 조립",
+    desc: "메카에 타고 개틀링과 로켓을 쏜다. 테크트리로 메카를 진화시키고, 궁극기로 거대 메카에 탑승한다",
+    passive: "메카 조종: 메카 체력이 먼저 닳고, 파괴되면 다시 조립 · 레벨업마다 테크트리 해금",
     illust: "illust_mech",
     shot: {
       name: "개틀링 + 로켓", kind: "gatling", cd: 0.09, dmg: 0.9, speed: 1000, color: "#ffd34d",
@@ -337,7 +337,7 @@ RD.CHARACTERS = [
     grade: "MY",
     type: "곡예형",
     desc: "통통 튀는 저글링 공을 던진다. 공은 바닥과 벽에 튕기며 여러 번 때린다",
-    passive: "익살꾼의 운: 20% 확률로 공격이 빗나간다 (피해 없음)",
+    passive: "익살꾼의 운: 20% 확률로 공격이 빗나간다 · 마지막 목숨이 되면 메가 프로그로 변신",
     illust: "illust_frog",
     shot: {
       name: "저글링 공", kind: "juggle", cd: 0.34, dmg: 3.2, speed: 560, color: "#ff5ad8", pierceAll: true,
@@ -453,11 +453,36 @@ RD.MECH = {
   names: ["Mk.I 정찰 메카", "Mk.II 강습 메카", "Mk.III 요새 메카"],
   hp: [70, 100, 140], // 진화 단계별 메카 최대 체력
   armor: 0.8, // 메카 장갑: 메카가 받는 피해 -20% (진화할 때마다 10% 더 단단)
-  evoParts: [45, 130], // 메카에 탄 채로 모은 부품이 이만큼이면 진화
   rebuildParts: 12, // 파괴된 뒤 부품 12개면 다시 조립
-  rebuildTime: 16, // 부품을 못 모아도 16초면 저절로 조립
+  rebuildTime: 22, // 부품을 못 모아도 22초면 저절로 조립
   rebuildHp: 0.6, // 다시 조립하면 체력 60%로 돌아온다
   colors: [["#5a7a9a", "#8ab0d0", "#3a4a5a"], ["#c8702a", "#ffb347", "#6a3a1a"], ["#c8a030", "#ffe27a", "#6a5010"]],
+};
+// 메카 테크트리: 레벨이 오를 때마다 테크 포인트 1점 (전투 중 테크트리 버튼으로 해금)
+RD.MECH_TECH_COLS = [["진화", "#ffb347"], ["방어", "#7fe6ff"], ["정비", "#9fffb0"]];
+RD.MECH_TECH = [
+  { id: "mk2", col: 0, row: 0, cost: 2, icon: "up", name: "Mk.II 강습 메카", desc: "메카 진화: 총열 +1 · 위력 +15% · 메카 체력 100" },
+  { id: "mk3", col: 0, row: 1, cost: 3, req: "mk2", icon: "star", name: "Mk.III 요새 메카", desc: "최종 진화: 총열 +2 · 위력 +30% · 로켓 연사 · 메카 체력 140" },
+  { id: "cannon", col: 0, row: 2, cost: 2, req: "mk3", icon: "target", name: "주포 탑재", desc: "1.2초마다 가장 가까운 적에게 강력한 주포를 쏜다" },
+  { id: "plate", col: 1, row: 0, cost: 1, icon: "shield", name: "강화 장갑", desc: "메카 최대 체력 +30%" },
+  { id: "repair", col: 1, row: 1, cost: 2, req: "plate", icon: "heart", name: "자동 수리", desc: "메카가 1초마다 체력 1.2를 회복한다" },
+  { id: "barrier", col: 1, row: 2, cost: 2, req: "repair", icon: "shield", name: "방어막 발생기", desc: "8초마다 적 공격 1번을 막는 방어막이 생긴다" },
+  { id: "quick", col: 2, row: 0, cost: 1, icon: "gear", name: "빠른 재조립", desc: "다시 조립하는 데 필요한 부품과 시간 -40%" },
+  { id: "eject", col: 2, row: 1, cost: 1, req: "quick", icon: "skull", name: "비상 탈출", desc: "메카가 부서질 때 크게 폭발해 주변 탄을 지우고 적에게 피해" },
+  { id: "call", col: 2, row: 2, cost: 2, req: "eject", icon: "bolt", name: "긴급 호출", desc: "궁극기 +1 · 거대 메카 탑승 시간 +2초" },
+];
+
+// 캐릭터마다 다른 기본 체력
+RD.CHAR_HP = { fox: 110, rabbit: 85, bear: 140, owl: 90, cat: 80, panda: 100, mech: 70, frog: 95 };
+
+// 개구리 광대: 마지막 목숨이 되면 메가 프로그로 변신
+RD.MEGA_FROG = {
+  hpMul: 1.3, // 최대 체력 +30%
+  roarCd: 0.75, roarR: 240, roarLife: 0.38, roarDmg: 5.5, // 포효: 넓게 퍼지며 적을 때리고 탄을 되돌린다
+  healPerBullet: 0.5, healPerHit: 0.2,
+  gulpR: 430, gulpLife: 2.2, // 꿀꺽: 이 거리 안의 적(보스 제외)을 삼킨다
+  shieldCap: 2, // 보호막 최대 = 최대 체력 x2
+  powSmall: 0.04, powBig: 0.25, powMax: 1, // 삼킬 때마다 공격력 증가 (최대 +100%)
 };
 RD.RAID = { baseHp: 6500, lvHp: 0.45, rageEvery: 40, reward: 120, lvReward: 60 };
 

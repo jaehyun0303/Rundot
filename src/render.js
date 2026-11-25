@@ -550,13 +550,16 @@
     }
     // 메카 탑승: 캐릭터를 감싼 거대 메카
     if (run.ult && run.ult.kind === "mech") {
-      const P = (x, y, w, h, c) => { g.fillStyle = c; g.fillRect(p.x + x, p.y + y, w, h); };
+      // 지금 진화 단계의 색과 장비 그대로 커진다
+      const evo = run.mech ? run.mech.evo : 0, [c1, c2, c0] = RD.MECH.colors[evo], K = 1 + 0.12 * evo;
+      const P = (x, y, w, h, c) => { g.fillStyle = c; g.fillRect(p.x + x * K, p.y + y * K, w * K, h * K); };
       const step = Math.floor(run.t * 8) % 2 ? 2 : 0;
-      P(-46, -56, 92, 72, "#3a4a5a"); P(-42, -52, 84, 64, "#5a7a9a"); P(-42, -52, 84, 8, "#8ab0d0");
+      P(-46, -56, 92, 72, c0); P(-42, -52, 84, 64, c1); P(-42, -52, 84, 8, c2);
       P(-20, -46, 40, 26, "#1d2a3a"); P(-16, -42, 32, 18, "rgba(127,230,255,0.35)"); // 조종석 창
-      P(40, -30, 44, 16, "#3a4a5a"); P(80, -34, 14, 24, "#8a93a0"); P(84, -28, 8, 12, "#ffb347"); // 주포
-      P(-60, -40, 16, 40, "#3a4a5a"); P(-58, -30, 12, 6, "#ffd34d"); // 미사일 포드
-      P(-36, 16 + step, 22, 26, "#3a4a5a"); P(14, 16 - step, 22, 26, "#3a4a5a"); P(-40, 40 + step, 30, 8, "#2a3440"); P(10, 40 - step, 30, 8, "#2a3440");
+      P(40, -30, 44, 16, c0); P(80, -34, 14, 24, "#8a93a0"); P(84, -28, 8, 12, c2); // 주포
+      P(-60, -40, 16, 40, c0); P(-58, -30, 12, 6, "#ffd34d"); // 미사일 포드
+      if (evo >= 2) { P(40, -2, 40, 12, c0); P(76, -6, 10, 20, "#8a93a0"); P(-20, -70, 40, 14, c0); P(-6, -80, 12, 12, "#ff4d5e"); }
+      P(-36, 16 + step, 22, 26, c0); P(14, 16 - step, 22, 26, c0); P(-40, 40 + step, 30, 8, "#2a3440"); P(10, 40 - step, 30, 8, "#2a3440");
     }
     // 다람쥐 메카 (진화 단계마다 커지고 색이 바뀐다)
     if (run.mech && run.mech.alive && !(run.ult && run.ult.kind === "mech")) {
@@ -570,16 +573,38 @@
       P(40, -30, 44, 16, c0); P(80, -34, 14, 24, "#8a93a0"); P(84, -28, 8, 12, c2);
       if (M.evo >= 1) { P(-60, -40, 16, 40, c0); P(-58, -30, 12, 6, "#ffd34d"); }
       if (M.evo >= 2) { P(40, -2, 40, 12, c0); P(76, -6, 10, 20, "#8a93a0"); P(-20, -70, 40, 14, c0); P(-6, -80, 12, 12, "#ff4d5e"); }
+      if (M.barrier) { g.strokeStyle = `rgba(127,230,255,${0.55 + Math.sin(run.t * 6) * 0.25})`; g.lineWidth = 3; g.beginPath(); g.arc(p.x, p.y, 52 * k + 10, 0, Math.PI * 2); g.stroke(); }
       // 메카 체력 (머리 위 작은 막대)
       const hk = M.hp / run.mechMax;
       g.fillStyle = "#1d1622"; g.fillRect(p.x - 26, p.y - 52, 52, 7);
       g.fillStyle = hk < 0.3 ? "#ff4d5e" : "#ffb347"; g.fillRect(p.x - 25, p.y - 51, 50 * hk, 5);
     }
+    // 메가 프로그 포효 (퍼져 나가는 초록 고리)
+    for (const r of run.roars) {
+      const k = r.t / r.life, rad = r.rad || 0;
+      g.save();
+      g.globalAlpha = 0.8 * (1 - k);
+      g.strokeStyle = "#9fff6a"; g.lineWidth = 10 * (1 - k) + 2;
+      g.beginPath(); g.arc(p.x, p.y, rad, 0, Math.PI * 2); g.stroke();
+      g.strokeStyle = "#ffffff"; g.lineWidth = 2;
+      g.beginPath(); g.arc(p.x, p.y, rad * 0.8, 0, Math.PI * 2); g.stroke();
+      g.globalAlpha = 0.12 * (1 - k); g.fillStyle = "#9fff6a"; g.beginPath(); g.arc(p.x, p.y, rad, 0, Math.PI * 2); g.fill();
+      g.restore();
+    }
+    if (run.mega) {
+      const gl = g.createRadialGradient(p.x, p.y, 10, p.x, p.y, 70);
+      gl.addColorStop(0, "rgba(159,255,106,0.35)"); gl.addColorStop(1, "rgba(159,255,106,0)");
+      g.fillStyle = gl; g.fillRect(p.x - 70, p.y - 70, 140, 140);
+    }
+    if (p.gulp > 0) {
+      g.strokeStyle = `rgba(159,255,106,${0.5 + Math.sin(run.t * 5) * 0.2})`; g.lineWidth = 4;
+      g.beginPath(); g.arc(p.x, p.y, 58, 0, Math.PI * 2); g.stroke();
+    }
     const riding = run.ult && run.ult.kind === "mech";
     if (!riding && p.invuln > 0 && Math.floor(run.t * 16) % 2 === 0) return;
     const frame = run.charId === "owl" ? Math.floor(p.animT * 12) % 4 : 0;
     const spr = RD.getCharacterFrame(run.charId, run.charId === "owl" ? "run" : "jump", frame);
-    const s = C.spriteScale, size = RD.SPRITE_SIZE * s;
+    const s = C.spriteScale * (run.mega ? 1.55 : 1), size = RD.SPRITE_SIZE * s;
     g.save();
     g.translate(Math.round(p.x), Math.round(p.y));
     g.rotate(p.tilt * 0.18);
@@ -591,7 +616,13 @@
       g.fillStyle = "rgba(0,0,0,0.3)"; g.beginPath(); g.ellipse(0, 30, 22, 7, 0, 0, Math.PI * 2); g.fill();
       if (run.brawl && Math.cos(run.brawl.aimAng) < 0) g.scale(-1, 1); // 조준한 쪽을 본다
     }
+    if (run.mega) g.filter = "saturate(1.6) hue-rotate(-25deg) brightness(0.9)";
     g.drawImage(spr, -20 * s, -24 * s, size, size);
+    g.filter = "none";
+    if (run.mega) { // 왕관
+      g.fillStyle = "#ffd34d"; g.fillRect(-14, -24 * s - 6, 28, 8); g.fillRect(-14, -24 * s - 14, 6, 8); g.fillRect(-3, -24 * s - 16, 6, 10); g.fillRect(8, -24 * s - 14, 6, 8);
+      g.fillStyle = "#ff4d5e"; g.fillRect(-2, -24 * s - 4, 4, 4);
+    }
     g.restore();
     // 여우 베기 (부채꼴 궤적)
     for (const sl of run.slashes) {
@@ -755,6 +786,18 @@
         g.fillRect(0, u.y0 - 3 - k * 40, C.width, 3);
         g.fillRect(0, u.y0 + k * 40, C.width, 3);
       }
+    } else if (u.kind === "megafrog") {
+      // 꿀꺽: 끌려오는 적마다 긴 혀
+      const fade = Math.min(1, u.t * 6, (u.life - u.t) * 3);
+      g.save(); g.globalAlpha = fade;
+      g.fillStyle = "rgba(159,255,106,0.12)"; g.beginPath(); g.arc(p.x, p.y, RD.MEGA_FROG.gulpR, 0, Math.PI * 2); g.fill();
+      g.strokeStyle = "rgba(159,255,106,0.6)"; g.lineWidth = 2; g.setLineDash([8, 8]); g.beginPath(); g.arc(p.x, p.y, RD.MEGA_FROG.gulpR, 0, Math.PI * 2); g.stroke(); g.setLineDash([]);
+      for (const e of u.pull || []) {
+        g.strokeStyle = "#1d1622"; g.lineWidth = 10; g.beginPath(); g.moveTo(p.x + 24, p.y); g.lineTo(e.x, e.y); g.stroke();
+        g.strokeStyle = "#ff7aa8"; g.lineWidth = 6; g.beginPath(); g.moveTo(p.x + 24, p.y); g.lineTo(e.x, e.y); g.stroke();
+        g.fillStyle = "#ff7aa8"; g.beginPath(); g.arc(e.x, e.y, 9, 0, Math.PI * 2); g.fill();
+      }
+      g.restore();
     } else if (u.kind === "rabbit" && u.clones) {
       // 그림자 분신
       const spr = RD.getCharacterFrame("rabbit", "jump", 0);
@@ -815,7 +858,7 @@
     if (run.raid) drawRaidTop(g, run, hpK);
     else {
       // ── 왼쪽 위: 점수 · 체력 · 레벨 · 패시브
-      const extra = run.charId === "fox" || run.charId === "cat" || run.mech || run.M.special === "dream";
+      const extra = run.charId === "fox" || run.charId === "cat" || run.mech || run.mega || run.M.special === "dream";
       UI.panel(g, 14, 12, 244, extra ? 92 : 70, "rgba(35,26,54,0.88)");
       text(g, "SCORE", 24, 28, 11, UI.COL.dim);
       text(g, String(run.score).padStart(7, "0"), 72, 28, 20, UI.COL.gold);
@@ -842,6 +885,8 @@
         UI.segBar(g, 70, 84, 178, 7, p.shielded ? 1 : run.shield / RD.CAT_SHIELD.every, p.shielded ? UI.COL.purple : "#6a4a90");
       } else if (run.mech) {
         drawMechRow(g, run, 22, 88, 226);
+      } else if (run.mega) {
+        drawMegaRow(g, run, 22, 88, 226);
       } else if (run.M.special === "dream") {
         text(g, run.rush > 0 ? "슈가 러시!" : "사탕", 22, 88, 12, "#ff9ad8");
         UI.segBar(g, 82, 84, 166, 7, run.rush > 0 ? run.rush / 6 : run.sugar / 30, "#ff9ad8");
@@ -924,10 +969,81 @@
         if (b.sub2) text(g, b.sub2, C.width / 2, C.height / 2 + 62, 15, "#ffc49a", "center");
       }
     }
+    if (run.mech && !run.choosing && !run.cutscene) drawTechButton(g, run);
     if (run.choosing) drawChoice(g, run);
+    if (run.techOpen) drawTech(g, run);
     if (run.cutscene) drawCutscene(g, run);
     RD.drawSoundButton(g);
-    RD.drawPauseButton(g);
+    if (!run.techOpen) RD.drawPauseButton(g);
+  }
+
+  // 메가 프로그: 꿀꺽 보호막 + 공격력
+  function drawMegaRow(g, run, x, y, w) {
+    const UI = RD.UI, p = run.player;
+    text(g, "메가", x, y, 12, "#9fff6a");
+    UI.segBar(g, x + 40, y - 5, w - 116, 8, p.gulp / (run.maxHp * RD.MEGA_FROG.shieldCap), "#9fff6a");
+    text(g, `공격 +${Math.round(run.megaPow * 100)}%`, x + w, y, 10, "#ffd34d", "right");
+  }
+
+  // 메카 테크트리 버튼 (왼쪽 위 패널 아래)
+  RD.TECH_BTN = { x: 14, y: 112, w: 150, h: 32 };
+  function drawTechButton(g, run) {
+    const UI = RD.UI, B = RD.TECH_BTN, n = run.tech.pts;
+    const y = run.raid ? 104 : B.y;
+    RD.TECH_BTN.y = y;
+    if (n > 0) { g.globalAlpha = 0.35 + 0.25 * Math.sin(run.t * 6); g.fillStyle = "#ffb347"; g.fillRect(B.x - 6, y - 6, B.w + 12, B.h + 12); g.globalAlpha = 1; }
+    UI.btn(g, B.x, y, B.w, B.h, n > 0 ? "#ff8a3d" : "#3a2d58");
+    UI.icon(g, "gear", B.x + 8, y + 7, 18, "#fff");
+    text(g, "테크트리", B.x + 32, y + 15, 13, "#fff");
+    if (n > 0) UI.chip(g, B.x + B.w - 30, y + 6, 22, 18, "#ffd34d", String(n), 11);
+  }
+
+  // 메카 테크트리 화면
+  RD.techRects = []; RD.techBtns = {};
+  function drawTech(g, run) {
+    const UI = RD.UI, T = run.tech;
+    g.fillStyle = "rgba(10,6,20,0.85)"; g.fillRect(0, 0, C.width, C.height);
+    text(g, "메카 테크트리", 30, 34, 26, UI.COL.gold);
+    text(g, "레벨이 오를 때마다 테크 포인트 1점 · 게임은 멈춰 있어요", 30, 62, 12, "#b9add0");
+    UI.panel(g, C.width - 400, 18, 150, 40, "#231a36");
+    UI.icon(g, "gear", C.width - 390, 28, 20, "#ffb347");
+    text(g, `포인트 ${T.pts}`, C.width - 260, 38, 17, "#fff", "right");
+    const close = { x: C.width - 226, y: 18, w: 160, h: 40 };
+    UI.btn(g, close.x, close.y, close.w, close.h, "#5a4a78");
+    text(g, "닫기", close.x + close.w / 2, close.y + 19, 16, "#fff", "center", "#5a4a78");
+    const cw = 250, ch = 66, gx = 40, x0 = (C.width - (cw * 3 + gx * 2)) / 2, y0 = 112, gy = 30;
+    RD.MECH_TECH_COLS.forEach(([nm, col], i) => text(g, nm, x0 + i * (cw + gx) + cw / 2, 92, 14, col, "center"));
+    const pos = (t) => ({ x: x0 + t.col * (cw + gx), y: y0 + t.row * (ch + gy) });
+    // 연결선
+    for (const t of RD.MECH_TECH) if (t.req) {
+      const a = pos(RD.MECH_TECH.find((q) => q.id === t.req)), b = pos(t);
+      g.fillStyle = T.has[t.req] ? RD.MECH_TECH_COLS[t.col][1] : "#3a2d48";
+      g.fillRect(a.x + cw / 2 - 3, a.y + ch, 6, b.y - a.y - ch);
+    }
+    RD.techRects = [];
+    for (const t of RD.MECH_TECH) {
+      const { x, y } = pos(t), col = RD.MECH_TECH_COLS[t.col][1];
+      const has = T.has[t.id], open = !t.req || T.has[t.req], can = run.canUnlock(t), sel = run.techSel === t.id;
+      if (sel) { g.fillStyle = UI.COL.gold; g.fillRect(x - 6, y - 6, cw + 12, ch + 12); }
+      UI.panel(g, x, y, cw, ch, has ? UI.shade(col, 0.45) : open ? "#2b2140" : "#1d1428");
+      UI.iconBox(g, x + 10, y + 11, 44, open ? t.icon : "lock", has ? "#fff" : open ? col : "#5a4a70", has ? col : null);
+      UI.fitText(g, t.name, x + 66, y + 22, cw - 76, 15, open ? "#fff" : "#7a6a90");
+      text(g, has ? "해금 완료" : `${t.cost}포인트`, x + 66, y + 46, 12, has ? UI.COL.green : can ? UI.COL.gold : "#8a7aa8");
+      RD.techRects.push({ id: t.id, x, y, w: cw, h: ch });
+    }
+    // 설명과 해금 버튼
+    const t = RD.MECH_TECH.find((q) => q.id === run.techSel);
+    const py = C.height - 92;
+    UI.panel(g, 30, py, C.width - 330, 70, "#231a36");
+    if (t) {
+      text(g, t.name, 46, py + 22, 16, RD.MECH_TECH_COLS[t.col][1]);
+      UI.fitText(g, t.desc + (t.req && !T.has[t.req] ? ` (먼저 ${RD.MECH_TECH.find((q) => q.id === t.req).name} 필요)` : ""), 46, py + 48, C.width - 370, 13, "#fff");
+    } else text(g, "기술을 눌러서 설명을 보고, 해금하세요", 46, py + 35, 14, "#b9add0");
+    const ub = { x: C.width - 280, y: py + 4, w: 250, h: 62 };
+    const ok = t && run.canUnlock(t);
+    UI.btn(g, ub.x, ub.y, ub.w, ub.h, ok ? UI.COL.orange : "#4a3d60");
+    text(g, t && T.has[t.id] ? "이미 해금함" : ok ? `해금 (${t.cost}포인트)` : t ? "포인트 부족" : "해금", ub.x + ub.w / 2, ub.y + 29, 18, ok ? "#1d1622" : "#b9add0", "center", ok ? UI.COL.orange : "#4a3d60");
+    RD.techBtns = { close, unlock: ub };
   }
 
   // 메카 상태 한 줄: 살아 있으면 메카 체력 + 진화 부품, 파괴되면 재조립 진행도
@@ -937,11 +1053,7 @@
       text(g, "Mk." + UI.roman(M.evo + 1), x, y, 12, "#ffb347");
       const hk = M.hp / run.mechMax;
       UI.segBar(g, x + 46, y - 5, w - 110, 8, hk, hk < 0.3 ? UI.COL.red : "#ffb347", 10);
-      if (M.evo < 2) {
-        const need = RD.MECH.evoParts[M.evo], prev = M.evo ? RD.MECH.evoParts[M.evo - 1] : 0;
-        UI.icon(g, "gear", x + w - 58, y - 7, 13, "#c8d0e0");
-        text(g, `${Math.min(need, M.parts) - prev}/${need - prev}`, x + w, y, 10, "#c8d0e0", "right");
-      } else text(g, "최종 진화", x + w, y, 10, UI.COL.gold, "right");
+      text(g, M.barrier ? "방어막" : `${Math.ceil(M.hp)}`, x + w, y, 10, M.barrier ? UI.COL.cyan : "#c8d0e0", "right");
     } else {
       const blink = Math.floor(run.t * 4) % 2 === 0;
       text(g, "재조립", x, y, 12, blink ? UI.COL.red : "#ff8a8a");
@@ -988,6 +1100,7 @@
     UI.segBar(g, 82, 38, 142, 8, hpK, hpK < 0.3 ? UI.COL.red : "#7fe08a");
     UI.segBar(g, 82, 52, 142, 3, run.exp / run.expNeed, UI.COL.cyan);
     if (run.mech) { UI.panel(g, 14, 72, 222, 22, "rgba(35,26,54,0.9)"); drawMechRow(g, run, 22, 83, 206); }
+    if (run.mega) { UI.panel(g, 14, 72, 222, 22, "rgba(35,26,54,0.9)"); drawMegaRow(g, run, 22, 83, 206); }
     // 보스
     const boss = run.enemies.find((e) => e.raidBoss && !e.dead);
     const x = 250, w = 460;

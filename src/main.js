@@ -186,6 +186,12 @@
       if (["ArrowDown", "KeyS"].includes(e.code)) run.input.slideHeld = true;
       return;
     }
+    if (scene === "play" && run.techOpen) {
+      if (e.code === "Escape" || e.code === "KeyT") run.techOpen = false;
+      if (e.code === "Enter" && run.techSel) run.unlockTech(run.techSel);
+      return;
+    }
+    if (scene === "play" && run.mech && e.code === "KeyT" && !run.over && !run.cutscene && !run.choosing && !run.paused) { run.techOpen = true; return; }
     if (scene === "play" && !run.over && (e.code === "Escape" || e.code === "KeyP") && !run.cutscene && !run.choosing) { run.paused = !run.paused; return; }
     if (scene === "play" && run.paused) return;
     if (scene === "play" && run.cutscene) {
@@ -273,7 +279,17 @@
       for (const b of buttons) if (pt.x >= b.x && pt.x <= b.x + b.w && pt.y >= b.y && pt.y <= b.y + b.h) { RD.audio && RD.audio.sfx("click"); b.onClick(); break; }
       return;
     }
-    if (e.target === canvas && !run.over && !run.cutscene && !run.choosing && pauseHit(pt)) { run.paused = true; return; }
+    if (e.target === canvas && !run.over && !run.cutscene && !run.choosing && !run.techOpen && pauseHit(pt)) { run.paused = true; return; }
+    const inR = (r) => r && pt.x >= r.x && pt.x <= r.x + r.w && pt.y >= r.y && pt.y <= r.y + r.h;
+    if (run.techOpen) {
+      // 메카 테크트리
+      const tb = RD.techBtns;
+      if (inR(tb.close)) { run.techOpen = false; return; }
+      if (inR(tb.unlock)) { if (run.techSel) run.unlockTech(run.techSel); return; }
+      for (const r of RD.techRects) if (inR(r)) { RD.audio && RD.audio.sfx("click"); if (run.techSel === r.id) run.unlockTech(r.id); else run.techSel = r.id; }
+      return;
+    }
+    if (run.mech && e.target === canvas && !run.over && !run.cutscene && !run.choosing && inR(RD.TECH_BTN)) { run.techOpen = true; RD.audio && RD.audio.sfx("click"); return; }
     if (run.isAdv) {
       const pad = e.target.closest && e.target.closest(".touchpad");
       const action = pad || (e.target === canvas && pt.x < C.width / 2) ? "slide" : "jump";
@@ -546,6 +562,8 @@
     // 능력치
     UI.panel(g, 706, 262, 226, 140, "#1d1428");
     RD.text(g, "능력치", 718, 280, 13, "#ffd34d");
+    UI.icon(g, "heart", 846, 272, 14, "#ff4d6a");
+    RD.text(g, `체력 ${RD.CHAR_HP[ch.id] || 100}` + (ch.id === "mech" ? "+메카" : ""), 922, 280, 12, "#fff", "right");
     const S = RD.STATS[ch.id] || [5, 5, 5, 5];
     [["공격", "#ff8a3d"], ["사거리", "#7fe6ff"], ["생존", "#9fffb0"], ["난이도", "#ff4d5e"]].forEach(([k, col], i) => {
       const y = 302 + i * 25;

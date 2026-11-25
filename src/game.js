@@ -90,8 +90,11 @@
       this.rerolls = 2; // 강화 카드 새로 뽑기 횟수
       this.paused = false;
 
-      this.mech = charId === "mech" ? { evo: 0, hp: RD.MECH.hp[0], parts: 0, alive: true, prog: 0, flash: 0 } : null;
-      this.player = { vx: 0, vy: 0, x: 160, y: 260, hp: C.maxHp + RD.GACHA.starHp * (this.stars - 1), invuln: C.respawnInvuln, hurt: 0, dead: 0, animT: 0, shotCd: 0, tilt: 0 };
+      this.mech = charId === "mech" ? { evo: 0, hp: RD.MECH.hp[0], alive: true, prog: 0, flash: 0, barrier: false, barrierT: 0, cannonT: 0 } : null;
+      this.tech = { pts: 0, has: {} }; // 메카 테크트리
+      this.techOpen = false; this.techSel = null;
+      this.mega = false; this.megaPow = 0; this.roars = []; // 개구리 메가 프로그
+      this.player = { vx: 0, vy: 0, x: 160, y: 260, hp: (RD.CHAR_HP[charId] || C.maxHp) + RD.GACHA.starHp * (this.stars - 1), gulp: 0, invuln: C.respawnInvuln, hurt: 0, dead: 0, animT: 0, shotCd: 0, tilt: 0 };
       this.pet = { x: 100, y: 260, t: 0, cd: 0 };
       this.sub = { missile: 1, laser: 2, rear: 0.5, lightning: 1.5, laserOn: 0 };
       this.shots = [];
@@ -155,16 +158,41 @@
     // ---------- 능력치 (강화 단계에서 계산) ----------
     lv(id) { return this.up[id] || 0; }
     get power() { return 1 + this.lv("multi"); }
-    get dmgMul() { return (1 + 0.2 * this.lv("dmg")) * (1 + RD.GACHA.starDmg * (this.stars - 1)); }
-    get maxHp() { return C.maxHp + 25 * this.lv("hp") + RD.GACHA.starHp * (this.stars - 1); }
+    get dmgMul() { return (1 + 0.2 * this.lv("dmg")) * (1 + RD.GACHA.starDmg * (this.stars - 1)) * (1 + this.megaPow); }
+    get maxHp() { return ((RD.CHAR_HP[this.charId] || C.maxHp) + 25 * this.lv("hp") + RD.GACHA.starHp * (this.stars - 1)) * (this.mega ? RD.MEGA_FROG.hpMul : 1); }
     get armor() { return 1 - 0.15 * this.lv("armor"); }
-    get mechMax() { return RD.MECH.hp[this.mech.evo] * (1 + 0.15 * this.lv("hp")); }
+    get mechMax() { return RD.MECH.hp[this.mech.evo] * (1 + 0.15 * this.lv("hp")) * (this.tech.has.plate ? 1.3 : 1); }
+
+    // 테크트리 해금
+    canUnlock(t) { return !this.tech.has[t.id] && (!t.req || this.tech.has[t.req]) && this.tech.pts >= t.cost; }
+    unlockTech(id) {
+      const t = RD.MECH_TECH.find((x) => x.id === id), M = this.mech;
+      if (!t || !M || !this.canUnlock(t)) return false;
+      this.tech.pts -= t.cost;
+      this.tech.has[id] = true;
+      if (id === "mk2" || id === "mk3") {
+        M.evo = id === "mk3" ? 2 : 1;
+        if (M.alive) { M.hp = this.mechMax; M.flash = 1; }
+        this.banner = { text: "메카 진화!", sub: RD.MECH.names[M.evo], sub2: t.desc, color: "#ffb347", t: 0, life: 2.2, small: true };
+        this.effects.push({ type: "ring", x: this.player.x, y: this.player.y, t: 0, life: 0.6 });
+      } else this.text(t.name + "!", "#ffb347");
+      if (id === "plate" && M.alive) M.hp += RD.MECH.hp[M.evo] * 0.3;
+      if (id === "call") this.bombs = Math.min(C.maxBombs + 3, this.bombs + 1);
+      RD.audio && RD.audio.sfx("levelup");
+      return true;
+    }
 
     // ---------- 다람쥐 메카 ----------
     breakMech() {
       const M = this.mech, p = this.player;
-      M.alive = false; M.hp = 0; M.prog = 0;
+      M.alive = false; M.hp = 0; M.prog = 0; M.barrier = false;
       p.invuln = Math.max(p.invuln, 2);
+      if (this.tech.has.eject) {
+        // 비상 탈출: 큰 폭발
+        this.bullets = this.bullets.filter((b) => Math.hypot(b.x - p.x, b.y - p.y) > 280);
+        for (const e of this.enemies) if (!e.dead && Math.hypot(e.x - p.x, e.y - p.y) < 280 + RD.ENEMIES[e.type].w / 2) this.damage(e, 40 * this.dmgMul, true);
+        this.effects.push({ type: "ring", x: p.x, y: p.y, t: 0, life: 0.7 });
+      }
       this.shake = 0.35;
       this.effects.push({ type: "boom", x: p.x, y: p.y, t: 0, life: 1, big: true });
       this.banner = { text: "메카 파괴!", sub: "부품을 모으면 다시 조립한다 · 궁극기를 쓰면 바로 복구", color: "#ff8a3d", t: 0, life: 2, small: true };
@@ -184,21 +212,68 @@
     }
     addParts(n) {
       const M = this.mech, C2 = RD.MECH;
-      if (!M.alive) { M.prog += n / C2.rebuildParts; if (M.prog >= 1) this.rebuildMech(C2.rebuildHp); return; }
-      M.parts += n;
-      if (M.evo < 2 && M.parts >= C2.evoParts[M.evo]) {
-        M.evo++;
-        M.hp = this.mechMax;
-        M.flash = 1;
-        this.banner = { text: "메카 진화!", sub: C2.names[M.evo], sub2: M.evo === 1 ? "총열 +1 · 위력 +15% · 체력 증가" : "총열 +2 · 위력 +30% · 로켓 연사", color: "#ffb347", t: 0, life: 2.2, small: true };
-        this.effects.push({ type: "ring", x: this.player.x, y: this.player.y, t: 0, life: 0.6 });
-        RD.audio && RD.audio.sfx("levelup");
-      }
+      // 부품은 파괴된 메카를 다시 조립할 때만 쓴다
+      if (!M.alive) { M.prog += n / (C2.rebuildParts * (this.tech.has.quick ? 0.6 : 1)); if (M.prog >= 1) this.rebuildMech(C2.rebuildHp); }
     }
     updateMech(dt) {
       const M = this.mech;
       M.flash = Math.max(0, M.flash - dt);
-      if (!M.alive && this.player.dead <= 0) { M.prog += dt / RD.MECH.rebuildTime; if (M.prog >= 1) this.rebuildMech(RD.MECH.rebuildHp); }
+      if (!M.alive && this.player.dead <= 0) { M.prog += dt / (RD.MECH.rebuildTime * (this.tech.has.quick ? 0.6 : 1)); if (M.prog >= 1) this.rebuildMech(RD.MECH.rebuildHp); }
+      if (!M.alive || this.player.dead > 0) return;
+      const T = this.tech.has;
+      if (T.repair) M.hp = Math.min(this.mechMax, M.hp + 1.2 * dt);
+      if (T.barrier && !M.barrier && (M.barrierT += dt) >= 8) { M.barrier = true; M.barrierT = 0; }
+      if (T.cannon && (M.cannonT -= dt) <= 0) {
+        M.cannonT = 1.2;
+        const a = this.autoAim(), p = this.player;
+        this.addShot({ kind: "shell", main: true, x: p.x + 40, y: p.y - 10, vx: Math.cos(a) * 900, vy: Math.sin(a) * 900, w: 26, h: 14, dmg: 16 * this.dmgMul, pierce: 1, color: "#ffb347" });
+        this.shake = Math.max(this.shake, 0.05);
+      }
+    }
+    // ---------- 개구리 메가 프로그 ----------
+    becomeMega() {
+      const p = this.player;
+      this.mega = true;
+      p.hp = this.maxHp;
+      p.invuln = Math.max(p.invuln, 3);
+      this.shake = 0.5;
+      this.effects.push({ type: "ring", x: p.x, y: p.y, t: 0, life: 0.8 });
+      this.effects.push({ type: "flash", t: 0, life: 0.4 });
+      this.banner = { text: "메가 프로그!", sub: "포효로 적 공격을 되돌리고 체력을 회복한다", sub2: "궁극기: 적을 꿀꺽 삼켜 보호막과 공격력을 얻는다 (보스 제외)", color: "#9fff6a", t: 0, life: 3 };
+      RD.audio && RD.audio.sfx("levelup");
+    }
+    roar(dmg) {
+      const MF = RD.MEGA_FROG, p = this.player;
+      this.roars.push({ t: 0, life: MF.roarLife, R: MF.roarR * (1 + 0.08 * (this.power - 1)), dmg, hit: new Set() });
+      this.shake = Math.max(this.shake, 0.06);
+      RD.audio && RD.audio.sfx("shot_frog");
+    }
+    updateRoars(dt) {
+      if (!this.roars.length) return;
+      const MF = RD.MEGA_FROG, p = this.player;
+      for (const r of this.roars) {
+        r.t += dt;
+        const rad = r.R * Math.min(1, r.t / r.life * 1.15);
+        r.rad = rad;
+        for (const e of this.enemies) {
+          if (e.dead || e.delay > 0 || r.hit.has(e)) continue;
+          if (Math.hypot(e.x - p.x, e.y - p.y) > rad + RD.ENEMIES[e.type].w / 2) continue;
+          r.hit.add(e);
+          this.damage(e, r.dmg, true);
+          p.hp = Math.min(this.maxHp, p.hp + MF.healPerHit);
+          if (this.brawl) this.gainCharge && this.gainCharge(RD.BRAWL.frog.charge * 0.5);
+        }
+        // 탄(보스 탄 포함)을 되돌려 보낸다
+        this.bullets = this.bullets.filter((b) => {
+          const d = Math.hypot(b.x - p.x, b.y - p.y);
+          if (d > rad) return true;
+          const a = Math.atan2(b.y - p.y, b.x - p.x);
+          this.addShot({ kind: "bullet", main: true, x: b.x, y: b.y, vx: Math.cos(a) * 720, vy: Math.sin(a) * 720, w: 12, h: 12, dmg: r.dmg * 0.6 * (b.boss ? 1.5 : 1), pierce: 0, homing: true, hit: [], t: 0, color: "#9fff6a" });
+          p.hp = Math.min(this.maxHp, p.hp + MF.healPerBullet);
+          return false;
+        });
+      }
+      this.roars = this.roars.filter((r) => r.t < r.life);
     }
     get mechOn() { return this.mech && this.mech.alive; }
     get magnetR() { return 100 * (1 + 0.6 * this.lv("magnet")); }
@@ -218,6 +293,7 @@
         this.level++;
         this.expNeed = this.needFor(this.level);
         this.pendingLevels++;
+        if (this.mech) this.tech.pts++; // 메카: 테크 포인트
         RD.audio && RD.audio.sfx("levelup");
       }
       this.openChoice();
@@ -673,6 +749,7 @@
       const sig = this.lv("sig");
       const pw = this.power;
       const dmg = s.dmg * this.dmgMul;
+      if (this.mega) { p.shotCd = RD.MEGA_FROG.roarCd * Math.pow(0.88, this.lv("rate")); this.roar(RD.MEGA_FROG.roarDmg * this.dmgMul); return; }
       RD.audio && RD.audio.sfx("shot_" + this.charId);
 
       switch (s.kind) {
@@ -826,6 +903,7 @@
       const ch = W.charge;
       RD.audio && RD.audio.sfx("shot_" + this.charId);
       const base = { brawl: true, charge: ch, hit: [], t: 0, color: this.char.shot.color, main: true };
+      if (this.mega) { this.roar(dmg * 1.8); return true; } // 레이드 메가 프로그: 포효
       if (this.charId === "fox") {
         // 부채꼴 베기 (조준 방향), 적 탄도 벤다
         const range = W.range * (1 + this.bst("range")), arc = W.arc;
@@ -1085,11 +1163,14 @@
       const p = this.player;
       if (!fromSuper) this.bombs--;
       const sdur = this.raid ? this.bst("sdur") : 0;
-      const life = { fox: 1.0, rabbit: 3.0, bear: 1.5, owl: 2.8, cat: 3.0, panda: 6, mech: 7, frog: 5 }[this.charId] + (this.charId === "fox" ? 0 : this.charId === "bear" ? 0.3 * sdur : sdur);
+      const life = (this.mega ? RD.MEGA_FROG.gulpLife : { fox: 1.0, rabbit: 3.0, bear: 1.5, owl: 2.8, cat: 3.0, panda: 6, mech: 7, frog: 5 }[this.charId]) + (this.charId === "fox" || this.mega ? 0 : this.charId === "bear" ? 0.3 * sdur : sdur)
+        + (this.charId === "mech" && this.tech.has.call ? 2 : 0);
       this.bombT = life;
-      this.ult = { kind: this.charId, t: 0, life, x0: p.x, y0: p.y, done: {}, spawnT: 0, mul: 1 + 0.3 * this.lv("bomb") + (this.raid ? this.bst("spow") : 0), sdur };
+      if (this.mech) this.rebuildMech(1, true); // 부서져 있어도 바로 메카가 돌아온다 (진화 단계 그대로)
+      this.ult = { kind: this.mega ? "megafrog" : this.charId, t: 0, life, x0: p.x, y0: p.y, done: {}, spawnT: 0, mul: 1 + 0.3 * this.lv("bomb") + (this.raid ? this.bst("spow") : 0), sdur };
       p.invuln = Math.max(p.invuln, life + 0.6);
-      this.banner = { text: this.char.bomb.name + "!", color: this.char.bomb.color, t: 0, life: 1.2, small: true };
+      this.banner = this.mega ? { text: "꿀꺽!", sub: "주변 적을 삼켜 보호막과 공격력을 얻는다 (보스 제외)", color: "#9fff6a", t: 0, life: 1.2, small: true }
+        : { text: this.char.bomb.name + "!", color: this.char.bomb.color, t: 0, life: 1.2, small: true };
       RD.audio && RD.audio.sfx("ult_" + this.charId);
 
       const popAll = () => {
@@ -1216,6 +1297,32 @@
           });
           break;
         }
+        case "megafrog": {
+          // 꿀꺽: 혀로 적을 끌어당겨 삼킨다. 보스는 못 삼킨다
+          const MF = RD.MEGA_FROG;
+          u.pull = [];
+          if (u.t < u.life - 0.3) for (const e of this.enemies) {
+            if (e.dead || e.delay > 0) continue;
+            const def = RD.ENEMIES[e.type];
+            if (def.boss || e.raidBoss) continue;
+            const d = Math.hypot(e.x - p.x, e.y - p.y);
+            if (d > MF.gulpR) continue;
+            u.pull.push(e);
+            const k = Math.min(1, dt * (4 + u.t * 6));
+            e.x += (p.x + 30 - e.x) * k; e.y += (p.y - e.y) * k;
+            e.pullT = (e.pullT || 0) + dt; // 움직임이 정해진 적도 혀에 잡힌 지 0.4초면 삼킨다
+            if (d < 50 || e.pullT > (def.midboss || def.elite ? 0.8 : 0.4)) {
+              const big = def.midboss || def.elite;
+              p.gulp = Math.min(this.maxHp * MF.shieldCap, p.gulp + Math.max(e.hp, 1));
+              this.megaPow = Math.min(MF.powMax, this.megaPow + (big ? MF.powBig : MF.powSmall));
+              this.damage(e, e.hp + 1, true);
+              this.effects.push({ type: "text", x: p.x, y: p.y - 70, text: big ? "꿀꺽!! 공격력 크게 증가" : "꿀꺽", color: "#9fff6a", t: 0, life: 0.6 });
+              RD.audio && RD.audio.sfx("power");
+            }
+          }
+          this.bullets = this.bullets.filter((b) => Math.hypot(b.x - p.x, b.y - p.y) > 160); // 탄도 삼킨다
+          break;
+        }
         case "panda": {
           // 정령왕 강림: 거대한 정령왕이 곁에서 싸운다
           u.kx = p.x + 90; u.ky = Math.max(90, p.y - 50);
@@ -1285,13 +1392,21 @@
       if (this.mechOn) {
         // 메카가 대신 맞는다 (다람쥐 체력은 그대로)
         const M = this.mech;
+        if (M.barrier) {
+          M.barrier = false; p.invuln = C.hitInvuln;
+          this.effects.push({ type: "ring", x: p.x, y: p.y, t: 0, life: 0.4 });
+          RD.audio && RD.audio.sfx("shieldbreak");
+          return;
+        }
         M.hp -= amount * this.D.damage * this.armor * RD.MECH.armor * (1 - 0.1 * M.evo) * (this.judgFire > 0 ? 1.3 : 1);
         p.invuln = C.hitInvuln; p.hurt = 0.3; M.flash = 0.15;
         this.shake = Math.max(this.shake, 0.12);
         if (M.hp <= 0) this.breakMech();
         return;
       }
-      p.hp -= amount * this.D.damage * this.armor * (this.judgFire > 0 ? 1.3 : 1);
+      let dmgIn = amount * this.D.damage * this.armor * (this.judgFire > 0 ? 1.3 : 1);
+      if (p.gulp > 0) { const a = Math.min(p.gulp, dmgIn); p.gulp -= a; dmgIn -= a; } // 메가 프로그 보호막
+      p.hp -= dmgIn;
       p.invuln = C.hitInvuln;
       p.hurt = 0.3;
       this.shake = Math.max(this.shake, 0.15);
@@ -1324,6 +1439,7 @@
     update(dt) {
       if (this.banner && (this.banner.t += dt) > this.banner.life) this.banner = null;
       if (this.cutscene) { this.cutscene.t += dt; this.cutscene.lt += dt; return; } // 컷씬 동안 멈춘다
+      if (this.techOpen) return; // 테크트리를 보는 동안 멈춘다
       if (this.choosing) { this.choosing.t += dt; return; } // 강화를 고르는 동안 멈춘다
       this.t += dt;
       if (!this.raid) this.scroll += C.scrollSpeed * dt; // 레이드는 고정된 경기장
@@ -1357,7 +1473,8 @@
       const inp = this.input;
       if (p.dead > 0) {
         p.dead -= dt;
-        if (p.dead <= 0) { p.x = 120; p.y = 260; p.hp = this.maxHp; p.invuln = C.respawnInvuln; if (this.mech) this.rebuildMech(1, true); }
+        if (p.dead <= 0) { p.x = 120; p.y = 260; p.hp = this.maxHp; p.invuln = C.respawnInvuln; if (this.mech) this.rebuildMech(1, true);
+          if (this.charId === "frog" && !this.mega && this.lives === 1) this.becomeMega(); }
         inp.moveX = inp.moveY = 0;
       } else {
         p.slow = Math.max(0, (p.slow || 0) - dt);
@@ -1418,6 +1535,7 @@
 
       this.updateUlt(dt);
       if (this.mech) this.updateMech(dt);
+      this.updateRoars(dt);
 
       // 피격 판정 (판정은 캐릭터 가운데의 작은 점)
       if (p.dead <= 0 && p.invuln <= 0) {
