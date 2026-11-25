@@ -615,6 +615,41 @@
       g.fillStyle = "#1d1622"; g.fillRect(p.x - 26, p.y - 52, 52, 7);
       g.fillStyle = hk < 0.3 ? "#ff4d5e" : "#ffb347"; g.fillRect(p.x - 25, p.y - 51, 50 * hk, 5);
     }
+    // 메카 진화 무기: 화염방사기, 플라즈마 레이저
+    if (run.mech && run.mech.alive && p.dead <= 0) {
+      const M = run.mech, flip = run.raid && run.brawl && Math.cos(run.brawl.aimAng) < 0 ? -1 : 1;
+      const ox = p.x + 48 * flip, oy = p.y - 6;
+      if (M.flameOn && M.flameAng != null) {
+        const F = RD.MECH.flame;
+        g.save(); g.translate(ox, oy); g.rotate(M.flameAng);
+        const gr = g.createLinearGradient(0, 0, F.range, 0);
+        gr.addColorStop(0, "rgba(255,255,200,0.95)"); gr.addColorStop(0.3, "rgba(255,180,60,0.8)"); gr.addColorStop(0.75, "rgba(255,80,20,0.55)"); gr.addColorStop(1, "rgba(255,40,0,0)");
+        g.fillStyle = gr;
+        g.beginPath(); g.moveTo(0, -5); g.lineTo(F.range, -Math.tan(F.arc) * F.range); g.lineTo(F.range, Math.tan(F.arc) * F.range); g.lineTo(0, 5); g.closePath(); g.fill();
+        for (let i = 0; i < 14; i++) { // 불꽃 알갱이
+          const d = ((run.t * 420 + i * 37) % F.range), sp = (Math.sin(i * 12.9 + run.t * 9)) * Math.tan(F.arc) * d * 0.8, r = 4 + d * 0.06;
+          g.fillStyle = d < F.range * 0.4 ? "#fff3a0" : d < F.range * 0.7 ? "#ffb347" : "#ff5a2a";
+          g.fillRect(d - r / 2, sp - r / 2, r, r);
+        }
+        g.restore();
+      }
+      if (M.beam) {
+        const L = RD.MECH.laser, bm = M.beam, k = bm.t / L.life;
+        g.save(); g.translate(ox, oy); g.rotate(bm.ang);
+        if (bm.t < 0.15) { // 충전
+          g.strokeStyle = `rgba(127,230,255,${0.5 + Math.random() * 0.5})`; g.lineWidth = 2;
+          g.beginPath(); g.moveTo(0, 0); g.lineTo(1400, 0); g.stroke();
+          g.fillStyle = "#c8f6ff"; g.beginPath(); g.arc(0, 0, 8 + bm.t * 80, 0, Math.PI * 2); g.fill();
+        } else {
+          const w = L.width * (1 - Math.max(0, k - 0.75) * 4) * (0.9 + Math.random() * 0.2);
+          g.fillStyle = "rgba(90,200,255,0.35)"; g.fillRect(0, -w, 1400, w * 2);
+          g.fillStyle = "#7fe6ff"; g.fillRect(0, -w / 2, 1400, w);
+          g.fillStyle = "#ffffff"; g.fillRect(0, -w / 5, 1400, w / 2.5);
+          g.fillStyle = "#ffffff"; g.beginPath(); g.arc(0, 0, w * 0.8, 0, Math.PI * 2); g.fill();
+        }
+        g.restore();
+      }
+    }
     // 메가 프로그 포효 (퍼져 나가는 초록 고리)
     for (const r of run.roars) {
       const k = r.t / r.life, rad = r.rad || 0;

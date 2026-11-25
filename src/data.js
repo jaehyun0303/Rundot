@@ -451,6 +451,9 @@ RD.RAID_BOSSES = [
 ];
 // 다람쥐 메카 (메카 체력은 다람쥐 체력과 따로)
 RD.MECH = {
+  // 진화하면 붙는 무기 (Mk.II 화염방사기, Mk.III 플라즈마 레이저)
+  flame: { range: 270, arc: 0.4, dps: 18 },
+  laser: { cd: 3, life: 0.9, width: 30, dps: 42 },
   names: ["Mk.I 정찰 메카", "Mk.II 강습 메카", "Mk.III 요새 메카"],
   hp: [70, 100, 140], // 진화 단계별 메카 최대 체력
   armor: 0.8, // 메카 장갑: 메카가 받는 피해 -20% (진화할 때마다 10% 더 단단)
@@ -472,8 +475,8 @@ RD.ALLY_RESPAWN = 5; // 쓰러지면 5초 뒤 다시 소환
 // 메카 테크트리: 레벨이 오를 때마다 테크 포인트 1점 (모두 찍으려면 28점) (전투 중 테크트리 버튼으로 해금)
 RD.MECH_TECH_COLS = [["진화", "#ffb347"], ["방어", "#7fe6ff"], ["정비", "#9fffb0"]];
 RD.MECH_TECH = [
-  { id: "mk2", col: 0, row: 0, cost: 3, icon: "up", name: "Mk.II 강습 메카", desc: "메카 진화: 총열 +1 · 위력 +15% · 메카 체력 100" },
-  { id: "mk3", col: 0, row: 1, cost: 5, req: "mk2", icon: "star", name: "Mk.III 요새 메카", desc: "최종 진화: 총열 +2 · 위력 +30% · 로켓 연사 · 메카 체력 140" },
+  { id: "mk2", col: 0, row: 0, cost: 3, icon: "up", name: "Mk.II 강습 메카", desc: "메카 진화 + 화염방사기: 가까운 적을 불태우고 적 탄을 녹인다 · 총열 +1 · 메카 체력 100" },
+  { id: "mk3", col: 0, row: 1, cost: 5, req: "mk2", icon: "star", name: "Mk.III 요새 메카", desc: "최종 진화 + 플라즈마 레이저: 3초마다 모든 것을 꿰뚫는 레이저 · 대구경 탄 · 메카 체력 140" },
   { id: "cannon", col: 0, row: 2, cost: 4, req: "mk3", icon: "target", name: "주포 탑재", desc: "1.2초마다 가장 가까운 적에게 강력한 주포를 쏜다" },
   { id: "plate", col: 1, row: 0, cost: 2, icon: "shield", name: "강화 장갑", desc: "메카 최대 체력 +30%" },
   { id: "repair", col: 1, row: 1, cost: 3, req: "plate", icon: "heart", name: "자동 수리", desc: "메카가 1초마다 체력 1을 회복한다" },

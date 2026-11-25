@@ -56,6 +56,7 @@
   // ---------- 효과음 ----------
   const SFX = {
     click: () => tone(880, 0.06, { vol: 0.15 }),
+    laser: () => { tone(220, 0.15, { type: "sawtooth", vol: 0.12, slide: 4 }); tone(1760, 0.7, { type: "square", vol: 0.05, slide: 0.6, at: 0.15 }); noise(0.7, { vol: 0.08, freq: 3000, q: 2, at: 0.15 }); },
     shot_fox: () => noise(0.08, { vol: 0.09, freq: 5000, slide: 0.4, q: 3 }),
     shot_rabbit: () => tone(1600, 0.04, { vol: 0.05, slide: 0.7 }),
     shot_bear: () => tone(180, 0.1, { type: "triangle", vol: 0.18, slide: 0.5 }),
