@@ -62,6 +62,74 @@
   let pickStage = Math.min(save.get("pickStage", 0), maxStage);
   const bestKey = () => `best_${mode}_${diff}` + (mode === "stageselect" ? "_" + pickStage : mode === "raid" ? "_" + raidPick : "");
   const loadBest = () => { best = save.get(bestKey(), 0); RD.best = best; };
+
+  // ---------- 캐릭터 숙련도 ----------
+  let mastery = save.get("mastery", {}); // 캐릭터 id → 누적 경험치
+  const mxp = (id) => mastery[id] || 0;
+  const mlv = (id) => RD.masteryLevel(mxp(id));
+  const shortName = (ch) => ch.name.split(" ")[0];
+  function titleOf(ch) {
+    let t = null;
+    RD.MASTERY.rewards.forEach((r, lv) => { if (r && r.title && mlv(ch.id) >= lv) t = r.title(shortName(ch)); });
+    return t;
+  }
+  function addMastery(id, xp) {
+    const before = mlv(id);
+    mastery[id] = mxp(id) + xp;
+    const after = mlv(id);
+    const got = [];
+    for (let lv = before + 1; lv <= after; lv++) {
+      const r = RD.MASTERY.rewards[lv];
+      if (r && r.coins) coins += r.coins;
+      got.push(lv);
+    }
+    save.set("mastery", mastery); save.set("coins", coins);
+    return { before, after, got };
+  }
+
+  // ---------- 일일 미션 ----------
+  const today = () => { const d = new Date(); return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`; };
+  function seeded(seed) { let h = 2166136261; for (const c of seed) h = Math.imul(h ^ c.charCodeAt(0), 16777619); return () => ((h = Math.imul(h ^ (h >>> 15), 2246822507) ^ Math.imul(h ^ (h >>> 13), 3266489909)) >>> 0) / 4294967296; }
+  let missions = save.get("missions", null);
+  function ensureMissions() {
+    if (missions && missions.date === today()) return;
+    const rnd = seeded(today());
+    const pool = RD.MISSIONS.slice();
+    const list = [];
+    while (list.length < 3 && pool.length) {
+      const m = pool.splice(Math.floor(rnd() * pool.length), 1)[0];
+      const n = m.n[Math.floor(rnd() * m.n.length)];
+      const ownedIds = RD.CHARACTERS.filter((c, i) => isOwned(i)).map((c) => c.id);
+      list.push({ id: m.id, n, prog: 0, claimed: false, ch: m.id === "char" ? ownedIds[Math.floor(rnd() * ownedIds.length)] : null });
+    }
+    missions = { date: today(), list, bonus: false };
+    save.set("missions", missions);
+  }
+  ensureMissions();
+  const missionDef = (m) => RD.MISSIONS.find((d) => d.id === m.id);
+  const missionText = (m) => missionDef(m).text(m.n, RD.CHARACTERS.find((c) => c.id === m.ch));
+  function missionAdd(fn) {
+    ensureMissions();
+    let done = 0;
+    for (const m of missions.list) {
+      if (m.prog >= m.n) continue;
+      const v = fn(m, missionDef(m));
+      if (!v) continue;
+      m.prog = missionDef(m).best ? Math.max(m.prog, v) : m.prog + v;
+      if (m.prog >= m.n) { m.prog = m.n; done++; }
+    }
+    save.set("missions", missions);
+    return done;
+  }
+  const missionsReady = () => { ensureMissions(); return missions.list.filter((m) => m.prog >= m.n && !m.claimed).length + (missions.list.every((m) => m.claimed) && !missions.bonus ? 1 : 0); };
+
+  // ---------- 도감 ----------
+  let dex = save.get("dex", {}); // 몬스터 종류 → 쓰러뜨린 수
+  let dexTab = "mon", dexSel = null;
+
+  // ---------- 결투 ----------
+  let trophy = save.get("trophy", 0), duelRec = save.get("duelRec", { w: 0, l: 0 });
+  let match = null; // 매칭 화면 상태
   loadBest();
 
 
@@ -75,7 +143,18 @@
       scene = "play";
       return;
     }
-    run = new RD.Run(id, mode, diff, { stars: starsOf(id) || 1, stage: mode === "stageselect" ? pickStage : 0, raidBoss: RD.RAID_BOSSES[raidPick][0], raidLv: raidLv[RD.RAID_BOSSES[raidPick][0]] || 1 });
+    if (mode === "duel" && !(match && match.go)) {
+      // 대전 상대 찾기 → 없으면 AI 라이벌
+      const rivals = RD.CHARACTERS.map((c) => c.id);
+      const aiLv = Math.max(1, Math.min(5, 1 + Math.floor(trophy / 100)));
+      match = { t: 0, rival: rivals[Math.floor(Math.random() * rivals.length)], aiLv, name: `${RD.DUEL.names[Math.floor(Math.random() * RD.DUEL.names.length)]} 라이벌`, arena: RD.RAID_BOSSES[Math.floor(Math.random() * RD.RAID_BOSSES.length)][0] };
+      scene = "match";
+      return;
+    }
+    run = new RD.Run(id, mode, diff, { stars: starsOf(id) || 1, mastery: mlv(id), stage: mode === "stageselect" ? pickStage : 0, raidBoss: RD.RAID_BOSSES[raidPick][0], raidLv: raidLv[RD.RAID_BOSSES[raidPick][0]] || 1,
+      duel: match && match.go ? { rival: match.rival, aiLv: match.aiLv, name: match.name, arena: match.arena } : null });
+    if (mode === "duel") match = null;
+    RD.playerTitle = titleOf(RD.CHARACTERS[selected]);
     scene = "play";
   }
 
@@ -86,6 +165,24 @@
       maxStage = Math.min(RD.STAGES.length - 1, run.reached);
       save.set("maxStage", maxStage);
     }
+    // 결투: 트로피
+    if (run.duel) {
+      run.trophyGain = run.win ? RD.DUEL.trophyWin : RD.DUEL.trophyLose;
+      trophy = Math.max(0, trophy + run.trophyGain); save.set("trophy", trophy);
+      duelRec[run.win ? "w" : "l"]++; save.set("duelRec", duelRec);
+    }
+    // 도감: 처음 쓰러뜨린 몬스터는 코인 보상
+    if (run.killsByType) {
+      run.dexNew = 0;
+      for (const [k, n] of Object.entries(run.killsByType)) { if (k === "rival" || !RD.DEX[k]) continue; if (!dex[k]) { run.dexNew++; coins += RD.DEX_REWARD; } dex[k] = (dex[k] || 0) + n; }
+      save.set("dex", dex);
+    }
+    // 일일 미션
+    if (!run.isAdv) run.missionDone = missionAdd((m, d) => d.stat(run, m));
+    else run.missionDone = missionAdd((m, d) => (m.id === "runs" ? 1 : m.id === "char" && run.charId === m.ch ? 1 : 0));
+    // 숙련도: 처치 + 점수 + 버틴 시간 + 승리
+    const xp = Math.round((run.kills || 0) + (run.score || 0) / 500 + (run.t || 0) / 10 + (run.win ? 100 : 0));
+    run.mastery = { xp, ...addMastery(run.charId || RD.CHARACTERS[selected].id, xp) };
     coins += run.coins;
     save.set("coins", coins);
     run.newBest = run.score > best;
@@ -94,6 +191,7 @@
 
   // ---------- 뽑기 ----------
   function rollOne(forceMin) {
+    missionAdd((m) => (m.id === "gacha" ? 1 : 0));
     let grade;
     if (pity >= G.pity - 1) grade = "SSR";
     else {
@@ -225,6 +323,10 @@
       if (e.code === "KeyG") scene = "gacha";
       if (e.code === "KeyT") { testMode = !testMode; save.set("testMode", testMode); }
       if (e.code === "Enter" || e.code === "Space") { if (isOwned(selected)) startRun(); }
+    } else if (scene === "missions" || scene === "dex") {
+      if (e.code === "Escape") scene = "select";
+    } else if (scene === "match") {
+      if (e.code === "Escape") { match = null; scene = "select"; }
     } else if (scene === "result") {
       if (e.code === "Enter" || e.code === "Space") startRun();
       if (e.code === "Escape") scene = "select";
@@ -407,9 +509,9 @@
   }
 
   const MODE_ICON = { story: "book", stageselect: "flag", endless: "target", bossrush: "skull", timeattack: "clock", hardcore: "heart", chaos: "chaos",
-    dream: "candy", adventure: "run", raid: "sword", trumpets: "trumpet" };
+    dream: "candy", adventure: "run", raid: "sword", trumpets: "trumpet", duel: "target" };
   const MODE_COL = { story: "#ff8a3d", stageselect: "#ffd34d", endless: "#7fe6ff", bossrush: "#ff4d5e", timeattack: "#9fd0ff", hardcore: "#ff6a6a", chaos: "#c58aff",
-    dream: "#ff9ad8", adventure: "#7fe08a", raid: "#c58aff", trumpets: "#ffd34d" };
+    dream: "#ff9ad8", adventure: "#7fe08a", raid: "#c58aff", trumpets: "#ffd34d", duel: "#ff5ad8" };
   const ownedCount = () => RD.CHARACTERS.filter((c, i) => isOwned(i)).length;
 
   function menuBackdrop() {
@@ -458,7 +560,14 @@
     UI.panel(g, 16, 256, 312, 164);
     RD.text(g, "난이도", 28, 272, 13, "#ffd34d");
     DIFF_IDS.forEach((id, i) => { const d = RD.DIFFICULTY[id]; tab(28 + i * 74, 284, 68, 28, d.name, id === diff, d.color, () => { diff = id; save.set("diff", id); loadBest(); }); });
-    if (mode === "raid") {
+    if (mode === "duel") {
+      RD.text(g, "결투 기록", 28, 330, 13, "#ffd34d");
+      UI.icon(g, "star", 28, 344, 18, "#ffd34d");
+      RD.text(g, `트로피 ${trophy}`, 52, 353, 15, "#fff");
+      RD.text(g, `${duelRec.w}승 ${duelRec.l}패`, 316, 353, 13, "#cfc6e0", "right");
+      RD.text(g, `AI 라이벌 실력 Lv.${Math.max(1, Math.min(5, 1 + Math.floor(trophy / 100)))} (트로피가 오르면 강해진다)`, 28, 380, 11, "#b9add0");
+      RD.text(g, "온라인 대전 상대가 없으면 AI 라이벌과 매칭", 28, 400, 11, "#b9add0");
+    } else if (mode === "raid") {
       RD.text(g, "레이드 보스", 28, 330, 13, "#ffd34d");
       RD.RAID_BOSSES.forEach(([type, , name], i) => {
         tab(28 + (i % 2) * 146, 342 + Math.floor(i / 2) * 19, 140, 15, `${name} Lv${raidLv[type] || 1}`, i === raidPick, "#ff8a8a", () => { raidPick = i; save.set("raidPick", i); loadBest(); });
@@ -481,8 +590,11 @@
     UI.panel(g, 344, 344, 300, 76);
     UI.fitText(g, ch.name, 494 - 30, 368, 200, 22, "#fff", "center");
     UI.chip(g, 574, 357, 54, 22, UI.gradeCol(ch.grade), RD.GRADES[ch.grade].name, 12);
-    RD.text(g, "각성", 400, 401, 11, "#cfc6e0");
-    UI.stars(g, 432, 394, starsOf(ch.id), G.maxStars, 2);
+    RD.text(g, "각성", 360, 401, 11, "#cfc6e0");
+    UI.stars(g, 390, 394, starsOf(ch.id), G.maxStars, 1.6);
+    const ml = mlv(ch.id), tt = titleOf(ch);
+    UI.chip(g, 524, 394, 50, 16, ml >= 10 ? "#ffd34d" : "#7fe6ff", `숙련 ${ml}`, 10);
+    if (tt) UI.fitText(g, tt, 494 - 30, 340 - 0, 260, 12, ml >= 10 ? "#ffd34d" : "#9fffb0", "center");
     buttons.push({ x: 344, y: 14, w: 300, h: 406, onClick: () => { scene = "chars"; } });
     // 오른쪽 위: 소리, 테스트 모드
     const tbx = C.width - 106;
@@ -501,17 +613,172 @@
     });
     // 아래: 메뉴 바
     UI.panel(g, 16, 436, 628, 90, "#231a36");
-    [["캐릭터", "up", "#ff8a3d", () => { scene = "chars"; }], ["뽑기", "chest", "#c58aff", () => { scene = "gacha"; }], ["소리", "sound", "#7fe6ff", () => RD.audio && RD.audio.toggle()], ["테스트", "gear", "#7fe08a", () => { testMode = !testMode; save.set("testMode", testMode); }]]
+    const mr = missionsReady();
+    [["캐릭터", "up", "#ff8a3d", () => { scene = "chars"; }], ["뽑기", "chest", "#c58aff", () => { scene = "gacha"; }], ["미션", "flag", "#ffd34d", () => { scene = "missions"; }],
+      ["도감", "book", "#9fffb0", () => { scene = "dex"; }], ["소리", "sound", "#7fe6ff", () => RD.audio && RD.audio.toggle()], ["테스트", "gear", "#7fe08a", () => { testMode = !testMode; save.set("testMode", testMode); }]]
       .forEach(([label, ic, col, fn], i) => {
-        const x = 28 + i * 154, y = 448;
-        UI.btn(g, x, y, 142, 66, "#2b2140");
-        UI.icon(g, ic, x + 59, y + 8, 24, col);
-        RD.text(g, label, x + 71, y + 48, 15, "#fff", "center");
-        if (label === "테스트" && testMode) UI.chip(g, x + 100, y - 8, 40, 14, "#7fe08a", "ON", 10);
-        buttons.push({ x, y, w: 142, h: 66, onClick: fn });
+        const x = 26 + i * 103, y = 448, w = 94;
+        UI.btn(g, x, y, w, 66, "#2b2140");
+        UI.icon(g, ic, x + w / 2 - 12, y + 8, 24, col);
+        RD.text(g, label, x + w / 2, y + 48, 14, "#fff", "center");
+        if (label === "테스트" && testMode) UI.chip(g, x + 56, y - 8, 36, 14, "#7fe08a", "ON", 10);
+        if (label === "미션" && mr) UI.chip(g, x + 66, y - 8, 26, 16, "#ff4d5e", String(mr), 11, "#fff");
+        buttons.push({ x, y, w, h: 66, onClick: fn });
       });
     // 출격
     button(660, 436, 284, 90, "출격!", startRun, "#ff8a3d", subtitle());
+  }
+
+  // ---------- 일일 미션 ----------
+  function backHeader(title, sub) {
+    menuBackdrop();
+    UI.panel(g, 16, 12, 40, 40); UI.icon(g, "back", 24, 20, 24, "#fff");
+    buttons.push({ x: 16, y: 12, w: 40, h: 40, onClick: () => { scene = "select"; } });
+    RD.text(g, title, 72, 33, 24, "#fff");
+    if (sub) RD.text(g, sub, 72 + g.measureText(title).width + 16, 35, 13, "#9fffb0");
+    coinBox(C.width - 196, 14, 180);
+  }
+  function drawMissions() {
+    ensureMissions();
+    const now = new Date(), mid = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+    const left = Math.max(0, mid - now), hh = Math.floor(left / 3600000), mm = Math.floor((left % 3600000) / 60000);
+    backHeader("일일 미션", `새 미션까지 ${hh}시간 ${mm}분`);
+    missions.list.forEach((m, i) => {
+      const y = 78 + i * 112, done = m.prog >= m.n, rw = RD.MISSION_REWARD[i];
+      UI.panel(g, 30, y, 900, 96, m.claimed ? "#1d1428" : "#2b2140");
+      UI.iconBox(g, 46, y + 20, 56, { kills: "skull", boss: "skull", runs: "flag", score: "star", ult: "bolt", duel: "target", raid: "sword", char: "up", survive: "clock", gacha: "chest" }[m.id] || "flag", done ? "#ffd34d" : "#7fe6ff");
+      UI.fitText(g, missionText(m), 124, y + 30, 520, 18, m.claimed ? "#7a6a90" : "#fff");
+      UI.segBar(g, 124, y + 54, 520, 14, m.prog / m.n, done ? "#ffd34d" : "#7fe6ff");
+      RD.text(g, `${Math.floor(Math.min(m.prog, m.n)).toLocaleString()} / ${m.n.toLocaleString()}`, 644, y + 82, 11, "#cfc6e0", "right");
+      UI.icon(g, "coin", 672, y + 30, 20, "#ffd34d");
+      RD.text(g, `+${rw}`, 700, y + 40, 16, "#ffd34d");
+      if (m.claimed) UI.chip(g, 770, y + 26, 140, 44, "#3d2f5a", "받음", 15, "#9a8ab8");
+      else button(770, y + 24, 140, 48, done ? "받기" : "진행 중", () => {
+        if (!done || m.claimed) return;
+        m.claimed = true; coins += rw; save.set("coins", coins); save.set("missions", missions); RD.audio && RD.audio.sfx("coin");
+      }, done ? "#ffd34d" : "#4a3d60");
+    });
+    // 모두 완료 보너스
+    const all = missions.list.every((m) => m.claimed);
+    const y = 420;
+    UI.panel(g, 30, y, 900, 96, "#231a36");
+    UI.iconBox(g, 46, y + 20, 56, "chest", all ? "#ff8a3d" : "#5a4a70");
+    RD.text(g, "미션 3개 모두 받기 보너스", 124, y + 34, 18, "#fff");
+    RD.text(g, "매일 밤 12시에 새 미션 3개가 나온다", 124, y + 62, 12, "#b9add0");
+    RD.text(g, `+${RD.MISSION_BONUS}`, 700, y + 46, 16, "#ffd34d");
+    if (missions.bonus) UI.chip(g, 770, y + 26, 140, 44, "#3d2f5a", "받음", 15, "#9a8ab8");
+    else button(770, y + 24, 140, 48, all ? "보너스 받기" : "잠김", () => {
+      if (!all || missions.bonus) return;
+      missions.bonus = true; coins += RD.MISSION_BONUS; save.set("coins", coins); save.set("missions", missions); RD.audio && RD.audio.sfx("clear");
+    }, all ? "#ff8a3d" : "#4a3d60");
+  }
+
+  // ---------- 도감 ----------
+  function monThumb(type) {
+    const def = RD.ENEMIES[type];
+    if (def.img) { const im = RD.img(def.img[0]); if (im && im.naturalWidth) return im; }
+    return RD.getMonsterFrame(def.sprite, 0, false, def.variant);
+  }
+  function drawDex() {
+    const monKeys = Object.keys(RD.DEX).filter((k) => !RD.ENEMIES[k].boss), bossKeys = Object.keys(RD.DEX).filter((k) => RD.ENEMIES[k].boss);
+    const seen = Object.keys(RD.DEX).filter((k) => dex[k]).length;
+    backHeader("도감", `${seen}/${Object.keys(RD.DEX).length} 등록 · 새로 등록하면 코인 +${RD.DEX_REWARD}`);
+    [["mon", "몬스터", "#9fffb0"], ["boss", "보스", "#ff4d5e"], ["char", "캐릭터", "#ffd34d"]].forEach(([id, label, col], i) => tab(30 + i * 130, 66, 120, 32, label, dexTab === id, col, () => { dexTab = id; dexSel = null; }));
+    UI.panel(g, 30, 112, 640, 410, "#231a36");
+    const list = dexTab === "mon" ? monKeys : dexTab === "boss" ? bossKeys : RD.CHARACTERS.map((c) => c.id);
+    const cols = 5, cw = 118, chh = dexTab === "char" ? 186 : 92;
+    list.forEach((k, i) => {
+      const x = 42 + (i % cols) * (cw + 8), y = 124 + Math.floor(i / cols) * (chh + 8);
+      const isChar = dexTab === "char", ch = isChar ? RD.CHARACTERS.find((c) => c.id === k) : null;
+      const got = isChar ? isOwned(RD.CHARACTERS.indexOf(ch)) : !!dex[k];
+      g.fillStyle = dexSel === k ? "#ffd34d" : "#1d1622"; g.fillRect(x - 3, y - 3, cw + 6, chh + 6);
+      g.fillStyle = got ? "#2b2140" : "#18111f"; g.fillRect(x, y, cw, chh);
+      if (isChar) {
+        UI.portrait(g, ch, x + 4, y + 4, cw - 8, chh - 54);
+        if (!got) { g.fillStyle = "rgba(10,6,20,0.75)"; g.fillRect(x + 4, y + 4, cw - 8, chh - 54); }
+        UI.fitText(g, got ? ch.name : "???", x + cw / 2, y + chh - 38, cw - 8, 12, got ? "#fff" : "#7a6a90", "center");
+        UI.chip(g, x + 10, y + chh - 24, cw - 20, 16, mlv(k) >= 10 ? "#ffd34d" : "#7fe6ff", `숙련 Lv.${mlv(k)}`, 10);
+      } else {
+        const im = monThumb(k), s = Math.min((cw - 16) / im.width, (chh - 30) / im.height);
+        g.imageSmoothingEnabled = !!RD.ENEMIES[k].img;
+        if (!got) g.globalAlpha = 0.18;
+        g.drawImage(im, x + (cw - im.width * s) / 2, y + 4 + (chh - 30 - im.height * s) / 2, im.width * s, im.height * s);
+        g.globalAlpha = 1; g.imageSmoothingEnabled = false;
+        UI.fitText(g, got ? RD.DEX[k][0] : "???", x + cw / 2, y + chh - 13, cw - 8, 12, got ? "#fff" : "#7a6a90", "center");
+      }
+      buttons.push({ x, y, w: cw, h: chh, onClick: () => { dexSel = k; } });
+    });
+    // 오른쪽 설명
+    UI.panel(g, 686, 66, 258, 456, "#1d1428");
+    if (!dexSel) { RD.text(g, "칸을 눌러 자세히 보기", 815, 290, 13, "#9a8ab8", "center"); return; }
+    if (dexTab === "char") {
+      const ch = RD.CHARACTERS.find((c) => c.id === dexSel), lv = mlv(ch.id), xp = mxp(ch.id), N = RD.MASTERY.need;
+      UI.portrait(g, ch, 698, 78, 234, 150);
+      UI.fitText(g, ch.name, 815, 246, 230, 18, "#fff", "center");
+      RD.text(g, titleOf(ch) || "칭호 없음", 815, 268, 12, lv >= 10 ? "#ffd34d" : "#9fffb0", "center");
+      RD.text(g, `숙련 Lv.${lv}`, 698, 292, 14, "#7fe6ff");
+      RD.text(g, lv >= 10 ? "최고 레벨" : `${xp} / ${N[lv]}`, 932, 292, 11, "#cfc6e0", "right");
+      UI.segBar(g, 698, 302, 234, 10, lv >= 10 ? 1 : (xp - N[lv - 1]) / (N[lv] - N[lv - 1]), "#7fe6ff");
+      RD.MASTERY.rewards.forEach((r, l) => {
+        if (!r) return;
+        const y = 326 + (l - 2) * 21, on = lv >= l;
+        RD.text(g, `Lv.${l}`, 698, y, 11, on ? "#ffd34d" : "#6a5a80");
+        UI.fitText(g, r.passive ? `패시브: ${RD.MASTERY.passive[ch.id]}` : r.text + (r.title ? ` "${r.title(shortName(ch))}"` : ""), 736, y, 196, 11, on ? "#fff" : "#7a6a90");
+      });
+      return;
+    }
+    const got = !!dex[dexSel], def = RD.ENEMIES[dexSel];
+    const im = monThumb(dexSel), s = Math.min(220 / im.width, 170 / im.height);
+    g.imageSmoothingEnabled = !!def.img;
+    if (!got) g.globalAlpha = 0.18;
+    g.drawImage(im, 815 - im.width * s / 2, 80 + (170 - im.height * s) / 2, im.width * s, im.height * s);
+    g.globalAlpha = 1; g.imageSmoothingEnabled = false;
+    UI.fitText(g, got ? RD.DEX[dexSel][0] : "???", 815, 272, 230, 20, "#fff", "center");
+    UI.chip(g, 760, 290, 110, 18, def.boss ? "#ff4d5e" : def.midboss || def.elite ? "#ff8a3d" : "#9fffb0", def.boss ? "보스" : def.midboss ? "중간 보스" : def.elite ? "정예" : "몬스터", 11);
+    const desc = got ? RD.DEX[dexSel][1] : "아직 만나지 못했다. 쓰러뜨리면 등록된다";
+    g.font = `bold 12px ${RD.FONT}`;
+    const lines = [""];
+    for (const w of desc.split(" ")) { const t = (lines[lines.length - 1] + " " + w).trim(); if (g.measureText(t).width > 226) lines.push(w); else lines[lines.length - 1] = t; }
+    lines.slice(0, 4).forEach((l, i) => RD.text(g, l, 815, 330 + i * 18, 12, "#cfc6e0", "center"));
+    if (got) { RD.text(g, "쓰러뜨린 수", 702, 430, 12, "#b9add0"); RD.text(g, dex[dexSel].toLocaleString(), 930, 430, 16, "#ffd34d", "right"); }
+  }
+
+  // ---------- 결투 매칭 ----------
+  function drawMatch(dt) {
+    menuBackdrop();
+    match.t += dt;
+    const S = RD.DUEL.searchTime, me = RD.CHARACTERS[selected], rv = RD.CHARACTERS.find((c) => c.id === match.rival);
+    if (match.t < S + 1.6) {
+      // 상대 찾는 중 → 없으면 AI
+      UI.panel(g, 230, 120, 500, 300, "#231a36");
+      const ai = match.t >= S;
+      RD.text(g, ai ? "대전 상대를 찾지 못했어요" : "대전 상대를 찾는 중", 480, 170, 22, ai ? "#ff8a8a" : "#fff", "center");
+      if (!ai) {
+        for (let i = 0; i < 8; i++) {
+          const a = match.t * 4 + (i / 8) * Math.PI * 2, on = i === Math.floor(match.t * 8) % 8;
+          g.fillStyle = on ? "#ff5ad8" : "#3d2f5a"; g.fillRect(480 + Math.cos(a) * 46 - 6, 270 + Math.sin(a) * 46 - 6, 12, 12);
+        }
+        RD.text(g, `${Math.floor(match.t)}초 · 트로피 ${trophy} 근처 상대`, 480, 350, 13, "#b9add0", "center");
+      } else {
+        UI.iconBox(g, 448, 222, 64, "gear", "#ff5ad8");
+        RD.text(g, "AI 라이벌과 매칭합니다", 480, 330, 18, "#ffd34d", "center");
+        RD.text(g, `실력 Lv.${match.aiLv}`, 480, 356, 13, "#b9add0", "center");
+      }
+      button(390, 440, 180, 56, "매칭 취소", () => { match = null; scene = "select"; }, "#5a4a78");
+      return;
+    }
+    // VS 화면
+    const k = Math.min(1, (match.t - S - 1.6) * 3);
+    UI.panel(g, 40 - (1 - k) * 400, 80, 380, 360, "#231a36");
+    UI.portrait(g, me, 50 - (1 - k) * 400, 90, 360, 260);
+    UI.fitText(g, "나", 230 - (1 - k) * 400, 372, 340, 22, "#7fe6ff", "center");
+    UI.fitText(g, me.name + (titleOf(me) ? ` · ${titleOf(me)}` : ""), 230 - (1 - k) * 400, 404, 340, 14, "#fff", "center");
+    UI.panel(g, 540 + (1 - k) * 400, 80, 380, 360, "#231a36");
+    UI.portrait(g, rv, 550 + (1 - k) * 400, 90, 360, 260);
+    UI.fitText(g, match.name, 730 + (1 - k) * 400, 372, 340, 22, "#ff8a8a", "center");
+    UI.fitText(g, `${rv.name} · AI 실력 Lv.${match.aiLv}`, 730 + (1 - k) * 400, 404, 340, 14, "#fff", "center");
+    RD.text(g, "VS", 480, 260, 64 * (0.6 + 0.4 * k), "#ff5ad8", "center");
+    if (match.t > S + 3.8) { match.go = true; startRun(); }
   }
 
   // 캐릭터 선택과 상세
@@ -546,7 +813,11 @@
     UI.fitText(g, ch.name, 224, 282, 200, 24, "#fff");
     UI.chip(g, 432, 270, 50, 22, UI.gradeCol(ch.grade), RD.GRADES[ch.grade].name, 12);
     UI.chip(g, 490, 270, 60, 22, "#3d2f5a", ch.type, 12, "#fff");
-    UI.stars(g, 560, 273, starsOf(ch.id), G.maxStars, 2);
+    UI.stars(g, 560, 273, starsOf(ch.id), G.maxStars, 1.6);
+    // 숙련도 (누르면 도감의 숙련 보상 목록)
+    const ml = mlv(ch.id);
+    UI.chip(g, 640, 270, 58, 22, ml >= 10 ? "#ffd34d" : "#7fe6ff", `숙련 ${ml}`, 11);
+    buttons.push({ x: 640, y: 270, w: 58, h: 22, onClick: () => { dexTab = "char"; dexSel = ch.id; scene = "dex"; } });
     const rows = [["일반 공격", "sword", "#ff8a3d", ch.shot.name, ch.desc],
       ["전용 강화", "up", "#c58aff", ch.sig.name, ch.sig.desc],
       ["궁극기", "bolt", "#ffd34d", ch.bomb.name, ch.bomb.desc],
@@ -788,7 +1059,7 @@
       for (let i = 0; i < 14; i++) { g.rotate(Math.PI / 7 + run.rt * 0.02); g.fillStyle = "rgba(255,211,77,0.06)"; g.beginPath(); g.moveTo(0, 0); g.lineTo(700, -60); g.lineTo(700, 60); g.fill(); }
       g.restore();
     } else { const gr = g.createRadialGradient(C.width / 2, 60, 20, C.width / 2, 60, 400); gr.addColorStop(0, "rgba(255,40,60,0.25)"); gr.addColorStop(1, "rgba(255,40,60,0)"); g.fillStyle = gr; g.fillRect(0, 0, C.width, C.height); }
-    const title = run.isAdv ? "어드벤처 런 결과" : run.raid ? (run.win ? "레이드 성공!" : "레이드 종료") : run.win
+    const title = run.isAdv ? "어드벤처 런 결과" : run.duel ? (run.win ? "결투 승리!" : "결투 패배") : run.raid ? (run.win ? "레이드 성공!" : "레이드 종료") : run.win
       ? (run.mode === "timeattack" ? "TIME UP" : run.mode === "stageselect" ? "STAGE CLEAR!" : run.mode === "dream" ? "좋은 꿈 꿨어!" : run.mode === "trumpets" ? "심판 완료" : "ALL CLEAR!")
       : run.mode === "dream" ? "잠에서 깼다…" : "GAME OVER";
     RD.text(g, title, C.width / 2, 48, 48, run.win || run.isAdv ? "#ffd34d" : "#ff4d5e", "center");
@@ -836,12 +1107,16 @@
     }
     if (!list.length) RD.text(g, run.isAdv ? "어드벤처 런은 강화가 없어요" : "강화 없음", 242, 312, 12, "#9a8ab8");
     // 획득 보상
-    UI.panel(g, 684, 266, 260, 124, "#231a36");
+    UI.panel(g, 684, 266, 260, 140, "#231a36");
     RD.text(g, "획득 보상", 698, 284, 13, "#ffd34d");
     const rewards = [["coin", "코인", `+${run.coins}`, "#ffd34d"], ["star", "보유 코인", coins.toLocaleString(), "#fff"]];
-    if (run.raid) rewards.push(["sword", "레이드 레벨업", run.win ? `Lv.${run.raid.lv} → Lv.${run.raid.lv + 1}` : "클리어 시 획득", run.win ? "#ffd34d" : "#6a5a80"]);
-    rewards.forEach(([ic, k, v, col], i) => {
-      const y = 298 + i * 30;
+    if (run.duel) rewards.push(["star", "트로피", `${run.trophyGain > 0 ? "+" : ""}${run.trophyGain} → ${trophy}`, run.trophyGain > 0 ? "#ffd34d" : "#ff8a8a"]);
+    else if (run.raid) rewards.push(["sword", "레이드 레벨업", run.win ? `Lv.${run.raid.lv} → Lv.${run.raid.lv + 1}` : "클리어 시 획득", run.win ? "#ffd34d" : "#6a5a80"]);
+    if (run.mastery) rewards.push(["up", run.mastery.after > run.mastery.before ? `숙련 Lv.${run.mastery.after} 달성!` : `숙련도 Lv.${run.mastery.after}`, `+${run.mastery.xp}`, run.mastery.after > run.mastery.before ? "#9fffb0" : "#fff"]);
+    if (run.missionDone || run.dexNew) rewards.push(["flag", run.missionDone ? `미션 완료 ${run.missionDone}개` : "도감 새 등록", run.dexNew ? `도감 +${run.dexNew}` : "로비에서 받기", "#ffd34d"]);
+    if (rewards.length > 4) rewards.splice(1, 1); // 칸이 모자라면 보유 코인 줄을 뺀다
+    rewards.slice(0, 4).forEach(([ic, k, v, col], i) => {
+      const y = 296 + i * 26;
       g.fillStyle = "#2b2140"; g.fillRect(696, y, 236, 24);
       UI.icon(g, ic, 702, y + 4, 16, col === "#6a5a80" ? "#6a5a80" : "#ffd34d");
       RD.text(g, k, 724, y + 12, 12, col === "#6a5a80" ? "#6a5a80" : "#fff");
@@ -922,6 +1197,12 @@
       drawResult();
     } else if (scene === "chars") {
       drawChars();
+    } else if (scene === "missions") {
+      drawMissions();
+    } else if (scene === "dex") {
+      drawDex();
+    } else if (scene === "match") {
+      drawMatch(dt);
     } else if (scene === "gacha") {
       drawGacha();
       RD.drawSoundButton(g);

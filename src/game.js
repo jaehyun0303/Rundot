@@ -52,6 +52,12 @@
   class Run {
     constructor(charId, mode = "story", diff = "normal", opts = {}) {
       this.stars = opts.stars || 1; // 각성 단계 (뽑기에서 중복으로 얻으면 오른다)
+      // 캐릭터 숙련도 보상 (체력·공격력·궁극기·Lv.5 전용 패시브)
+      this.mast = opts.mastery || 1;
+      this.mastHp = RD.MASTERY.rewards.slice(0, this.mast + 1).reduce((a, r) => a + ((r && r.hp) || 0), 0);
+      this.mastDmg = RD.MASTERY.rewards.slice(0, this.mast + 1).reduce((a, r) => a + ((r && r.dmg) || 0), 0);
+      this.mpas = this.mast >= 5;
+      this.killsByType = {}; this.bossKills = 0; this.ultCount = 0; // 미션·도감 기록
       this.coins = 0; // 이번 판에 모은 코인
       this.slashes = []; // 여우 베기
       this.parry = RD.FOX_PARRY.max; // 여우 베기 게이지 (탄을 벨 수 있는 횟수)
@@ -73,7 +79,7 @@
       this.score = 0;
       this.nextExtend = C.extendEvery;
       this.lives = this.M.lives || this.D.lives;
-      this.bombs = C.bombs;
+      this.bombs = C.bombs + (this.mast >= 8 ? 1 : 0);
       this.kills = 0;
       this.over = false;
       this.win = false;
@@ -91,10 +97,10 @@
       this.paused = false;
 
       this.mech = charId === "mech" ? { evo: 0, hp: RD.MECH.hp[0], alive: true, prog: 0, flash: 0, barrier: false, barrierT: 0, cannonT: 0 } : null;
-      this.tech = { pts: 0, has: {} }; // 메카 테크트리
+      this.tech = { pts: this.mpas ? 2 : 0, has: {} }; // 메카 테크트리 (숙련 패시브: 2점으로 시작)
       this.techOpen = false; this.techSel = null;
       this.mega = false; this.megaPow = 0; this.roars = []; // 개구리 메가 프로그
-      this.player = { vx: 0, vy: 0, x: 160, y: 260, hp: (RD.CHAR_HP[charId] || C.maxHp) + RD.GACHA.starHp * (this.stars - 1), gulp: 0, invuln: C.respawnInvuln, hurt: 0, dead: 0, animT: 0, shotCd: 0, tilt: 0 };
+      this.player = { vx: 0, vy: 0, x: 160, y: 260, hp: (RD.CHAR_HP[charId] || C.maxHp) * (1 + this.mastHp) + RD.GACHA.starHp * (this.stars - 1), gulp: 0, invuln: C.respawnInvuln, hurt: 0, dead: 0, animT: 0, shotCd: 0, tilt: 0 };
       this.pet = { x: 100, y: 260, t: 0, cd: 0 };
       this.sub = { missile: 1, laser: 2, rear: 0.5, lightning: 1.5, laserOn: 0 };
       this.shots = [];
@@ -123,6 +129,15 @@
         this.raid = { type: opts.raidBoss || "boss_bat", lv: opts.raidLv || 1, dmg: 0, rage: 0, spawned: false };
         this.brawl = { ammo: 3, charge: 0, aimAng: 0 }; // 브롤스타즈식: 탄환과 궁극기 게이지
         this.pendingLevels = 4; // 시작할 때 강화 4개
+      }
+      if (mode === "duel") {
+        // 1대1 결투: 레이드 경기장과 조작을 그대로 쓴다. 상대는 AI 라이벌 (나중에 온라인 상대로 바뀔 자리)
+        const du = opts.duel || {};
+        const arena = du.arena || pick(RD.RAID_BOSSES)[0];
+        this.raid = { type: arena, lv: 1, dmg: 0, rage: 0, spawned: true, duel: true };
+        this.duel = { rival: du.rival || "fox", aiLv: du.aiLv || 1, name: du.name || "AI 라이벌", started: false, result: null };
+        this.brawl = { ammo: 3, charge: 0, aimAng: 0 };
+        this.pendingLevels = 3;
       }
       const raidStage = this.raid ? RD.RAID_BOSSES.find((r) => r[0] === this.raid.type)[1] : null;
       const sp = raidStage ? RD.STAGES.findIndex((st) => st.id === raidStage) : this.M.special ? RD.STAGES.findIndex((st) => st.id === this.M.special) : -1;
@@ -158,9 +173,10 @@
     // ---------- 능력치 (강화 단계에서 계산) ----------
     lv(id) { return this.up[id] || 0; }
     get power() { return 1 + this.lv("multi"); }
-    get dmgMul() { return (1 + 0.2 * this.lv("dmg")) * (1 + RD.GACHA.starDmg * (this.stars - 1)) * (1 + this.megaPow); }
-    get maxHp() { return ((RD.CHAR_HP[this.charId] || C.maxHp) + 25 * this.lv("hp") + RD.GACHA.starHp * (this.stars - 1)) * (this.mega ? RD.MEGA_FROG.hpMul : 1); }
-    get armor() { return 1 - 0.15 * this.lv("armor"); }
+    get dmgMul() { return (1 + 0.2 * this.lv("dmg")) * (1 + RD.GACHA.starDmg * (this.stars - 1)) * (1 + this.megaPow) * (1 + this.mastDmg); }
+    get maxHp() { return ((RD.CHAR_HP[this.charId] || C.maxHp) * (1 + this.mastHp) + 25 * this.lv("hp") + RD.GACHA.starHp * (this.stars - 1)) * (this.mega ? RD.MEGA_FROG.hpMul : 1); }
+    get shieldEvery() { return this.mpas && this.charId === "cat" ? 6 : RD.CAT_SHIELD.every; }
+    get armor() { return (1 - 0.15 * this.lv("armor")) * (this.mpas && this.charId === "bear" ? 0.9 : 1); }
     get mechMax() { return RD.MECH.hp[this.mech.evo] * (1 + 0.15 * this.lv("hp")) * (this.tech.has.plate ? 1.3 : 1); }
 
     // 테크트리 해금
@@ -262,7 +278,7 @@
       const p = this.player;
       this.mega = true;
       this.megaCut = 2.6; // 변신 일러스트 컷인
-      this.hunger = RD.MEGA_FROG.hunger;
+      this.hunger = RD.MEGA_FROG.hunger + (this.mpas ? 8 : 0);
       p.hp = this.maxHp;
       p.invuln = Math.max(p.invuln, 3);
       this.shake = 0.5;
@@ -385,7 +401,7 @@
     get bossAlive() { return this.enemies.some((e) => !e.dead && (RD.ENEMIES[e.type].boss || RD.ENEMIES[e.type].midboss)); }
     get boss() { return this.enemies.find((e) => !e.dead && (RD.ENEMIES[e.type].boss || RD.ENEMIES[e.type].midboss)); }
     get bulletSpeed() { return RD.BULLET.speed * (1 + 0.12 * (this.loop - 1)) * this.D.bulletSpeed; }
-    get timeLeft() { return this.mode === "timeattack" || this.mode === "raid" ? Math.max(0, this.M.time - this.t) : null; }
+    get timeLeft() { return this.mode === "timeattack" || this.mode === "raid" || this.mode === "duel" ? Math.max(0, this.M.time - this.t) : null; }
 
     needFor(level) { return Math.round(5 + level * 3.5 + Math.pow(level, 1.5)); }
 
@@ -531,6 +547,7 @@
       const M = this.mode;
       if (this.M.special === "dream") return this.directDream(dt);
       if (this.M.special === "judgment") return this.directJudgment(dt);
+      if (this.duel) return this.directDuel(dt);
       if (this.raid) return this.directRaid(dt);
       // 혼돈 모드: 일정 시간마다 지역이 무작위로 바뀐다
       if (M === "chaos" && !this.bossAlive && (this.shiftT = (this.shiftT || 0) + dt) >= this.M.shiftEvery) {
@@ -607,6 +624,92 @@
           this.addEnemy(pick(pool), x, y, { path: "chase", spd: rand(60, 100), fireT: rand(1.5, 3) });
         }
       }
+    }
+
+    // ---------- 1대1 결투 ----------
+    directDuel(dt) {
+      const Du = this.duel;
+      if (!Du.started && this.t > 1.2) {
+        Du.started = true;
+        const ch = RD.CHARACTERS.find((c) => c.id === Du.rival);
+        const lvK = 0.85 + 0.1 * Du.aiLv;
+        const r = this.addEnemy("rival", C.width - 200, C.height / 2, { path: "rival", rival: true, ch: Du.rival, name: Du.name, ammo: 3, cd: 1.2, superT: 6, strafe: 1, strafeT: 1 });
+        r.maxHp = r.hp = (RD.CHAR_HP[Du.rival] || 100) * RD.DUEL.hpMul * lvK;
+        RD.audio && RD.audio.sfx("warning");
+        this.banner = { text: "FIGHT!", sub: `${ch.name} · ${Du.name}`, color: "#ff5ad8", t: 0, life: 1.6 };
+      }
+      const r = this.enemies.find((e) => e.rival && !e.dead);
+      if (r) this.raid.dmg = r.maxHp - r.hp;
+    }
+
+    updateRival(e, dt) {
+      const p = this.player, Du = this.duel, A = RD.DUEL.ai[e.ch], L = Du.aiLv;
+      const dx = p.x - e.x, dy = p.y - e.y, d = Math.hypot(dx, dy) || 1, a = Math.atan2(dy, dx);
+      e.face = dx >= 0 ? 1 : -1;
+      if (p.dead > 0 || this.over) return;
+      // 이동: 선호 거리를 지키며 옆으로 돈다. 날아오는 탄은 피한다
+      if ((e.strafeT -= dt) <= 0) { e.strafe = Math.random() < 0.5 ? -1 : 1; e.strafeT = rand(0.8, 1.8); }
+      let vx = 0, vy = 0;
+      const want = e.dashT > 0 ? 0 : A.dist;
+      const toward = (d - want) / 120;
+      vx += Math.cos(a) * Math.max(-1, Math.min(1, toward)); vy += Math.sin(a) * Math.max(-1, Math.min(1, toward));
+      vx += -Math.sin(a) * e.strafe * 0.8; vy += Math.cos(a) * e.strafe * 0.8;
+      if (!(e.dodgeT > 0) && Math.random() < dt * (0.6 + 0.5 * L)) {
+        const threat = this.shots.find((s) => !s.gone && Math.hypot(s.x - e.x, s.y - e.y) < 150 && ((e.x - s.x) * (s.vx || 0) + (e.y - s.y) * (s.vy || 0)) > 0);
+        if (threat) { const sa = Math.atan2(threat.vy || 0, threat.vx || 1); e.dodgeT = 0.3; e.dodgeA = sa + (Math.random() < 0.5 ? 1 : -1) * Math.PI / 2; }
+      }
+      let sp = (140 + 12 * L) * (e.slowT > 0 ? 0.5 : 1);
+      if (e.dodgeT > 0) { e.dodgeT -= dt; vx = Math.cos(e.dodgeA) * 1.6; vy = Math.sin(e.dodgeA) * 1.6; }
+      if (e.dashT > 0) { e.dashT -= dt; sp = 420; vx = Math.cos(a); vy = Math.sin(a); }
+      const vl = Math.hypot(vx, vy) || 1;
+      e.x += (vx / Math.max(1, vl)) * sp * dt; e.y += (vy / Math.max(1, vl)) * sp * dt;
+      e.x = Math.max(40, Math.min(C.width - 40, e.x)); e.y = Math.max(80, Math.min(C.height - 40, e.y));
+      // 탄환 장전
+      e.ammo = Math.min(3, e.ammo + dt / (A.reload * (1.1 - 0.05 * L)));
+      e.cd -= dt;
+      const dmgK = 0.5 + 0.09 * L; // AI 실력이 오를수록 아프다
+      this._firing = e;
+      if (A.melee) {
+        // 여우 라이벌: 가까이 붙어서 벤다
+        if (d < 150 && e.cd <= 0 && e.ammo >= 1) {
+          e.ammo -= 1; e.cd = 0.45;
+          this.effects.push({ type: "arcslash", x: e.x, y: e.y, ang: a, range: 150, arc: 0.65, t: 0, life: 0.18 });
+          if (p.invuln <= 0) this.hurt(A.dmg * dmgK);
+        } else if (d > 220 && e.cd <= 0 && Math.random() < dt * 1.5) { e.dashT = 0.35; e.cd = 0.6; }
+      } else if (e.cd <= 0 && e.ammo >= 1 && d < A.dist * 1.8) {
+        e.ammo -= 1; e.cd = 0.4;
+        const lead = Math.atan2(dy + (this.input.moveY || 0) * 0, dx);
+        for (let i = 0; i < A.n; i++) {
+          const an = lead + (i - (A.n - 1) / 2) * A.spread + rand(-0.04, 0.04) * (6 - L);
+          this.bullets.push({ x: e.x, y: e.y, vx: Math.cos(an) * A.speed, vy: Math.sin(an) * A.speed, r: A.r, color: A.color, boss: true, dmg: A.dmg * dmgK, homing: A.homing });
+        }
+      }
+      // 궁극기: 원형으로 탄을 퍼뜨린다 (여우는 돌진 베기)
+      if ((e.superT -= dt) <= 0) {
+        e.superT = Math.max(8, 15 - L);
+        if (A.melee) { e.dashT = 0.5; this.effects.push({ type: "text", x: e.x, y: e.y - 60, text: "일섬!", color: "#bfe4ff", t: 0, life: 0.8 }); }
+        else {
+          for (let i = 0; i < 14; i++) { const an = (i / 14) * Math.PI * 2; this.bullets.push({ x: e.x, y: e.y, vx: Math.cos(an) * 300, vy: Math.sin(an) * 300, r: 9, color: A.color, boss: true, dmg: 12 * dmgK }); }
+          this.effects.push({ type: "ring", x: e.x, y: e.y, t: 0, life: 0.5 });
+          this.effects.push({ type: "text", x: e.x, y: e.y - 60, text: "궁극기!", color: A.color, t: 0, life: 0.8 });
+        }
+        RD.audio && RD.audio.sfx("ult_" + e.ch);
+      }
+      if (e.dashT > 0 && A.melee && d < 60 && p.invuln <= 0) this.hurt(A.dmg * 1.2 * dmgK);
+      this._firing = null;
+    }
+
+    duelEnd(win, title, sub) {
+      if (this.duel.result) return;
+      this.duel.result = win ? "win" : "lose";
+      this.over = true; this.win = win;
+      this.bullets = [];
+      if (win) {
+        this.coins += RD.DUEL.reward;
+        this.addScore(20000 + Math.round(this.timeLeft) * 200);
+      }
+      RD.audio && RD.audio.sfx(win ? "clear" : "gameover");
+      this.banner = { text: win ? "승리!" : "패배", sub: sub || title, color: win ? "#ffd34d" : "#ff4d5e", t: 0, life: 99 };
     }
 
     // ---------- 달콤한 꿈 ----------
@@ -1174,7 +1277,7 @@
       const n = Math.min(RD.ALLIES.length, this.summonCount), p = this.player;
       if (!this.summons) this.summons = [];
       const sig = this.raid ? 0 : this.lv("sig");
-      const hpMul = (1 + 0.25 * sig) * (this.raid ? 2 : 1) * (1 + 0.1 * (this.stars - 1));
+      const hpMul = (1 + 0.25 * sig) * (this.raid ? 2 : 1) * (1 + 0.1 * (this.stars - 1)) * (this.mpas ? 1.3 : 1);
       // 새 정령 합류 (정해진 순서)
       while (this.summons.length < n) {
         const A = RD.ALLIES[this.summons.length];
@@ -1331,6 +1434,7 @@
       const life = (this.mega ? RD.MEGA_FROG.gulpLife : { fox: 1.0, rabbit: 3.0, bear: 1.5, owl: 2.8, cat: 3.0, panda: 6, mech: 7, frog: 5 }[this.charId]) + (this.charId === "fox" || this.mega ? 0 : this.charId === "bear" ? 0.3 * sdur : sdur)
         + (this.charId === "mech" && this.tech.has.call ? 2 : 0);
       this.bombT = life;
+      this.ultCount++;
       if (this.mech) this.rebuildMech(1, true); // 부서져 있어도 바로 메카가 돌아온다 (진화 단계 그대로)
       this.ult = { kind: this.mega ? "megafrog" : this.charId, t: 0, life, x0: p.x, y0: p.y, done: {}, spawnT: 0, mul: 1 + 0.3 * this.lv("bomb") + (this.raid ? this.bst("spow") : 0), sdur };
       p.invuln = Math.max(p.invuln, life + 0.6);
@@ -1594,6 +1698,7 @@
       this.lives--;
       this.bombs = Math.max(this.bombs, C.bombs);
       this.bullets = [];
+      if (this.lives <= 0 && this.duel) { p.dead = 99; p.hp = 0; this.duelEnd(false, "K.O."); return; }
       if (this.lives <= 0) { this.over = true; p.dead = 99; p.hp = 0; RD.audio && RD.audio.sfx("gameover"); return; }
       p.dead = 1; // 1초 뒤 체력을 모두 채워 다시 등장
     }
@@ -1624,6 +1729,13 @@
         this.updateBullets(dt);
         return;
       }
+      if (this.duel && this.timeLeft <= 0) {
+        // 시간 종료: 남은 체력 비율이 높은 쪽이 이긴다
+        const r = this.enemies.find((e) => e.rival && !e.dead);
+        const mine = p.hp / this.maxHp, theirs = r ? r.hp / r.maxHp : 0;
+        this.duelEnd(mine >= theirs, "시간 종료", `내 체력 ${Math.round(mine * 100)}% · 상대 ${Math.round(theirs * 100)}%`);
+        return;
+      }
       if (this.mode === "raid" && this.timeLeft <= 0) {
         this.over = true;
         this.win = false;
@@ -1650,7 +1762,7 @@
         inp.moveX = inp.moveY = 0;
       } else {
         p.slow = Math.max(0, (p.slow || 0) - dt);
-        const sp = (inp.focus ? C.focusSpeed : C.moveSpeed) * (1 + 0.12 * this.lv("speed")) * (p.slow > 0 ? 0.5 : 1) * (this.mech && !this.mech.alive ? 1.15 : 1); // 메카 없는 다람쥐는 조금 빠르다
+        const sp = (inp.focus ? C.focusSpeed : C.moveSpeed) * (1 + 0.12 * this.lv("speed")) * (p.slow > 0 ? 0.5 : 1) * (this.mech && !this.mech.alive ? 1.15 : 1) * (this.mpas && this.charId === "rabbit" ? 1.1 : 1); // 메카 없는 다람쥐는 조금 빠르다
         let mx = inp.dx * sp * dt + inp.moveX;
         let my = inp.dy * sp * dt + inp.moveY;
         p.inverted = Math.max(0, (p.inverted || 0) - dt);
@@ -1684,10 +1796,10 @@
       p.atkT = Math.max(0, (p.atkT || 0) - dt);
       if (this.megaCut > 0) this.megaCut -= dt;
       // 패시브
-      if (this.charId === "fox") this.parry = Math.min(RD.FOX_PARRY.max, this.parry + dt / RD.FOX_PARRY.regen);
+      if (this.charId === "fox") this.parry = Math.min(RD.FOX_PARRY.max, this.parry + dt / RD.FOX_PARRY.regen * (this.mpas ? 1.3 : 1));
       if (this.charId === "cat" && !p.shielded) {
         this.shield += dt;
-        if (this.shield >= RD.CAT_SHIELD.every) { this.shield = 0; p.shielded = true; RD.audio && RD.audio.sfx("shield"); }
+        if (this.shield >= this.shieldEvery) { this.shield = 0; p.shielded = true; RD.audio && RD.audio.sfx("shield"); }
       }
       p.animT += dt;
       this.bombT = Math.max(0, this.bombT - dt);
@@ -1718,7 +1830,7 @@
         if (bi >= 0) {
           const b = this.bullets.splice(bi, 1)[0];
           const shielded = p.shielded;
-          this.hurt(C.bulletDamage);
+          this.hurt(b.dmg || C.bulletDamage);
           if (!shielded) {
             const bo = this.enemies.find((e) => !e.dead && RD.ENEMIES[e.type].style === "bat");
             if (b.boss && bo) { bo.hp = Math.min(bo.maxHp, bo.hp + bo.maxHp * 0.02); this.effects.push({ type: "text", x: bo.x, y: bo.y - 90, text: "흡혈", color: "#ff4d5e", t: 0, life: 0.8, size: 16 }); }
@@ -1726,7 +1838,7 @@
             if (b.poison) { p.poison = 4; this.text("독한 종기!", "#9fff6a"); }
           }
         } else {
-          const hitE = this.enemies.find((e) => !e.dead && e.t > 0 && this.inBox(p, e, -6));
+          const hitE = this.enemies.find((e) => !e.dead && !e.rival && e.t > 0 && this.inBox(p, e, -6));
           if (hitE) {
             this.hurt(C.contactDamage);
             if (hitE.type === "bomber") this.damage(hitE, 999); // 자폭
@@ -1827,7 +1939,7 @@
           // 회오리 하나가 지울 수 있는 탄 수에는 한도가 있다
           s.absorbed = s.absorbed || 0;
           this.bullets = this.bullets.filter((b) => {
-            if (s.absorbed >= RD.OWL_ABSORB || b.boss || Math.abs(b.x - s.x) > s.w / 2 + b.r || Math.abs(b.y - s.y) > s.h / 2 + b.r) return true;
+            if (s.absorbed >= RD.OWL_ABSORB + (this.mpas ? 2 : 0) || b.boss || Math.abs(b.x - s.x) > s.w / 2 + b.r || Math.abs(b.y - s.y) > s.h / 2 + b.r) return true;
             s.absorbed++;
             return false;
           });
@@ -1881,6 +1993,9 @@
       const def = RD.ENEMIES[e.type];
       e.dead = true;
       this.kills++;
+      this.killsByType[e.type] = (this.killsByType[e.type] || 0) + 1;
+      if (def.boss) this.bossKills++;
+      if (e.rival) { this.duelEnd(true, "KO!"); return; }
       if (this.mech) this.addParts(def.boss ? 10 : def.midboss ? 5 : 1);
       if (this.mega) this.hunger = Math.min(RD.MEGA_FROG.hungerMax, this.hunger + RD.MEGA_FROG.feedKill); // 메가 프로그: 쓰러뜨릴 때마다 조금 찬다
       RD.audio && RD.audio.sfx(def.boss || def.midboss ? "boom" : "kill");
@@ -2069,6 +2184,10 @@
           case "midboss":
             if (e.t < e.life) e.x += (e.stopX - e.x) * Math.min(1, dt * 1.2);
             else e.x -= C.scrollSpeed * dt; // 시간이 지나면 떠난다
+            break;
+          case "rival":
+            this.updateRival(e, dt);
+            e.fireT = 1e9; // 공격은 updateRival 에서
             break;
           case "chase": {
             // 레이드 잡몹: 플레이어 쪽으로 걸어온다
@@ -2661,6 +2780,12 @@
       const p = this.player;
       for (const b of this.bullets) {
         b.age = (b.age || 0) + dt;
+        if (b.homing && b.age < 1.1 && p.dead <= 0) {
+          // 결투 라이벌 고양이 구슬: 살짝 따라온다
+          const sp = Math.hypot(b.vx, b.vy), cur = Math.atan2(b.vy, b.vx), want = Math.atan2(p.y - b.y, p.x - b.x);
+          const da = ((want - cur + Math.PI * 3) % (Math.PI * 2)) - Math.PI, na = cur + Math.max(-2 * dt, Math.min(2 * dt, da));
+          b.vx = Math.cos(na) * sp; b.vy = Math.sin(na) * sp;
+        }
         if (b.spiral) {
           const sp = b.spiral;
           sp.ang += sp.angVel * dt; sp.rad = Math.max(0, sp.rad + sp.radVel * dt);

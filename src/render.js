@@ -150,9 +150,30 @@
   }
   RD.drawBackground = drawBackground;
 
+  // 결투 상대: 캐릭터 그림 (적이라는 표시로 빨간 테두리 그림자)
+  function drawRival(g, run, e) {
+    const A = RD.DUEL.ai[e.ch];
+    const fr = e.flash > 0 ? 3 : e.cd > 0.25 ? 2 : Math.floor(e.t * 6) % 2;
+    const pic = RD.playerPic(e.ch, fr);
+    g.fillStyle = "rgba(0,0,0,0.3)"; g.beginPath(); g.ellipse(e.x, e.y + 34, 22, 7, 0, 0, Math.PI * 2); g.fill();
+    g.strokeStyle = "rgba(255,77,94,0.55)"; g.lineWidth = 3; g.beginPath(); g.ellipse(e.x, e.y + 34, 26, 9, 0, 0, Math.PI * 2); g.stroke();
+    g.save(); g.translate(Math.round(e.x), Math.round(e.y));
+    if (e.face < 0) g.scale(-1, 1);
+    if (pic) { const hh = 88, ww = pic.width * hh / pic.height; g.imageSmoothingEnabled = true; g.drawImage(pic, -ww / 2, -hh / 2 - 4, ww, hh); if (e.flash > 0) { g.globalCompositeOperation = "lighter"; g.globalAlpha = 0.5; g.drawImage(pic, -ww / 2, -hh / 2 - 4, ww, hh); } }
+    else { const spr = RD.getCharacterFrame(e.ch, "jump", 0), s = C.spriteScale; g.drawImage(spr, -20 * s, -24 * s, RD.SPRITE_SIZE * s, RD.SPRITE_SIZE * s); }
+    g.restore(); g.imageSmoothingEnabled = false;
+    // 머리 위 이름표와 체력
+    const k = Math.max(0, e.hp / e.maxHp);
+    text(g, e.name, e.x, e.y - 62, 11, "#ff8a9a", "center");
+    g.fillStyle = "#1d1622"; g.fillRect(e.x - 30, e.y - 54, 60, 8);
+    g.fillStyle = "#ff4d5e"; g.fillRect(e.x - 29, e.y - 53, 58 * k, 6);
+    for (let i = 0; i < 3; i++) { g.fillStyle = "#1d1622"; g.fillRect(e.x - 22 + i * 15, e.y + 44, 13, 5); g.fillStyle = A.color; g.fillRect(e.x - 21 + i * 15, e.y + 45, 11 * Math.max(0, Math.min(1, e.ammo - i)), 3); }
+  }
+
   function drawEnemies(g, run) {
     for (const e of run.enemies) {
       if (e.delay > 0) continue;
+      if (e.rival) { if (!e.dead) drawRival(g, run, e); continue; }
       const def = RD.ENEMIES[e.type];
       const sc = def.scale;
       const size = RD.MONSTER_SIZE * sc;
@@ -982,7 +1003,8 @@
     const hpK = Math.max(0, p.hp) / run.maxHp;
     const timed = run.mode === "timeattack" || run.mode === "raid";
 
-    if (run.raid) drawRaidTop(g, run, hpK);
+    if (run.duel) drawDuelTop(g, run, hpK);
+    else if (run.raid) drawRaidTop(g, run, hpK);
     else {
       // ── 왼쪽 위: 점수 · 체력 · 레벨 · 패시브
       const extra = run.charId === "fox" || run.charId === "cat" || run.mech || run.mega || run.M.special === "dream";
@@ -1121,7 +1143,7 @@
   RD.TECH_BTN = { x: 14, y: 112, w: 150, h: 32 };
   function drawTechButton(g, run) {
     const UI = RD.UI, B = RD.TECH_BTN, n = run.tech.pts;
-    const y = run.raid ? 104 : B.y;
+    const y = run.duel ? 114 : run.raid ? 104 : 112;
     RD.TECH_BTN.y = y;
     if (n > 0) { g.globalAlpha = 0.35 + 0.25 * Math.sin(run.t * 6); g.fillStyle = "#ffb347"; g.fillRect(B.x - 6, y - 6, B.w + 12, B.h + 12); g.globalAlpha = 1; }
     UI.btn(g, B.x, y, B.w, B.h, n > 0 ? "#ff8a3d" : "#3a2d58");
@@ -1219,6 +1241,31 @@
     if (b.sub) text(g, b.sub, C.width / 2, y + 62, 13, "#fff", "center");
     g.restore();
     if (b.sub2) text(g, b.sub2, C.width / 2, y + h + 18, 13, "#ffc49a", "center");
+  }
+
+  // 결투 위쪽 HUD: 나 (왼쪽) VS 상대 (오른쪽), 가운데 시간
+  function drawDuelTop(g, run, hpK) {
+    const UI = RD.UI, Du = run.duel, r = run.enemies.find((e) => e.rival);
+    const rch = RD.CHARACTERS.find((c) => c.id === Du.rival);
+    const side = (x, ch, name, k, col, right) => {
+      UI.panel(g, x, 12, 330, 62, "rgba(35,26,54,0.92)");
+      const px = right ? x + 330 - 56 : x + 6;
+      UI.portrait(g, ch, px, 16, 50, 54);
+      const tx = right ? x + 330 - 66 : x + 66, al = right ? "right" : "left";
+      UI.fitText(g, name, tx, 28, 200, 13, "#fff", al);
+      text(g, ch.name, right ? x + 10 : x + 320, 28, 10, "#b9add0", right ? "left" : "right");
+      const bx = right ? x + 10 : x + 66;
+      UI.segBar(g, bx, 42, 254, 14, k, col, 10);
+      text(g, `${Math.round(k * 100)}%`, right ? bx + 4 : bx + 250, 64, 10, "#cfc6e0", right ? "left" : "right");
+    };
+    side(14, run.char, "나" + (RD.playerTitle ? " · " + RD.playerTitle : ""), hpK, hpK < 0.3 ? UI.COL.red : "#7fe08a", false);
+    side(C.width - 344 - 60, rch, Du.name, r ? r.hp / r.maxHp : (Du.result === "win" ? 0 : 1), "#ff4d5e", true);
+    if (run.mech) { UI.panel(g, 14, 82, 222, 22, "rgba(35,26,54,0.9)"); drawMechRow(g, run, 22, 93, 206); }
+    if (run.mega) { UI.panel(g, 14, 82, 222, 22, "rgba(35,26,54,0.9)"); drawMegaRow(g, run, 22, 93, 206); }
+    const s = Math.max(0, Math.ceil(run.timeLeft));
+    UI.panel(g, C.width / 2 - 66 - 30, 12, 132, 62, "#1d1428");
+    text(g, "VS", C.width / 2 - 30, 26, 13, "#ff5ad8", "center");
+    text(g, `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`, C.width / 2 - 30, 52, 24, s < 20 ? UI.COL.red : UI.COL.cyan, "center");
   }
 
   // 레이드 위쪽 HUD: 캐릭터 · 보스 패널(광폭화 단계) · 시간과 준 피해

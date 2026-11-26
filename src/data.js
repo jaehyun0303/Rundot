@@ -56,6 +56,7 @@ RD.MODES = {
   // 특별 모드
   dream: { name: "달콤한 꿈", special: "dream", lives: 1, desc: "사탕 나라의 꿈. 사탕을 모아 슈가 러시! 꿈 게이지가 바닥나면 잠에서 깬다" },
   adventure: { name: "어드벤처 런", special: "adventure", desc: "쿠키런처럼 자동으로 달린다! 점프(오른쪽/Space)와 슬라이드(왼쪽/↓)로 장애물을 피하고 젤리를 모아라" },
+  duel: { name: "결투", time: 120, lives: 1, duel: true, desc: "1대1 결투! 대전 상대를 찾고, 없으면 AI 라이벌과 붙는다. 2분 안에 쓰러뜨리거나 체력을 더 많이 남겨라" },
   raid: { name: "레이드", special: "raid", time: 180, desc: "브롤스타즈식 조작! 직접 조준해서 쏘고(탄환), 맞히면 궁극기가 찬다. 보스 하나에 3분" },
   trumpets: { name: "일곱 나팔", special: "judgment", scoreMul: 2, desc: "일곱 나팔이 차례로 울리며 재앙이 내린다. 마지막엔 큰 붉은 용. 점수 x2" },
 };
@@ -402,6 +403,7 @@ RD.ENEMIES = {
   boss_dragon: { sprite: "batking", variant: "crimson", exp: 150, hp: 5600, w: 240, h: 180, score: 300000, scale: 7.5, boss: true, style: "dragon" },
   // 일곱째 나팔의 보스: 일곱 대접을 가진 일곱 천사 (요한계시록 15~16장)
   boss_angel: { img: ["cut_angel_0", "cut_angel_1"], drawH: 230, sprite: "wisp", variant: "holy", exp: 40, hp: 5000, w: 90, h: 190, score: 60000, scale: 5, boss: true, style: "angel" },
+  rival: { sprite: "slime", exp: 0, hp: 100, w: 44, h: 54, score: 5000, scale: 2, desc: "결투 상대" },
   boss_bat: { img: ["boss_bat_0", "boss_bat_1"], drawH: 250, sprite: "batking", exp: 60, hp: 1700, w: 200, h: 150, score: 50000, scale: 6, boss: true, style: "bat" },
   boss_crystal: { flip: true, img: ["boss_crystal_0", "boss_crystal_1"], drawH: 270, sprite: "golem", variant: "crystal", exp: 70, hp: 2000, w: 150, h: 160, score: 60000, scale: 5.6, boss: true, ground: true, style: "crystal" },
   boss_fire: { img: ["boss_fire_0", "boss_fire_1"], drawH: 210, sprite: "slime", variant: "fire", exp: 80, hp: 2100, w: 200, h: 130, score: 70000, scale: 7, boss: true, ground: true, style: "fire" },
@@ -509,6 +511,101 @@ RD.MEGA_FROG = {
   shieldCap: 2, // 보호막 최대 = 최대 체력 x2
   powSmall: 0.04, powBig: 0.25, powMax: 1, // 삼킬 때마다 공격력 증가 (최대 +100%)
 };
+// ---------- 1대1 결투 ----------
+RD.DUEL = {
+  searchTime: 4, // 대전 상대를 찾는 시간 (지금은 온라인 상대가 없어서 AI로 이어진다)
+  hpMul: 15, // AI 라이벌 체력 = 캐릭터 기본 체력 x 15
+  trophyWin: 25, trophyLose: -12, reward: 80,
+  // 캐릭터별 AI 공격 (선호 거리, 재장전, 한 번에 쏘는 탄, 탄 속도·크기·피해)
+  ai: {
+    fox: { dist: 110, reload: 1.0, melee: true, dmg: 20, color: "#bfe4ff" },
+    rabbit: { dist: 280, reload: 1.1, n: 3, spread: 0.16, speed: 560, r: 6, dmg: 9, color: "#e8e8f0" },
+    bear: { dist: 240, reload: 1.4, n: 1, spread: 0, speed: 330, r: 15, dmg: 24, color: "#8a93a0" },
+    owl: { dist: 300, reload: 1.3, n: 1, spread: 0, speed: 180, r: 24, dmg: 14, color: "#bff5d8" },
+    cat: { dist: 320, reload: 1.1, n: 3, spread: 0.24, speed: 400, r: 9, dmg: 11, color: "#c58aff", homing: true },
+    panda: { dist: 300, reload: 1.1, n: 2, spread: 0.12, speed: 560, r: 7, dmg: 11, color: "#9fff8a" },
+    mech: { dist: 300, reload: 1.3, n: 6, spread: 0.08, speed: 680, r: 5, dmg: 5, color: "#ffd34d" },
+    frog: { dist: 280, reload: 1.05, n: 3, spread: 0.3, speed: 430, r: 10, dmg: 10, color: "#ff5ad8" },
+  },
+  names: ["반짝이는", "용감한", "졸린", "배고픈", "전설의", "수상한", "느긋한", "번개같은"],
+};
+
+// ---------- 도감 ----------
+RD.DEX = {
+  bat: ["박쥐", "숲과 동굴 어디에나 사는 흔한 박쥐. 한 번만 탄을 쏜다"],
+  wisp: ["도깨비불", "떠다니며 탄을 뿌리는 불꽃 정령"],
+  slime: ["슬라임", "통통 튀며 다가온다. 쓰러뜨리면 둘로 갈라진다"],
+  slimelet: ["꼬마 슬라임", "슬라임이 갈라져 생긴 작은 슬라임"],
+  mushroom: ["독버섯", "포자를 부채꼴로 흩뿌린다"],
+  eye: ["감시하는 눈", "조준선을 띄운 뒤 빠른 탄으로 저격한다"],
+  beetle: ["갑옷 딱정벌레", "단단한 갑옷. 돌진할 때만 배가 드러난다"],
+  fairy: ["치유 요정", "주변 몬스터의 체력을 채운다. 먼저 잡자"],
+  bomber: ["폭탄 도깨비", "쫓아와서 터지고, 죽으면 탄을 흩뿌린다"],
+  shard: ["수정 파편", "수정 거인을 지키는 파편"],
+  golem: ["돌 골렘", "숲을 지키는 중간 보스. 느리지만 단단하다"],
+  locust: ["황충", "다섯째 나팔과 함께 떼로 몰려온다"],
+  horseman: ["마병대", "불과 연기와 유황을 뿜으며 돌진한다"],
+  angel: ["결박에서 풀린 천사", "유브라데에 결박되었던 천사"],
+  boss_bat: ["박쥐 왕", "속삭이는 숲의 주인. 탄을 맞히면 체력을 빨아들인다"],
+  boss_crystal: ["수정 거인", "수정 동굴의 주인. 파편이 살아 있으면 단단해진다"],
+  boss_fire: ["마그마 슬라임 왕", "불타는 화산의 주인. 크게 뛰어 착지할 때 탄을 뿌린다"],
+  boss_frost: ["서리 여왕", "얼어붙은 설원의 주인. 맞으면 얼어붙는다"],
+  boss_storm: ["폭풍 군주", "폭풍의 하늘의 주인. 번개를 부른다"],
+  boss_nightmare: ["악몽", "달콤한 꿈 끝에 기다리는 악몽"],
+  boss_abaddon: ["무저갱의 사자", "다섯째 나팔이 울리면 무저갱에서 올라온다"],
+  boss_chaos: ["혼돈의 용", "둘째 나팔과 함께 나타나는 혼돈"],
+  boss_dragon: ["큰 붉은 용", "일곱 머리와 열 뿔을 가진 심판의 용"],
+  boss_angel: ["심판의 천사", "나팔을 든 일곱 천사"],
+};
+RD.DEX_REWARD = 20; // 새로 등록할 때마다 코인
+
+// ---------- 일일 미션 ----------
+// stat(r): 한 판 결과에서 올라가는 양, best: 한 판 최고 기록으로 판정
+RD.MISSIONS = [
+  { id: "kills", n: [150, 300], text: (n) => `적 ${n}마리 쓰러뜨리기`, stat: (r) => r.kills },
+  { id: "boss", n: [1, 2], text: (n) => `보스 ${n}마리 쓰러뜨리기`, stat: (r) => r.bossKills || 0 },
+  { id: "runs", n: [3, 5], text: (n) => `아무 모드나 ${n}판 하기`, stat: () => 1 },
+  { id: "score", n: [30000, 60000], best: true, text: (n) => `한 판에 ${n.toLocaleString()}점 넘기기`, stat: (r) => r.score },
+  { id: "ult", n: [5, 10], text: (n) => `궁극기 ${n}번 쓰기`, stat: (r) => r.ultCount || 0 },
+  { id: "duel", n: [1, 2], text: (n) => `결투 ${n}번 이기기`, stat: (r) => (r.duel && r.win ? 1 : 0) },
+  { id: "raid", n: [1, 2], text: (n) => `레이드 ${n}번 도전하기`, stat: (r) => (r.mode === "raid" ? 1 : 0) },
+  { id: "char", n: [2], text: (n, ch) => `${ch.name}(으)로 ${n}판 하기`, stat: (r, m) => (r.charId === m.ch ? 1 : 0) },
+  { id: "survive", n: [120, 180], best: true, text: (n) => `한 판에 ${n}초 버티기`, stat: (r) => r.t },
+  { id: "gacha", n: [3, 10], text: (n) => `뽑기 ${n}번 하기`, stat: () => 0 },
+];
+RD.MISSION_REWARD = [80, 120, 160]; // 미션 3개 보상
+RD.MISSION_BONUS = 200; // 3개 모두 받으면 보너스
+
+// ---------- 캐릭터 숙련도 ----------
+RD.MASTERY = {
+  need: [0, 100, 250, 450, 700, 1000, 1400, 1900, 2500, 3200], // Lv.1~10 에 필요한 누적 경험치
+  // 레벨마다 보상 (모든 캐릭터 공통 + Lv.5 캐릭터 전용 패시브)
+  rewards: [
+    null,
+    null,
+    { coins: 50, title: (s) => `${s} 입문자`, text: "칭호 + 코인 50" },
+    { hp: 0.05, text: "기본 체력 +5%" },
+    { coins: 100, text: "코인 100" },
+    { passive: true, text: "숙련 패시브 해금" },
+    { dmg: 0.05, text: "공격력 +5%" },
+    { coins: 150, title: (s) => `숙련된 ${s}`, text: "칭호 + 코인 150" },
+    { bomb: 1, text: "시작할 때 궁극기 +1" },
+    { hp: 0.05, text: "기본 체력 +5% (총 +10%)" },
+    { coins: 300, title: (s) => `전설의 ${s}`, gold: true, text: "칭호 + 코인 300 + 황금 테두리" },
+  ],
+  passive: {
+    fox: "베기 게이지가 30% 빨리 찬다",
+    rabbit: "이동 속도 +10%",
+    bear: "받는 피해 -10%",
+    owl: "회오리 하나가 탄을 2발 더 막는다",
+    cat: "마력 보호막이 6초마다 생긴다",
+    panda: "아군 정령 체력 +30%",
+    mech: "테크 포인트 2점을 갖고 시작한다",
+    frog: "메가 프로그 배고픔 +8초",
+  },
+};
+RD.masteryLevel = (xp) => { let lv = 1; RD.MASTERY.need.forEach((n, i) => { if (xp >= n) lv = i + 1; }); return lv; };
+
 RD.RAID = { baseHp: 6500, lvHp: 0.45, rageEvery: 40, reward: 120, lvReward: 60 };
 
 // ---------- 레이드 전용: 브롤스타즈식 조작 ----------
