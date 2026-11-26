@@ -32,7 +32,7 @@
   let scene = "loading";
   // ---------- 보유 캐릭터와 코인 (뽑기) ----------
   const G = RD.GACHA;
-  let owned = save.get("owned", null); // 캐릭터 id → 별(각성) 단계
+  let owned = save.get("owned", null); // 캐릭터 id → 성급 (별) 단계
   if (!owned) { owned = {}; RD.CHARACTERS.forEach((c) => { if (c.starter) owned[c.id] = 1; }); save.set("owned", owned); }
   let coins = save.get("coins", null);
   if (coins == null) { coins = G.startCoins; save.set("coins", coins); }
@@ -334,8 +334,8 @@
       const NC = RD.CHARACTERS.length;
       if (e.code === "ArrowLeft") selected = (selected + NC - 1) % NC;
       if (e.code === "ArrowRight") selected = (selected + 1) % NC;
-      if (e.code === "Escape") scene = "select";
-      if ((e.code === "Enter" || e.code === "Space") && isOwned(selected)) startRun();
+      if (e.code === "Escape") { if (starPopup) starPopup = false; else scene = "select"; }
+      if ((e.code === "Enter" || e.code === "Space") && isOwned(selected) && !starPopup) startRun();
     } else if (scene === "gacha") {
       if (gachaResult) {
         if (gachaResult.state !== "cards") { if (["Enter", "Space", "Escape"].includes(e.code)) skipGacha(); }
@@ -590,7 +590,7 @@
     UI.panel(g, 344, 344, 300, 76);
     UI.fitText(g, ch.name, 494 - 30, 368, 200, 22, "#fff", "center");
     UI.chip(g, 574, 357, 54, 22, UI.gradeCol(ch.grade), RD.GRADES[ch.grade].name, 12);
-    RD.text(g, "각성", 360, 401, 11, "#cfc6e0");
+    RD.text(g, "성급", 360, 401, 11, "#cfc6e0");
     UI.stars(g, 390, 394, starsOf(ch.id), G.maxStars, 1.6);
     const ml = mlv(ch.id), tt = titleOf(ch);
     UI.chip(g, 524, 394, 50, 16, ml >= 10 ? "#ffd34d" : "#7fe6ff", `숙련 ${ml}`, 10);
@@ -781,6 +781,27 @@
     if (match.t > S + 3.8) { match.go = true; startRun(); }
   }
 
+  // 성급 보상 창 (캐릭터 화면에서 별을 누르면)
+  let starPopup = false;
+  function drawStarPopup(ch) {
+    const st = starsOf(ch.id), T = RD.STAR_TRAITS[ch.id] || {};
+    buttons = [];
+    g.fillStyle = "rgba(10,6,20,0.8)"; g.fillRect(0, 0, C.width, C.height);
+    UI.panel(g, 150, 50, 660, 440, "#231a36");
+    RD.text(g, `${ch.name} 성급`, 172, 82, 22, "#ffd34d");
+    RD.text(g, "같은 캐릭터를 또 뽑으면 성급이 오른다 · '각성'은 앞으로 나올 다른 시스템", 172, 108, 12, "#b9add0");
+    for (let n = 1; n <= G.maxStars; n++) {
+      const y = 132 + (n - 1) * 54, on = st >= n;
+      g.fillStyle = on ? "#2f2550" : "#1d1428"; g.fillRect(172, y, 616, 46);
+      UI.stars(g, 182, y + 16, n, n, 1.4);
+      RD.text(g, `공격력 +${Math.round(G.starDmg * (n - 1) * 100)}% · 체력 +${Math.round(G.starHpPct * (n - 1) * 100)}%`, 300, y + 15, 12, on ? "#fff" : "#7a6a90");
+      if (T[n]) { UI.chip(g, 300, y + 26, 34, 15, on ? "#ffd34d" : "#4a3d60", "특성", 9, on ? "#1d1622" : "#9a8ab8"); UI.fitText(g, T[n], 342, y + 34, 440, 12, on ? "#9fffb0" : "#7a6a90"); }
+      else RD.text(g, n === 1 ? "기본" : "-", 300, y + 34, 11, "#6a5a80");
+      if (on && n === st) UI.chip(g, 712, y + 12, 66, 20, "#7fe6ff", "지금", 11);
+    }
+    button(380, 462 - 10, 200, 40, "닫기", () => { starPopup = false; }, "#5a4a78");
+  }
+
   // 캐릭터 선택과 상세
   function drawChars() {
     menuBackdrop();
@@ -814,6 +835,7 @@
     UI.chip(g, 432, 270, 50, 22, UI.gradeCol(ch.grade), RD.GRADES[ch.grade].name, 12);
     UI.chip(g, 490, 270, 60, 22, "#3d2f5a", ch.type, 12, "#fff");
     UI.stars(g, 560, 273, starsOf(ch.id), G.maxStars, 1.6);
+    buttons.push({ x: 556, y: 266, w: 80, h: 26, onClick: () => { starPopup = true; } });
     // 숙련도 (누르면 도감의 숙련 보상 목록)
     const ml = mlv(ch.id);
     UI.chip(g, 640, 270, 58, 22, ml >= 10 ? "#ffd34d" : "#7fe6ff", `숙련 ${ml}`, 11);
@@ -903,7 +925,7 @@
     const can1 = testMode || coins >= G.cost1, can10 = testMode || coins >= G.cost10;
     UI.btn(g, 16, 438, 104, 40, "#2b2140"); RD.text(g, "확률 상세", 68, 456, 13, "#fff", "center");
     buttons.push({ x: 16, y: 438, w: 104, h: 40, onClick: () => { gachaInfo = !gachaInfo; } });
-    RD.text(g, "중복 = 각성 ★+1", 16, 500, 11, "#9a8ab8");
+    RD.text(g, "중복 = 성급 ★+1", 16, 500, 11, "#9a8ab8");
     button(300, 430, 280, 96, "1회 뽑기", () => gacha(1), can1 ? "#7fe6ff" : "#4a3d5c", testMode ? "무료" : `코인 ${G.cost1}`);
     button(600, 430, 344, 96, "10회 뽑기", () => gacha(10), can10 ? "#ff8a3d" : "#4a3d5c", testMode ? "무료" : `코인 ${G.cost10.toLocaleString()}`);
     UI.chip(g, 612, 420, 140, 20, "#ffd34d", "희귀 이상 1개 보장", 11);
@@ -920,7 +942,7 @@
         UI.fitText(g, chars.map((c) => c.name).join(", ") || "-", 400, y + 11, 310, 13, "#cfc6e0");
       });
       RD.text(g, `50회 안에 전설이 안 나오면 다음은 전설 확정 · 10회 뽑기는 희귀 이상 1개 보장`, 480, 386, 12, "#cfc6e0", "center");
-      RD.text(g, `중복은 각성 ★+1 (위력 +6%, 체력 +6), ★6 이후 코인 50 환급`, 480, 408, 12, "#cfc6e0", "center");
+      RD.text(g, `중복은 성급 ★+1 (공격력 +6%, 체력 +8%, ★2·4·6 특성), ★6 이후 코인 50 환급`, 480, 408, 12, "#cfc6e0", "center");
       buttons.length = 0;
       buttons.push({ x: 0, y: 0, w: C.width, h: C.height, onClick: () => { gachaInfo = false; } });
     }
@@ -1030,7 +1052,7 @@
       if (r.kind === "new") UI.chip(g, x + cw / 2 - 24, y + ch * 0.82, 48, 20, gc, RD.GRADES[r.grade].name, 11);
       else {
         UI.chip(g, x + cw / 2 - 52, y + ch * 0.82, 40, 20, gc, RD.GRADES[r.grade].name, 10);
-        UI.chip(g, x + cw / 2 - 6, y + ch * 0.82, 58, 20, "#3d2f5a", r.kind === "star" ? `각성 ★${r.stars}` : "코인 +50", 10, "#ffd34d");
+        UI.chip(g, x + cw / 2 - 6, y + ch * 0.82, 58, 20, "#3d2f5a", r.kind === "star" ? `성급 ★${r.stars}` : "코인 +50", 10, "#ffd34d");
       }
       if (r.kind === "new") UI.chip(g, x + cw - 56, y - 10, 52, 18, "#ff4d5e", "NEW!", 11, "#fff");
     });
@@ -1197,6 +1219,7 @@
       drawResult();
     } else if (scene === "chars") {
       drawChars();
+      if (starPopup) drawStarPopup(RD.CHARACTERS[selected]);
     } else if (scene === "missions") {
       drawMissions();
     } else if (scene === "dex") {

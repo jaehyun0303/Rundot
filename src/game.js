@@ -57,6 +57,7 @@
       this.mastHp = RD.MASTERY.rewards.slice(0, this.mast + 1).reduce((a, r) => a + ((r && r.hp) || 0), 0);
       this.mastDmg = RD.MASTERY.rewards.slice(0, this.mast + 1).reduce((a, r) => a + ((r && r.dmg) || 0), 0);
       this.mpas = this.mast >= 5;
+      this.st = (n) => this.stars >= n; // 성급 특성 (★2, ★4, ★6)
       this.killsByType = {}; this.bossKills = 0; this.ultCount = 0; // 미션·도감 기록
       this.coins = 0; // 이번 판에 모은 코인
       this.slashes = []; // 여우 베기
@@ -79,7 +80,7 @@
       this.score = 0;
       this.nextExtend = C.extendEvery;
       this.lives = this.M.lives || this.D.lives;
-      this.bombs = C.bombs + (this.mast >= 8 ? 1 : 0);
+      this.bombs = C.bombs + (this.mast >= 8 ? 1 : 0) + (charId === "owl" && this.stars >= 6 ? 1 : 0);
       this.kills = 0;
       this.over = false;
       this.win = false;
@@ -97,10 +98,11 @@
       this.paused = false;
 
       this.mech = charId === "mech" ? { evo: 0, hp: RD.MECH.hp[0], alive: true, prog: 0, flash: 0, barrier: false, barrierT: 0, cannonT: 0 } : null;
-      this.tech = { pts: this.mpas ? 2 : 0, has: {} }; // 메카 테크트리 (숙련 패시브: 2점으로 시작)
+      this.tech = { pts: (this.mpas ? 2 : 0) + (charId === "mech" && this.stars >= 6 ? 1 : 0), has: {} }; // 메카 테크트리 (숙련 패시브: 2점으로 시작)
       this.techOpen = false; this.techSel = null;
       this.mega = false; this.megaPow = 0; this.roars = []; // 개구리 메가 프로그
-      this.player = { vx: 0, vy: 0, x: 160, y: 260, hp: (RD.CHAR_HP[charId] || C.maxHp) * (1 + this.mastHp) + RD.GACHA.starHp * (this.stars - 1), gulp: 0, invuln: C.respawnInvuln, hurt: 0, dead: 0, animT: 0, shotCd: 0, tilt: 0 };
+      this.player = { vx: 0, vy: 0, x: 160, y: 260, hp: (RD.CHAR_HP[charId] || C.maxHp) * (1 + this.mastHp + RD.GACHA.starHpPct * (this.stars - 1)), gulp: 0, invuln: C.respawnInvuln, hurt: 0, dead: 0, animT: 0, shotCd: 0, tilt: 0 };
+      if (this.mech) this.mech.hp = this.mechMax;
       this.pet = { x: 100, y: 260, t: 0, cd: 0 };
       this.sub = { missile: 1, laser: 2, rear: 0.5, lightning: 1.5, laserOn: 0 };
       this.shots = [];
@@ -174,10 +176,10 @@
     lv(id) { return this.up[id] || 0; }
     get power() { return 1 + this.lv("multi"); }
     get dmgMul() { return (1 + 0.2 * this.lv("dmg")) * (1 + RD.GACHA.starDmg * (this.stars - 1)) * (1 + this.megaPow) * (1 + this.mastDmg); }
-    get maxHp() { return ((RD.CHAR_HP[this.charId] || C.maxHp) * (1 + this.mastHp) + 25 * this.lv("hp") + RD.GACHA.starHp * (this.stars - 1)) * (this.mega ? RD.MEGA_FROG.hpMul : 1); }
+    get maxHp() { return ((RD.CHAR_HP[this.charId] || C.maxHp) * (1 + this.mastHp + RD.GACHA.starHpPct * (this.stars - 1)) + 25 * this.lv("hp")) * (this.mega ? RD.MEGA_FROG.hpMul : 1); }
     get shieldEvery() { return this.mpas && this.charId === "cat" ? 6 : RD.CAT_SHIELD.every; }
     get armor() { return (1 - 0.15 * this.lv("armor")) * (this.mpas && this.charId === "bear" ? 0.9 : 1); }
-    get mechMax() { return RD.MECH.hp[this.mech.evo] * (1 + 0.15 * this.lv("hp")) * (this.tech.has.plate ? 1.3 : 1); }
+    get mechMax() { return RD.MECH.hp[this.mech.evo] * (1 + 0.15 * this.lv("hp")) * (this.tech.has.plate ? 1.3 : 1) * (this.st(2) ? 1.15 : 1); }
 
     // 테크트리 해금
     techOpenFor(t) { return (!t.req || this.tech.has[t.req]) && (!t.req2 || this.tech.has[t.req2]); }
@@ -260,7 +262,7 @@
         RD.audio && RD.audio.sfx("laser");
       }
       M.empFx = Math.max(0, (M.empFx || 0) - dt);
-      if (!M.alive && this.player.dead <= 0) { M.prog += dt / (RD.MECH.rebuildTime * (this.tech.has.quick ? 0.75 : 1)); if (M.prog >= 1) this.rebuildMech(RD.MECH.rebuildHp); }
+      if (!M.alive && this.player.dead <= 0) { M.prog += dt / (RD.MECH.rebuildTime * (this.tech.has.quick ? 0.75 : 1) * (this.st(4) ? 0.8 : 1)); if (M.prog >= 1) this.rebuildMech(RD.MECH.rebuildHp); }
       if (!M.alive || this.player.dead > 0) { M.flameOn = false; M.beam = null; return; }
       this.updateMechWeapons(dt);
       const T = this.tech.has;
@@ -279,6 +281,7 @@
       this.mega = true;
       this.megaCut = 2.6; // 변신 일러스트 컷인
       this.hunger = RD.MEGA_FROG.hunger + (this.mpas ? 8 : 0);
+      if (this.st(6)) p.gulp = Math.max(p.gulp, 60); // ★6 변신 보호막
       p.hp = this.maxHp;
       p.invuln = Math.max(p.invuln, 3);
       this.shake = 0.5;
@@ -963,7 +966,7 @@
       switch (s.kind) {
         case "slash": {
           // 여우: 앞쪽을 벤다. 파워 3부터 위아래 두 번
-          const r = s.range * s.multi[pw - 1];
+          const r = s.range * s.multi[pw - 1] * (this.st(2) ? 1.15 : 1);
           const dirs = pw >= 3 ? [-1, 1] : [p.slashDir = -(p.slashDir || 1)];
           for (const dir of dirs) this.slashes.push({ t: 0, life: 0.14, r, dir, dmg: dmg * (pw >= 3 ? 0.7 : 1), hit: [] });
           if (sig > 0) {
@@ -983,7 +986,8 @@
           }
           for (let i = 0; i < n; i++) {
             const a = aim + (i - (n - 1) / 2) * 0.22;
-            this.addShot({ kind: "boomerang", main: true, x: p.x + 20, y: p.y, vx: Math.cos(a) * s.speed, vy: Math.sin(a) * s.speed, w: 26, h: 26, dmg, pierce: 99, color: s.color, back: false });
+            const spd = s.speed * (this.st(2) ? 1.2 : 1), crit = this.st(4) && Math.random() < 0.15;
+            this.addShot({ kind: "boomerang", main: true, x: p.x + 20, y: p.y, vx: Math.cos(a) * spd, vy: Math.sin(a) * spd, w: crit ? 34 : 26, h: crit ? 34 : 26, dmg: dmg * (crit ? 2 : 1), pierce: 99, color: crit ? "#ffd34d" : s.color, back: false });
           }
           break;
         }
@@ -1004,7 +1008,7 @@
             const T = 0.75 + 0.08 * i; // 날아가는 시간
             const vx = (tx - (p.x + 20)) / T, vy = (ty - (p.y - 10) - 0.5 * G * T * T) / T;
             this.addShot({ kind: "lob", main: true, x: p.x + 20, y: p.y - 10, vx, vy, w: 28, h: 28, dmg, pierce: 0, color: s.color,
-              radius: s.radius * (1 + 0.3 * sig), boom: 1 + 0.2 * sig });
+              radius: s.radius * (1 + 0.3 * sig) * (this.st(2) ? 1.15 : 1), boom: 1 + 0.2 * sig });
           }
           break;
         }
@@ -1015,7 +1019,7 @@
           const offs = [[0], [-50, 50], [-85, 0, 85], [-110, -38, 38, 110]][n - 1];
           for (const oy of offs) {
             this.addShot({ kind: "tornado", main: true, x: p.x + 40, y: Math.max(70, Math.min(C.groundY - 40, p.y + oy)), vx: s.speed, vy: 0,
-              w: s.w * size, h: s.h * size, dmg, pierce: 99, color: s.color, life: s.life * (1 + 0.3 * sig), tick: new Map() });
+              w: s.w * size, h: s.h * size, dmg, pierce: 99, color: s.color, life: s.life * (1 + 0.3 * sig) * (this.st(2) ? 1.2 : 1), tick: new Map() });
           }
           break;
         }
@@ -1024,7 +1028,7 @@
           const n = s.multi[pw - 1];
           for (let i = 0; i < n; i++) {
             this.addShot({ kind: "juggle", main: true, x: p.x + 20, y: p.y - 10, vx: s.speed * (0.85 + i * 0.12), vy: -260 - i * 90, w: 20, h: 20, dmg, pierce: 99,
-              bounces: 3, boom: sig, color: ["#ff5ad8", "#ffd34d", "#7fe6ff", "#9fff6a"][i % 4] });
+              bounces: this.st(4) ? 4 : 3, boom: sig, color: ["#ff5ad8", "#ffd34d", "#7fe6ff", "#9fff6a"][i % 4] });
           }
           break;
         }
@@ -1055,7 +1059,7 @@
           const pierce = this.lv("pierce");
           for (const [oy, deg] of s.lanes[pw - 1]) {
             const a = (deg * Math.PI) / 180;
-            this.addShot({ kind: s.kind, main: true, x: p.x + 30, y: p.y + oy, vx: Math.cos(a) * s.speed, vy: Math.sin(a) * s.speed, w: s.w, h: s.h, dmg, pierce, homing: !!s.homing, color: s.color });
+            this.addShot({ kind: s.kind, main: true, x: p.x + 30, y: p.y + oy, vx: Math.cos(a) * s.speed, vy: Math.sin(a) * s.speed, w: s.w, h: s.h, dmg: dmg * (this.charId === "cat" && this.st(2) ? 1.1 : 1), pierce, homing: !!s.homing, color: s.color });
           }
         }
       }
@@ -1162,7 +1166,7 @@
         for (let i = 0; i < n; i++) {
           const a = ang + (i - (n - 1) / 2) * 0.22;
           this.addShot({ ...base, kind: "juggle", flat: true, x: p.x + 10, y: p.y, vx: Math.cos(a) * 620, vy: Math.sin(a) * 620, w: 20, h: 20, dmg, pierce: 99,
-            bounces: 2 + this.bst("life"), boom: this.bst("split"), color: ["#ff5ad8", "#ffd34d", "#7fe6ff", "#9fff6a"][i % 4] });
+            bounces: 2 + this.bst("life") + (this.st(4) ? 1 : 0), boom: this.bst("split"), color: ["#ff5ad8", "#ffd34d", "#7fe6ff", "#9fff6a"][i % 4] });
         }
       } else if (this.charId === "panda") {
         for (let i = 0; i < W.count; i++) {
@@ -1219,6 +1223,7 @@
         this.bullets = this.bullets.filter((b) => {
           if (this.parry < 1 || !inArc(b.x, b.y, b.r)) return true;
           this.parry -= 1;
+          if (this.st(4)) p.hp = Math.min(this.maxHp, p.hp + 1); // ★4 베면 회복
           this.effects.push({ type: "pop", x: b.x, y: b.y, t: 0, life: 0.25 });
           return false;
         });
@@ -1287,7 +1292,7 @@
       this.summons.length = n;
       if (!n) return;
       const cdMul = 1 / (1 + 0.25 * sig) * (this.raid ? 1 - Math.min(0.5, this.bst("reload")) : 1);
-      const base = (this.raid ? 7 : 3.6) * this.dmgMul * (1 + 0.2 * sig) * (this.raid ? 1 + this.bst("dmg") : 1);
+      const base = (this.raid ? 7 : 3.6) * this.dmgMul * (1 + 0.2 * sig) * (this.raid ? 1 + this.bst("dmg") : 1) * (this.st(2) ? 1.15 : 1);
       const live = this.enemies.filter((e) => !e.dead && !(e.delay > 0) && e.x < C.width - 10 && e.x > 0 && e.y > 0 && e.y < C.height);
       const minY = 60, maxY = this.raid ? C.height - 40 : C.groundY - 20;
       this.summons.forEach((m, i) => {
@@ -1347,7 +1352,7 @@
           return false;
         });
         if (m.hp <= 0) {
-          m.dead = RD.ALLY_RESPAWN * (1 - 0.1 * sig);
+          m.dead = RD.ALLY_RESPAWN * (1 - 0.1 * sig) * (this.st(4) ? 0.6 : 1);
           this.effects.push({ type: "boom", x: m.x, y: m.y, t: 0, life: 0.4 });
         }
       });
@@ -1432,11 +1437,12 @@
       if (!fromSuper) this.bombs--;
       const sdur = this.raid ? this.bst("sdur") : 0;
       const life = (this.mega ? RD.MEGA_FROG.gulpLife : { fox: 1.0, rabbit: 3.0, bear: 1.5, owl: 2.8, cat: 3.0, panda: 6, mech: 7, frog: 5 }[this.charId]) + (this.charId === "fox" || this.mega ? 0 : this.charId === "bear" ? 0.3 * sdur : sdur)
-        + (this.charId === "mech" && this.tech.has.call ? 2 : 0);
+        + (this.charId === "mech" && this.tech.has.call ? 2 : 0) + (this.charId === "panda" && this.st(6) ? 2 : 0);
       this.bombT = life;
       this.ultCount++;
+      if (this.charId === "fox" && this.st(6)) this.parry = RD.FOX_PARRY.max;
       if (this.mech) this.rebuildMech(1, true); // 부서져 있어도 바로 메카가 돌아온다 (진화 단계 그대로)
-      this.ult = { kind: this.mega ? "megafrog" : this.charId, t: 0, life, x0: p.x, y0: p.y, done: {}, spawnT: 0, mul: 1 + 0.3 * this.lv("bomb") + (this.raid ? this.bst("spow") : 0), sdur };
+      this.ult = { kind: this.mega ? "megafrog" : this.charId, t: 0, life, x0: p.x, y0: p.y, done: {}, spawnT: 0, mul: (1 + 0.3 * this.lv("bomb") + (this.raid ? this.bst("spow") : 0)) * (this.charId === "bear" && this.st(6) ? 1.25 : 1), sdur };
       p.invuln = Math.max(p.invuln, life + 0.6);
       this.banner = this.mega ? { text: "꿀꺽!", sub: "주변 적을 삼켜 보호막과 공격력을 얻는다 (보스 제외)", color: "#9fff6a", t: 0, life: 1.2, small: true }
         : { text: this.char.bomb.name + "!", color: this.char.bomb.color, t: 0, life: 1.2, small: true };
@@ -1644,15 +1650,16 @@
     // ---------- 피격과 체력 ----------
     hurt(amount) {
       const p = this.player;
-      if (this.charId === "frog" && Math.random() < 0.25) {
+      if (this.charId === "frog" && Math.random() < (this.st(2) ? 0.3 : 0.25)) {
         // 익살꾼의 운
         p.invuln = Math.max(p.invuln, 0.5);
         this.text("빗나감!", "#ff5ad8");
         return;
       }
       if (p.shielded) {
-        // 고양이 마력 보호막
-        p.shielded = false;
+        // 고양이 마력 보호막 (★6: 2겹, ★4: 깨질 때 주변 탄 지우기)
+        if (this.st(4)) { this.bullets = this.bullets.filter((b) => Math.hypot(b.x - p.x, b.y - p.y) > 180); }
+        if (p.shieldLayers > 1) p.shieldLayers--; else p.shielded = false;
         p.invuln = C.hitInvuln;
         this.effects.push({ type: "ring", x: p.x, y: p.y, t: 0, life: 0.4 });
         RD.audio && RD.audio.sfx("shieldbreak");
@@ -1680,10 +1687,10 @@
         if (M.hp <= 0) this.breakMech();
         return;
       }
-      let dmgIn = amount * this.D.damage * this.armor * (this.judgFire > 0 ? 1.3 : 1);
+      let dmgIn = amount * this.D.damage * this.armor * (this.judgFire > 0 ? 1.3 : 1) * (this.charId === "bear" && this.st(4) && p.hp < this.maxHp * 0.3 ? 0.8 : 1);
       if (p.gulp > 0) { const a = Math.min(p.gulp, dmgIn); p.gulp -= a; dmgIn -= a; } // 메가 프로그 보호막
       p.hp -= dmgIn;
-      p.invuln = C.hitInvuln;
+      p.invuln = C.hitInvuln + (this.charId === "rabbit" && this.st(6) ? 0.4 : 0);
       p.hurt = 0.3;
       this.shake = Math.max(this.shake, 0.15);
       this.effects.push({ type: "flash", t: 0, life: 0.2 });
@@ -1799,7 +1806,7 @@
       if (this.charId === "fox") this.parry = Math.min(RD.FOX_PARRY.max, this.parry + dt / RD.FOX_PARRY.regen * (this.mpas ? 1.3 : 1));
       if (this.charId === "cat" && !p.shielded) {
         this.shield += dt;
-        if (this.shield >= this.shieldEvery) { this.shield = 0; p.shielded = true; RD.audio && RD.audio.sfx("shield"); }
+        if (this.shield >= this.shieldEvery) { this.shield = 0; p.shielded = true; p.shieldLayers = this.st(6) ? 2 : 1; RD.audio && RD.audio.sfx("shield"); }
       }
       p.animT += dt;
       this.bombT = Math.max(0, this.bombT - dt);
@@ -1941,6 +1948,7 @@
           this.bullets = this.bullets.filter((b) => {
             if (s.absorbed >= RD.OWL_ABSORB + (this.mpas ? 2 : 0) || b.boss || Math.abs(b.x - s.x) > s.w / 2 + b.r || Math.abs(b.y - s.y) > s.h / 2 + b.r) return true;
             s.absorbed++;
+            if (this.charId === "owl" && this.st(4)) this.player.hp = Math.min(this.maxHp, this.player.hp + 0.5);
             return false;
           });
           continue;
