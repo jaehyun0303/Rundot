@@ -434,11 +434,21 @@
     }
 
     upgradeInfo(u) {
+      if (u.brawl && this.awak) {
+        // 각성: 레이드 공격 카드도 각성 공격에 맞게
+        const F = RD.AWAKEN.forms[this.charId], K = RD.AWAKEN_KIT[this.charId], fx = u.fx || {};
+        if (u.id === "hp" || u.id === "speed" || u.id === "ammo_up" || fx.reload || fx.charge || fx.ammo || fx.refill) return { name: u.name, desc: u.desc() };
+        if (fx.count) return { name: `${F.shot} 추가`, desc: "한 번에 나가는 각성 공격 +1" };
+        if (fx.dmg) return { name: `${F.shot} 강화`, desc: "각성 공격 위력 +20%" };
+        if (fx.spow) return { name: `${K.ult.name} 강화`, desc: "각성 궁극기 위력 +35%" };
+        if (fx.sdur) return { name: `${K.ult.name} 연장`, desc: "각성 궁극기 1초 더" };
+        return { name: `${u.name} 공명`, desc: `${F.shot} 위력 +12% (원래 강화 대신)` };
+      }
       if (u.brawl) return { name: u.name, desc: u.desc() };
       if (u.id === "sig") return { name: this.char.sig.name, desc: this.char.sig.desc };
       if (u.id === "multi") {
         const names = { fox: "베기 강화", rabbit: "단검 추가", bear: "망치 추가", owl: "회오리 추가", cat: "구슬 추가", panda: "정령 추가", mech: "총열 추가", frog: "공 추가" };
-        return { name: names[this.charId], desc: this.char.shot.multiDesc(this.lv("multi")) };
+        return { name: this.char.shot.multiName || names[this.charId], desc: this.char.shot.multiDesc(this.lv("multi")) };
       }
       return { name: u.name, desc: u.desc(this.lv(u.id)) };
     }
@@ -1037,12 +1047,12 @@
         }
         case "a_shuriken": {
           // 그림자 토끼: 따라가는 표창, 맞으면 다음 적에게 튕긴다
-          for (let i = 0; i < pw; i++) this.addShot({ kind: "shuriken", main: true, x: p.x + 24, y: p.y + (i - (pw - 1) / 2) * 16, vx: 820, vy: (i - (pw - 1) / 2) * 90, w: 22, h: 22, dmg, pierce: 0, homing: true, chain: 2 + Math.floor(sig / 2), color: s.color });
+          for (let i = 0; i < pw; i++) this.addShot({ kind: "shuriken", main: true, x: p.x + 24, y: p.y + (i - (pw - 1) / 2) * 16, vx: 820, vy: (i - (pw - 1) / 2) * 90, w: 22, h: 22, dmg, pierce: 0, homing: true, chain: 2 + sig, color: s.color });
           break;
         }
         case "a_quake": {
           // 대지의 곰: 지진파 (세로줄 전체를 훑는다)
-          for (let i = 0; i < Math.min(2, pw); i++) this.addShot({ kind: "quake", main: true, x: p.x + 40 + i * 70, y: C.groundY / 2, vx: 520 + i * 60, vy: 0, w: 46 + 10 * pw, h: C.groundY, dmg: dmg * (1 + 0.25 * (pw - 1)), pierce: 99, tick: new Map(), color: s.color });
+          for (let i = 0; i < Math.min(2, pw); i++) this.addShot({ kind: "quake", main: true, x: p.x + 40 + i * 70, y: C.groundY / 2, vx: 520 + i * 60, vy: 0, w: 46 + 10 * pw + 14 * sig, h: C.groundY, dmg: dmg * (1 + 0.25 * (pw - 1)), pierce: 99, tick: new Map(), color: s.color });
           this.shake = Math.max(this.shake, 0.12);
           break;
         }
@@ -1089,13 +1099,13 @@
         }
         case "a_souls": {
           // 판다 네크로맨서: 망자의 해골 (쓰러뜨린 적은 망령이 되어 다른 적을 덮친다)
-          for (let i = 0; i <= pw; i++) { const a = (i - pw / 2) * 0.3; this.addShot({ kind: "skull", main: true, x: p.x + 20, y: p.y, vx: Math.cos(a) * 600, vy: Math.sin(a) * 600, w: 18, h: 18, dmg, pierce: 0, homing: true, raise: true, color: s.color }); }
+          for (let i = 0; i <= pw; i++) { const a = (i - pw / 2) * 0.3; this.addShot({ kind: "skull", main: true, x: p.x + 20, y: p.y, vx: Math.cos(a) * 600, vy: Math.sin(a) * 600, w: 18, h: 18, dmg, pierce: 0, homing: true, raise: true, ghostMul: 1 + 0.3 * sig, color: s.color }); }
           break;
         }
         case "a_swarm": {
           // 메가 메카닉: 마이크로 미사일 군단
           const n = 2 + pw + (this.mechOn ? this.mech.evo : 0);
-          for (let i = 0; i < n; i++) { const a = -0.9 + (i / Math.max(1, n - 1)) * 1.8; this.addShot({ kind: "missile", main: true, x: p.x + 20, y: p.y - 4, vx: Math.cos(a) * 420, vy: Math.sin(a) * 420, w: 14, h: 8, dmg, pierce: 0, homing: true, small: true, color: s.color }); }
+          for (let i = 0; i < n; i++) { const a = -0.9 + (i / Math.max(1, n - 1)) * 1.8; this.addShot({ kind: "missile", main: true, x: p.x + 20, y: p.y - 4, vx: Math.cos(a) * 420, vy: Math.sin(a) * 420, w: 14, h: 8, dmg: dmg * (1 + 0.2 * sig), pierce: 0, homing: true, small: true, color: s.color }); }
           break;
         }
         case "a_cards": {
@@ -1217,8 +1227,10 @@
     // 각성 공격 (레이드·결투: 조준 방향으로)
     awakBrawl(ang, dmg, base) {
       const p = this.player, F = RD.AWAKEN.forms[this.charId], ch = base.charge, live = this.enemies.filter((e) => !e.dead && !(e.delay > 0));
-      const D = dmg * 0.9;
-      const fan = (n, spread, mk) => { for (let i = 0; i < n; i++) mk(ang + (i - (n - 1) / 2) * spread); };
+      // 각성 카드: 개수(count)는 +1씩, 그 밖의 공격 카드(분열·범위 등)는 공명으로 위력 +12%씩
+      let reso = 0; for (const u of RD.BRAWL_UPS[this.charId]) { const fx = u.fx || {}; if (u.cat === RD.BRAWL_UPS[this.charId][0].cat && !fx.count && !fx.dmg && !fx.reload && !fx.ammo) reso += this.lv(u.id); }
+      const D = dmg * 0.9 * (1 + 0.12 * reso), extra = this.bst("count");
+      const fan = (n, spread, mk) => { n += extra; for (let i = 0; i < n; i++) mk(ang + (i - (n - 1) / 2) * spread); };
       switch (this.charId) {
         case "fox": fan(3, 0.16, (a) => this.addShot({ ...base, kind: "wave", x: p.x, y: p.y, vx: Math.cos(a) * 900, vy: Math.sin(a) * 900, w: 30, h: 90, dmg: D * 0.6, pierce: 99, cutB: 3 })); break;
         case "rabbit": fan(3, 0.2, (a) => this.addShot({ ...base, kind: "shuriken", x: p.x, y: p.y, vx: Math.cos(a) * 820, vy: Math.sin(a) * 820, w: 22, h: 22, dmg: D * 1.5, pierce: 0, homing: true, chain: 2 })); break;
@@ -1426,7 +1438,7 @@
       if (s.raise) {
         // 해골에 쓰러진 적 → 망령
         const left = e.hp - s.dmg * (this.ult ? 1 : (RD.ENEMIES[e.type].armor || 1));
-        if (left <= 0 && !RD.ENEMIES[e.type].boss) spawned.push({ kind: "ghost", x: e.x, y: e.y, vx: -100, vy: -200, w: 26, h: 26, dmg: s.dmg * 1.5, pierce: 2, homing: true, hit: [e], t: 0, color: "#d8c0ff" });
+        if (left <= 0 && !RD.ENEMIES[e.type].boss) spawned.push({ kind: "ghost", x: e.x, y: e.y, vx: -100, vy: -200, w: 26, h: 26, dmg: s.dmg * 1.5 * (s.ghostMul || 1), pierce: 2, homing: true, hit: [e], t: 0, color: "#d8c0ff" });
       }
       if (s.burst) { this.explode(s.x, s.y, s.burst, s.dmg * 0.8); this.effects.push({ type: "confetti", x: s.x, y: s.y, t: 0, life: 0.5 }); }
       if (s.chain > 0) {
@@ -1626,13 +1638,14 @@
       const p = this.player;
       if (!fromSuper) this.bombs--;
       const sdur = this.raid ? this.bst("sdur") : 0;
-      const life = (this.mega ? RD.MEGA_FROG.gulpLife : { fox: 1.0, rabbit: 3.0, bear: 1.5, owl: 2.8, cat: 3.0, panda: 6, mech: 7, frog: 5 }[this.charId]) + (this.charId === "fox" || this.mega ? 0 : this.charId === "bear" ? 0.3 * sdur : sdur)
+      const awU = this.awak && !this.mega ? RD.AWAKEN_KIT[this.charId].ult : null; // 각성 궁극기
+      const life = (this.mega ? RD.MEGA_FROG.gulpLife : awU ? awU.life : { fox: 1.0, rabbit: 3.0, bear: 1.5, owl: 2.8, cat: 3.0, panda: 6, mech: 7, frog: 5 }[this.charId]) + (this.charId === "fox" || this.mega ? 0 : this.charId === "bear" ? 0.3 * sdur : sdur)
         + (this.charId === "mech" && this.tech.has.call ? 2 : 0) + (this.charId === "panda" && this.st(6) ? 2 : 0);
       this.bombT = life;
       this.ultCount++;
       if (this.charId === "fox" && this.st(6)) this.parry = RD.FOX_PARRY.max;
       if (this.mech) this.rebuildMech(1, true); // 부서져 있어도 바로 메카가 돌아온다 (진화 단계 그대로)
-      this.ult = { kind: this.mega ? "megafrog" : this.charId, t: 0, life, x0: p.x, y0: p.y, done: {}, spawnT: 0, mul: (1 + 0.3 * this.lv("bomb") + (this.raid ? this.bst("spow") : 0)) * (this.charId === "bear" && this.st(6) ? 1.25 : 1), sdur };
+      this.ult = { kind: this.mega ? "megafrog" : awU ? "aw_" + this.charId : this.charId, t: 0, life, x0: p.x, y0: p.y, done: {}, spawnT: 0, mul: (1 + 0.3 * this.lv("bomb") + (this.raid ? this.bst("spow") : 0)) * (this.charId === "bear" && this.st(6) ? 1.25 : 1), sdur };
       p.invuln = Math.max(p.invuln, life + 0.6);
       this.banner = this.mega ? { text: "꿀꺽!", sub: "주변 적을 삼켜 보호막과 공격력을 얻는다 (보스 제외)", color: "#9fff6a", t: 0, life: 1.2, small: true }
         : { text: this.char.bomb.name + "!", color: this.char.bomb.color, t: 0, life: 1.2, small: true };
@@ -1760,6 +1773,85 @@
             this.effects.push({ type: "confetti", x: b.x, y: b.y, t: 0, life: 0.6 });
             return false;
           });
+          break;
+        }
+        // ---------- 각성 궁극기 ----------
+        case "aw_fox": {
+          // 천검난무: 화면 왼쪽에서 검기가 쏟아진다
+          const maxY = this.raid ? C.height - 40 : C.groundY - 20;
+          u.spawnT -= dt;
+          while (u.spawnT <= 0 && u.t < u.life - 0.2) { u.spawnT += 0.04; this.addShot({ kind: "wave", x: -20, y: rand(60, maxY), vx: 1200, vy: 0, w: 34, h: 100, dmg: 7 * u.mul * this.dmgMul, pierce: 99, color: "#bfe4ff", brawl: !!this.raid, charge: 0 }); }
+          this.bullets = [];
+          break;
+        }
+        case "aw_rabbit": {
+          // 그림자 처형: 적 사이를 순간이동하며 벤다
+          u.spawnT -= dt;
+          if (u.spawnT <= 0 && live.length) {
+            u.spawnT = 0.2;
+            const e = pick(live);
+            this.effects.push({ type: "arcslash", x: e.x, y: e.y, ang: rand(0, Math.PI * 2), range: 90, arc: 1.2, t: 0, life: 0.2 });
+            this.effects.push({ type: "zap", x: p.x, y: p.y, x2: e.x, y2: e.y, t: 0, life: 0.12, color: "#9a7aff" });
+            this.damage(e, (big(e) ? 30 : 22) * u.mul * this.dmgMul);
+          }
+          this.bullets = this.bullets.filter((b) => Math.hypot(b.x - p.x, b.y - p.y) > 140);
+          break;
+        }
+        case "aw_bear": {
+          // 대지 붕괴: 거대 지진파가 연달아
+          u.spawnT -= dt;
+          if (u.spawnT <= 0 && u.t < u.life - 0.3) {
+            u.spawnT = 0.35;
+            this.addShot({ kind: "quake", x: p.x + 40, y: C.groundY / 2, vx: 700, vy: 0, w: 110, h: C.groundY, dmg: 14 * u.mul * this.dmgMul, pierce: 99, tick: new Map(), color: "#d8a060", brawl: !!this.raid, charge: 0 });
+            this.shake = Math.max(this.shake, 0.3);
+          }
+          break;
+        }
+        case "aw_owl": {
+          // 천벌의 폭풍: 번개가 쉬지 않고 떨어진다
+          u.spawnT -= dt;
+          while (u.spawnT <= 0 && u.t < u.life - 0.1) {
+            u.spawnT += 0.11;
+            const e = live.length ? pick(live) : null, x = e ? e.x : rand(200, C.width), y = e ? e.y : rand(80, 400);
+            this.effects.push({ type: "bolt", x, y, t: 0, life: 0.25 });
+            if (e) this.damage(e, 9 * u.mul * this.dmgMul, true);
+            this.bullets = this.bullets.filter((b) => Math.hypot(b.x - x, b.y - y) > 80);
+          }
+          break;
+        }
+        case "aw_cat": {
+          // 은하 붕괴: 거대 블랙홀이 모두 빨아들이고 폭발
+          if (!u.bh) u.bh = { x: this.raid ? C.width / 2 : C.width * 0.62, y: this.raid ? C.height / 2 : 250 };
+          for (const e of live) {
+            if (RD.ENEMIES[e.type].boss || e.raidBoss || e.rival) continue;
+            const d = Math.hypot(e.x - u.bh.x, e.y - u.bh.y);
+            if (d < 600) { e.x += (u.bh.x - e.x) * Math.min(1, dt * 2); e.y += (u.bh.y - e.y) * Math.min(1, dt * 2); }
+          }
+          if ((u.tickT = (u.tickT || 0) - dt) <= 0) { u.tickT = 0.2; for (const e of live) if (Math.hypot(e.x - u.bh.x, e.y - u.bh.y) < 220 + RD.ENEMIES[e.type].w / 2) this.damage(e, 6 * u.mul * this.dmgMul, true); }
+          this.bullets = this.bullets.filter((b) => Math.hypot(b.x - u.bh.x, b.y - u.bh.y) > 700);
+          if (u.t > u.life - 0.15 && !u.done.boom) { u.done.boom = true; this.explode(u.bh.x, u.bh.y, 420, 70 * u.mul * this.dmgMul); this.shake = 0.6; this.effects.push({ type: "flash", t: 0, life: 0.3 }); }
+          break;
+        }
+        case "aw_panda": {
+          // 망자의 행진: 망령 군대
+          const maxY = this.raid ? C.height - 40 : C.groundY - 20;
+          u.spawnT -= dt;
+          while (u.spawnT <= 0 && u.t < u.life - 0.2) { u.spawnT += 0.07; this.addShot({ kind: "ghost", x: -20, y: rand(60, maxY), vx: 520, vy: 0, w: 26, h: 26, dmg: 6 * u.mul * this.dmgMul, pierce: 2, homing: true, color: "#d8c0ff", brawl: !!this.raid, charge: 0 }); }
+          break;
+        }
+        case "aw_mech": {
+          // 강철 심장 폭주: 미사일 폭격
+          u.spawnT -= dt;
+          while (u.spawnT <= 0 && u.t < u.life - 0.2) { u.spawnT += 0.07; const a = rand(-1.1, 1.1); this.addShot({ kind: "missile", x: p.x, y: p.y - 10, vx: Math.cos(a) * 500, vy: Math.sin(a) * 500, w: 18, h: 12, dmg: 6 * u.mul * this.dmgMul, homing: true, color: "#ffb347", brawl: !!this.raid, charge: 0 }); }
+          if (this.mech && u.t > u.life - 0.05 && !u.done.fix) { u.done.fix = true; this.rebuildMech(1); }
+          break;
+        }
+        case "aw_frog": {
+          // 커튼콜: 탄이 코인이 되고 카드 폭풍
+          if (!u.done.coins) { u.done.coins = true; for (const b of this.bullets.slice(0, 30)) this.items.push({ type: "coin", x: b.x, y: b.y, vx: rand(-40, 40), vy: rand(-80, -20) }); this.bullets = []; }
+          u.spawnT -= dt;
+          while (u.spawnT <= 0 && u.t < u.life - 0.2) { u.spawnT += 0.045; u.spin = (u.spin || 0) + 0.5; this.addShot({ kind: "card", x: p.x, y: p.y, vx: Math.cos(u.spin) * 640, vy: Math.sin(u.spin) * 640, w: 16, h: 22, dmg: 4 * u.mul * this.dmgMul, pierce: 1, homing: u.t > 0.4, burst: 45, color: "#ff5ad8", brawl: !!this.raid, charge: 0 }); }
+          this.bullets = this.bullets.filter((b) => { if (Math.hypot(b.x - p.x, b.y - p.y) > 260) return true; this.effects.push({ type: "confetti", x: b.x, y: b.y, t: 0, life: 0.5 }); return false; });
           break;
         }
         case "megafrog": {

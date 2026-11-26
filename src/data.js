@@ -527,11 +527,34 @@ RD.AWAKEN = {
     frog: { name: "극장의 개구리", epithet: "극장의 지배자", color: "#ff5ad8", kind: "a_cards", cd: 0.38, dmg: 2.2, shot: "극장 카드 쇼", desc: "적을 따라가는 마술 카드를 부채꼴로 던진다. 맞으면 폭죽처럼 터진다" },
   },
 };
+// 각성 강화 카드와 궁극기 (각성하면 카드 이름·효과와 궁극기가 바뀐다)
+RD.AWAKEN_KIT = {
+  fox: { multi: ["검기 추가", (lv) => `한 번에 날리는 검기 ${lv + 2}개 → ${lv + 3}개`], sig: ["천검 각성", "검기가 20% 커지고, 하나가 베는 적 탄 +1"],
+    ult: { name: "천검난무", desc: "화면 가득 검기가 쏟아지고 모든 적 탄을 벤다", color: "#bfe4ff", life: 2.2 } },
+  rabbit: { multi: ["표창 추가", (lv) => `한 번에 던지는 표창 ${lv + 1}개 → ${lv + 2}개`], sig: ["그림자 연쇄", "표창이 1번 더 튕긴다"],
+    ult: { name: "그림자 처형", desc: "그림자가 되어 적 사이를 순간이동하며 벤다 (무적)", color: "#9a7aff", life: 4 } },
+  bear: { multi: ["지진파 강화", (lv) => `지진파 위력 +25%, 개수 ${Math.min(2, lv + 1)} → ${Math.min(2, lv + 2)}`], sig: ["단층 확장", "지진파가 넓어진다"],
+    ult: { name: "대지 붕괴", desc: "거대한 지진파가 연달아 화면을 휩쓴다", color: "#d8a060", life: 3 } },
+  owl: { multi: ["번개 연쇄", (lv) => `번개가 이어지는 적 ${lv + 3} → ${lv + 4}`], sig: ["뇌운", "번개가 1번 더 이어진다"],
+    ult: { name: "천벌의 폭풍", desc: "하늘에서 번개가 쉬지 않고 떨어진다", color: "#9fe8ff", life: 5 } },
+  cat: { multi: ["블랙홀 추가", (lv) => `한 번에 여는 블랙홀 ${lv + 1}개 → ${lv + 2}개`], sig: ["사건의 지평선", "블랙홀이 더 오래 머문다"],
+    ult: { name: "은하 붕괴", desc: "거대한 블랙홀이 적과 탄을 모두 빨아들이고 폭발한다", color: "#c58aff", life: 4 } },
+  panda: { multi: ["해골 추가", (lv) => `한 번에 날리는 해골 ${lv + 2}개 → ${lv + 3}개`], sig: ["망령 군단", "망령 위력 +30%"],
+    ult: { name: "망자의 행진", desc: "망령 군대가 화면을 가로지르며 적을 덮친다", color: "#b07aff", life: 5 } },
+  mech: { multi: ["미사일 추가", (lv) => `한 번에 쏘는 미사일 ${lv + 3}개 → ${lv + 4}개`], sig: ["강철 심장 과부하", "미사일 위력 +20%"],
+    ult: { name: "강철 심장 폭주", desc: "미사일을 쏟아붓고 메카를 새것으로 고친다 (무적)", color: "#ffb347", life: 5 } },
+  frog: { multi: ["카드 추가", (lv) => `한 번에 던지는 카드 ${lv + 3}장 → ${lv + 4}장`], sig: ["앙코르", "카드 폭발 범위 증가"],
+    ult: { name: "커튼콜", desc: "무대의 막이 오르고 화면의 탄이 모두 코인이 된다. 카드 폭풍", color: "#ff5ad8", life: 5 } },
+};
+
 // 각성한 캐릭터 정보 (이름, 공격이 바뀐 사본)
 RD.awakenedChar = (id) => {
   const c = RD.CHARACTERS.find((x) => x.id === id), F = RD.AWAKEN.forms[id];
+  const K = RD.AWAKEN_KIT[id];
   return { ...c, name: F.name, epithet: F.epithet, awakened: true, desc: F.desc,
-    shot: { ...c.shot, name: F.shot, kind: F.kind, cd: F.cd, dmg: F.dmg, color: F.color, multiDesc: (lv) => `${F.shot} 강화 ${lv} → ${lv + 1}` } };
+    shot: { ...c.shot, name: F.shot, kind: F.kind, cd: F.cd, dmg: F.dmg, color: F.color, multiName: K.multi[0], multiDesc: K.multi[1] },
+    sig: { name: K.sig[0], desc: K.sig[1] },
+    bomb: { name: K.ult.name, desc: K.ult.desc, color: K.ult.color } };
 };
 
 // ---------- 장비 아이템 ----------

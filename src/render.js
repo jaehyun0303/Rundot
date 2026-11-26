@@ -915,6 +915,34 @@
     const u = run.ult;
     if (!u) return;
     const k = u.t / u.life;
+    if (u.kind.startsWith("aw_")) {
+      // 각성 궁극기: 각성 색으로 물든 화면
+      const col = RD.AWAKEN_KIT[run.charId].ult.color, fade = Math.min(1, u.t * 4, (u.life - u.t) * 3);
+      const gr = g.createRadialGradient(C.width / 2, C.height / 2, 120, C.width / 2, C.height / 2, 620);
+      gr.addColorStop(0, "rgba(0,0,0,0)"); gr.addColorStop(1, col);
+      g.save(); g.globalAlpha = 0.35 * fade; g.fillStyle = gr; g.fillRect(0, 0, C.width, C.height); g.restore();
+      if (u.kind === "aw_cat" && u.bh) {
+        const r = 70 + Math.sin(u.t * 6) * 6 + Math.min(1, u.t) * 40;
+        g.save(); g.translate(u.bh.x, u.bh.y); g.rotate(u.t * 3);
+        for (let i = 0; i < 5; i++) { g.strokeStyle = `rgba(197,138,255,${0.5 - i * 0.08})`; g.lineWidth = 5; g.beginPath(); g.arc(0, 0, r + i * 34, i, i + 4); g.stroke(); }
+        g.fillStyle = "#c58aff"; g.beginPath(); g.arc(0, 0, r * 0.75, 0, Math.PI * 2); g.fill();
+        g.fillStyle = "#0a0614"; g.beginPath(); g.arc(0, 0, r * 0.62, 0, Math.PI * 2); g.fill();
+        g.restore();
+      }
+      if (u.kind === "aw_frog") {
+        // 극장의 막
+        const open = Math.min(1, u.t * 2) * Math.min(1, (u.life - u.t) * 2);
+        const w = (C.width / 2) * (1 - open * 0.85);
+        for (const side of [0, 1]) {
+          const x = side ? C.width - w : 0;
+          g.fillStyle = "#8a1830"; g.fillRect(x, 0, w, C.height);
+          for (let i = 0; i < w; i += 24) { g.fillStyle = "#6a1024"; g.fillRect(x + i, 0, 8, C.height); }
+          g.fillStyle = "#ffd34d"; g.fillRect(side ? x : x + w - 6, 0, 6, C.height);
+        }
+        g.fillStyle = "#6a1024"; g.fillRect(0, 0, C.width, 30); g.fillStyle = "#ffd34d"; g.fillRect(0, 28, C.width, 4);
+      }
+      return;
+    }
     if (u.kind === "fox") {
       g.fillStyle = `rgba(0,0,10,${0.45 * (1 - k)})`;
       g.fillRect(0, 0, C.width, C.height);
