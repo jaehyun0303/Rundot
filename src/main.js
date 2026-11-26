@@ -41,12 +41,16 @@
   let testMode = !!save.get("testMode", false);
   // 각성: 왕별(6성)에서 각성하면 성급이 0성부터 다시 (owned 값 1 = 0성)
   let awak = save.get("awak", {}), stones = save.get("stones", 0);
-  const testAwak = {}; // 테스트 모드 각성은 저장하지 않는다
-  const awakOf = (id) => (testMode ? !!(testAwak[id] || awak[id]) : !!awak[id]);
+  // 각성 버전 / 일반 버전 전환: 각성한 캐릭터(테스트 모드에서는 모든 캐릭터)는 어느 쪽으로든 출격할 수 있다
+  let form = save.get("form", {}); // 캐릭터 id → "awake" | "normal"
+  const awakOf = (id) => !!awak[id]; // 진짜로 각성했는지 (성급 계산용)
+  const awakAvail = (id) => testMode || !!awak[id];
+  const useAwake = (id) => awakAvail(id) && (form[id] || (awak[id] ? "awake" : "normal")) === "awake";
+  const setForm = (id, f) => { form[id] = f; save.set("form", form); RD.audio && RD.audio.sfx("click"); };
   const rawOf = (id) => (testMode ? Math.max(1, owned[id] || 0) : owned[id] || 0);
   const starsOf = (id) => Math.max(0, rawOf(id) - (awakOf(id) ? 1 : 0)); // 0성~5성, 6 = 왕별
   const isOwned = (i) => rawOf(RD.CHARACTERS[i].id) > 0;
-  const dispChar = (i) => (awakOf(RD.CHARACTERS[i].id) ? RD.awakenedChar(RD.CHARACTERS[i].id) : RD.CHARACTERS[i]);
+  const dispChar = (i) => (useAwake(RD.CHARACTERS[i].id) ? RD.awakenedChar(RD.CHARACTERS[i].id) : RD.CHARACTERS[i]);
   const starName = (n) => (n >= 6 ? "왕별" : `${n}성`);
   let selected = save.get("char", 0);
   if (!RD.CHARACTERS[selected] || !isOwned(selected)) selected = 0;
@@ -158,7 +162,7 @@
       scene = "match";
       return;
     }
-    run = new RD.Run(id, mode, diff, { stars: Math.max(1, starsOf(id)), awakened: awakOf(id), mastery: mlv(id), stage: mode === "stageselect" ? pickStage : 0, raidBoss: RD.RAID_BOSSES[raidPick][0], raidLv: raidLv[RD.RAID_BOSSES[raidPick][0]] || 1,
+    run = new RD.Run(id, mode, diff, { stars: Math.max(1, starsOf(id)), awakened: useAwake(id), mastery: mlv(id), stage: mode === "stageselect" ? pickStage : 0, raidBoss: RD.RAID_BOSSES[raidPick][0], raidLv: raidLv[RD.RAID_BOSSES[raidPick][0]] || 1,
       duel: match && match.go ? { rival: match.rival, aiLv: match.aiLv, name: match.name, arena: match.arena } : null });
     if (mode === "duel") match = null;
     RD.playerTitle = titleOf(RD.CHARACTERS[selected]);
@@ -799,11 +803,11 @@
   let starPopup = false, awakenFx = null;
   function awakenNow(c) {
     const need = RD.AWAKEN.stones[c.grade];
-    if (testMode) { testAwak[c.id] = true; }
+    if (testMode) { form[c.id] = "awake"; save.set("form", form); }
     else {
       if (starsOf(c.id) < 6 || awak[c.id] || stones < need || coins < RD.AWAKEN.coins) return;
       stones -= need; coins -= RD.AWAKEN.coins;
-      awak[c.id] = true; owned[c.id] = 1; // 성급은 0성부터 다시
+      awak[c.id] = true; owned[c.id] = 1; form[c.id] = "awake"; save.set("form", form); // 성급은 0성부터 다시
       save.set("awak", awak); save.set("owned", owned); save.set("stones", stones); save.set("coins", coins);
     }
     starPopup = false;
@@ -811,7 +815,7 @@
     RD.audio && RD.audio.sfx("levelup");
   }
   function drawStarPopup(ch0) {
-    const base = RD.CHARACTERS.find((c) => c.id === ch0.id), st = starsOf(base.id), T = RD.STAR_TRAITS[base.id] || {}, aw = awakOf(base.id);
+    const base = RD.CHARACTERS.find((c) => c.id === ch0.id), st = starsOf(base.id), T = RD.STAR_TRAITS[base.id] || {}, aw = awakOf(base.id) || (testMode && useAwake(base.id));
     buttons = [];
     g.fillStyle = "rgba(10,6,20,0.82)"; g.fillRect(0, 0, C.width, C.height);
     UI.panel(g, 120, 24, 720, 492, "#231a36");
@@ -896,9 +900,18 @@
     UI.panel(g, 16, 250, 928, 278, "#231a36");
     UI.panel(g, 28, 262, 180, 254, "#1d1428");
     UI.portrait(g, ch, 31, 265, 174, 248, Math.floor(menuT * 8) % 4);
+    // 일반 / 각성 전환 (각성했거나 테스트 모드)
+    const bid = RD.CHARACTERS[selected].id;
+    if (own && awakAvail(bid)) {
+      const aw = useAwake(bid);
+      g.fillStyle = "rgba(10,6,20,0.75)"; g.fillRect(31, 477, 174, 36);
+      tab(36, 482, 80, 26, "일반", !aw, "#7fe6ff", () => setForm(bid, "normal"));
+      tab(120, 482, 80, 26, "각성", aw, "#ff5ad8", () => setForm(bid, "awake"));
+      if (testMode && !awak[bid]) UI.chip(g, 36, 462, 100, 14, "#7fe08a", "테스트 모드", 9);
+    }
     UI.fitText(g, ch.name, 224, 282, 200, 24, "#fff");
     UI.chip(g, 432, 270, 50, 22, UI.gradeCol(ch.grade), RD.GRADES[ch.grade].name, 12);
-    if (ch.awakened) RD.text(g, `[${ch.epithet}]`, 224, 302, 11, "#ff9ad8");
+    if (ch.awakened) RD.text(g, `[${ch.epithet}]`, 224, 261, 11, "#ff9ad8");
     UI.chip(g, 490, 270, 60, 22, "#3d2f5a", ch.type, 12, "#fff");
     UI.stars(g, 560, 273, starsOf(ch.id), G.maxStars, 1.6);
     buttons.push({ x: 556, y: 266, w: 80, h: 26, onClick: () => { starPopup = true; } });
