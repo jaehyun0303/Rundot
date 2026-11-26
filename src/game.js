@@ -58,7 +58,9 @@
       this.mastDmg = RD.MASTERY.rewards.slice(0, this.mast + 1).reduce((a, r) => a + ((r && r.dmg) || 0), 0);
       this.mpas = this.mast >= 5;
       this.st = (n) => this.stars >= n; // 성급 특성 (★2, ★4, ★6)
-      this.killsByType = {}; this.bossKills = 0; this.ultCount = 0; // 미션·도감 기록
+      this.killsByType = {}; this.bossKills = 0; this.ultCount = 0; this.midKills = 0; // 미션·도감 기록
+      // 장비 능력치 합 (opts.gear = { atk, hp, ... })
+      this.gear = Object.assign({ atk: 0, hp: 0, rate: 0, spd: 0, regen: 0, dodge: 0, coin: 0, exp: 0, ult: 0 }, opts.gear || {});
       this.coins = 0; // 이번 판에 모은 코인
       this.slashes = []; // 여우 베기
       this.parry = RD.FOX_PARRY.max; // 여우 베기 게이지 (탄을 벨 수 있는 횟수)
@@ -81,7 +83,7 @@
       this.score = 0;
       this.nextExtend = C.extendEvery;
       this.lives = this.M.lives || this.D.lives;
-      this.bombs = C.bombs + (this.mast >= 8 ? 1 : 0) + (charId === "owl" && this.stars >= 6 ? 1 : 0);
+      this.bombs = C.bombs + (this.mast >= 8 ? 1 : 0) + (charId === "owl" && this.stars >= 6 ? 1 : 0) + this.gear.ult;
       this.kills = 0;
       this.over = false;
       this.win = false;
@@ -102,7 +104,7 @@
       this.tech = { pts: (this.mpas ? 2 : 0) + (charId === "mech" && this.stars >= 6 ? 1 : 0), has: {} }; // 메카 테크트리 (숙련 패시브: 2점으로 시작)
       this.techOpen = false; this.techSel = null;
       this.mega = false; this.megaPow = 0; this.roars = []; // 개구리 메가 프로그
-      this.player = { vx: 0, vy: 0, x: 160, y: 260, hp: (RD.CHAR_HP[charId] || C.maxHp) * (1 + this.mastHp + RD.GACHA.starHpPct * (this.stars - 1) + (opts.awakened ? RD.AWAKEN.hpBonus : 0)), gulp: 0, invuln: C.respawnInvuln, hurt: 0, dead: 0, animT: 0, shotCd: 0, tilt: 0 };
+      this.player = { vx: 0, vy: 0, x: 160, y: 260, hp: (RD.CHAR_HP[charId] || C.maxHp) * (1 + this.mastHp + RD.GACHA.starHpPct * (this.stars - 1) + (opts.awakened ? RD.AWAKEN.hpBonus : 0) + this.gear.hp), gulp: 0, invuln: C.respawnInvuln, hurt: 0, dead: 0, animT: 0, shotCd: 0, tilt: 0 };
       if (this.mech && this.awak) { this.mech.evo = 1; this.tech.has.mk2 = true; } // 메가 메카닉: Mk.II로 시작
       if (this.mech) this.mech.hp = this.mechMax;
       this.pet = { x: 100, y: 260, t: 0, cd: 0 };
@@ -177,8 +179,8 @@
     // ---------- 능력치 (강화 단계에서 계산) ----------
     lv(id) { return this.up[id] || 0; }
     get power() { return 1 + this.lv("multi"); }
-    get dmgMul() { return (1 + 0.2 * this.lv("dmg")) * (1 + RD.GACHA.starDmg * (this.stars - 1)) * (1 + this.megaPow) * (1 + this.mastDmg) * (this.awak ? 1 + RD.AWAKEN.dmgBonus : 1); }
-    get maxHp() { return ((RD.CHAR_HP[this.charId] || C.maxHp) * (1 + this.mastHp + RD.GACHA.starHpPct * (this.stars - 1) + (this.awak ? RD.AWAKEN.hpBonus : 0)) + 25 * this.lv("hp")) * (this.mega ? RD.MEGA_FROG.hpMul : 1); }
+    get dmgMul() { return (1 + 0.2 * this.lv("dmg")) * (1 + RD.GACHA.starDmg * (this.stars - 1)) * (1 + this.megaPow) * (1 + this.mastDmg) * (this.awak ? 1 + RD.AWAKEN.dmgBonus : 1) * (1 + this.gear.atk); }
+    get maxHp() { return ((RD.CHAR_HP[this.charId] || C.maxHp) * (1 + this.mastHp + RD.GACHA.starHpPct * (this.stars - 1) + (this.awak ? RD.AWAKEN.hpBonus : 0) + this.gear.hp) + 25 * this.lv("hp")) * (this.mega ? RD.MEGA_FROG.hpMul : 1); }
     get shieldEvery() { return this.mpas && this.charId === "cat" ? 6 : RD.CAT_SHIELD.every; }
     get armor() { return (1 - 0.15 * this.lv("armor")) * (this.mpas && this.charId === "bear" ? 0.9 : 1); }
     get mechMax() { return RD.MECH.hp[this.mech.evo] * (1 + 0.15 * this.lv("hp")) * (this.tech.has.plate ? 1.3 : 1) * (this.st(2) ? 1.15 : 1); }
@@ -412,7 +414,7 @@
 
     // ---------- 레벨업 강화 선택 ----------
     gainExp(n) {
-      this.exp += n * this.D.exp;
+      this.exp += n * this.D.exp * (1 + this.gear.exp);
       while (this.exp >= this.expNeed) {
         this.exp -= this.expNeed;
         this.level++;
@@ -957,7 +959,7 @@
       p.shotCd -= dt;
       if (p.shotCd > 0 || p.dead > 0) return;
       const s = this.char.shot;
-      p.shotCd = s.cd * Math.pow(0.88, this.lv("rate")) * (this.rush > 0 ? 0.5 : 1) * (this.mechOver ? 0.7 : 1);
+      p.shotCd = s.cd * Math.pow(0.88, this.lv("rate")) * (this.rush > 0 ? 0.5 : 1) * (this.mechOver ? 0.7 : 1) * Math.max(0.5, 1 - this.gear.rate);
       const sig = this.lv("sig");
       const pw = this.power;
       const dmg = s.dmg * this.dmgMul;
@@ -1743,6 +1745,7 @@
     // ---------- 피격과 체력 ----------
     hurt(amount) {
       const p = this.player;
+      if (this.gear.dodge && Math.random() < this.gear.dodge) { p.invuln = Math.max(p.invuln, 0.4); this.text("회피!", "#c58aff"); return; } // 장비 회피
       if (this.charId === "frog" && Math.random() < (this.st(2) ? 0.3 : 0.25)) {
         // 익살꾼의 운
         p.invuln = Math.max(p.invuln, 0.5);
@@ -1862,7 +1865,7 @@
         inp.moveX = inp.moveY = 0;
       } else {
         p.slow = Math.max(0, (p.slow || 0) - dt);
-        const sp = (inp.focus ? C.focusSpeed : C.moveSpeed) * (1 + 0.12 * this.lv("speed")) * (p.slow > 0 ? 0.5 : 1) * (this.mech && !this.mech.alive ? 1.15 : 1) * (this.mpas && this.charId === "rabbit" ? 1.1 : 1); // 메카 없는 다람쥐는 조금 빠르다
+        const sp = (inp.focus ? C.focusSpeed : C.moveSpeed) * (1 + 0.12 * this.lv("speed")) * (p.slow > 0 ? 0.5 : 1) * (this.mech && !this.mech.alive ? 1.15 : 1) * (this.mpas && this.charId === "rabbit" ? 1.1 : 1) * (1 + this.gear.spd); // 메카 없는 다람쥐는 조금 빠르다
         let mx = inp.dx * sp * dt + inp.moveX;
         let my = inp.dy * sp * dt + inp.moveY;
         p.inverted = Math.max(0, (p.inverted || 0) - dt);
@@ -1890,10 +1893,11 @@
       if (this.brawl) {
         // 탄환 재장전 (한 칸씩)
         const B = this.brawl, max = this.brawlMaxAmmo;
-        if (B.ammo < max) B.ammo = Math.min(max, B.ammo + dt / (RD.BRAWL[this.charId].reload * (1 - Math.min(0.6, this.bst("reload")))));
+        if (B.ammo < max) B.ammo = Math.min(max, B.ammo + dt / (RD.BRAWL[this.charId].reload * (1 - Math.min(0.6, this.bst("reload"))) * Math.max(0.5, 1 - this.gear.rate)));
       }
       p.hurt = Math.max(0, p.hurt - dt);
       p.atkT = Math.max(0, (p.atkT || 0) - dt);
+      if (this.gear.regen && p.dead <= 0 && !this.M.noHeal && !(this.judgFire > 0)) p.hp = Math.min(this.maxHp, p.hp + this.gear.regen * dt); // 생명의 망토
       if (this.megaCut > 0) this.megaCut -= dt;
       // 패시브
       if (this.charId === "fox") this.parry = Math.min(RD.FOX_PARRY.max, this.parry + dt / RD.FOX_PARRY.regen * (this.mpas ? 1.3 : 1));
@@ -2120,6 +2124,7 @@
       this.kills++;
       this.killsByType[e.type] = (this.killsByType[e.type] || 0) + 1;
       if (def.boss) this.bossKills++;
+      if (def.midboss) this.midKills++;
       if (e.rival) { this.duelEnd(true, "KO!"); return; }
       if (this.mech) this.addParts(def.boss ? 10 : def.midboss ? 5 : 1);
       if (this.mega) this.hunger = Math.min(RD.MEGA_FROG.hungerMax, this.hunger + RD.MEGA_FROG.feedKill); // 메가 프로그: 쓰러뜨릴 때마다 조금 찬다

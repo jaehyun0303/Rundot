@@ -534,6 +534,42 @@ RD.awakenedChar = (id) => {
     shot: { ...c.shot, name: F.shot, kind: F.kind, cd: F.cd, dmg: F.dmg, color: F.color, multiDesc: (lv) => `${F.shot} 강화 ${lv} → ${lv + 1}` } };
 };
 
+// ---------- 장비 아이템 ----------
+// 캐릭터마다 무기·방어구·장신구 3칸. 아이템마다 고유 번호(uid)가 있어 나중에 거래할 수 있다
+RD.GEAR_SLOTS = [["weapon", "무기", "sword", "#ff8a3d"], ["armor", "방어구", "shield", "#7fe6ff"], ["acc", "장신구", "star", "#c58aff"]];
+RD.GEAR_GRADES = {
+  C: { name: "일반", mul: 1, w: 55 }, R: { name: "희귀", mul: 1.6, w: 28 }, SR: { name: "영웅", mul: 2.3, w: 12 },
+  SSR: { name: "전설", mul: 3.2, w: 4 }, MY: { name: "신화", mul: 4.5, w: 1 },
+};
+// stat: atk 공격력, hp 체력, rate 공격 속도, spd 이동 속도, regen 초당 회복, dodge 회피, coin 코인, exp 경험치, ult 궁극기
+RD.GEAR = {
+  whetstone: { slot: "weapon", name: "강철 숫돌", icon: "sword", stats: { atk: 0.05 }, desc: "무기를 날카롭게" },
+  feather: { slot: "weapon", name: "번개 깃털", icon: "bolt", stats: { rate: 0.04 }, desc: "공격이 빨라진다" },
+  fang: { slot: "weapon", name: "용의 이빨", icon: "skull", stats: { atk: 0.08, hp: -0.03 }, desc: "강하지만 몸이 약해진다" },
+  vest: { slot: "armor", name: "가죽 조끼", icon: "shield", stats: { hp: 0.06 }, desc: "튼튼한 기본 방어구" },
+  crystal: { slot: "armor", name: "수정 갑옷", icon: "chaos", stats: { hp: 0.04, dodge: 0.015 }, desc: "가끔 공격이 빗나간다" },
+  cloak: { slot: "armor", name: "생명의 망토", icon: "heart", stats: { regen: 0.25 }, desc: "체력이 조금씩 찬다" },
+  coin: { slot: "acc", name: "행운의 동전", icon: "coin", stats: { coin: 0.08 }, desc: "코인을 더 얻는다" },
+  ring: { slot: "acc", name: "지혜의 반지", icon: "book", stats: { exp: 0.06 }, desc: "경험치를 더 얻는다" },
+  boots: { slot: "acc", name: "바람 신발", icon: "run", stats: { spd: 0.04 }, desc: "이동이 빨라진다" },
+  orb: { slot: "acc", name: "궁극의 구슬", icon: "target", stats: { ult: 1 }, desc: "궁극기를 더 갖고 시작 (전설 이상 +2, 강화 +5·+10 에서 +1)" },
+  charm: { slot: "acc", name: "그림자 부적", icon: "flag", stats: { dodge: 0.02 }, desc: "공격을 피할 확률" },
+};
+RD.GEAR_STAT_NAMES = { atk: ["공격력", "%"], hp: ["체력", "%"], rate: ["공격 속도", "%"], spd: ["이동 속도", "%"], regen: ["초당 회복", ""], dodge: ["회피", "%"], coin: ["코인", "%"], exp: ["경험치", "%"], ult: ["궁극기", "개"] };
+RD.GEAR_MAX_LV = 10;
+RD.gearUpCost = (it) => Math.round(60 * RD.GEAR_GRADES[it.grade].mul * (1 + it.lv * 0.6)); // 강화 비용 (코인)
+RD.gearSellValue = (it) => Math.round(25 * RD.GEAR_GRADES[it.grade].mul * (1 + it.lv * 0.5)); // 분해하면 코인
+// 아이템 하나의 능력치 (등급 배율, 강화 1단계마다 +10%)
+RD.gearStats = (it) => {
+  const B = RD.GEAR[it.base], out = {};
+  for (const [k, v] of Object.entries(B.stats)) {
+    if (k === "ult") out[k] = (it.grade === "SSR" || it.grade === "MY" ? 2 : 1) + (it.lv >= 5 ? 1 : 0) + (it.lv >= 10 ? 1 : 0); // 강화 +5, +10 에서 1개씩 더
+    else out[k] = v * RD.GEAR_GRADES[it.grade].mul * (1 + 0.1 * it.lv);
+  }
+  return out;
+};
+RD.gearDrop = { boss: 1, midboss: 0.4, raidWin: 2, duelWin: 1, missionBonus: 1 }; // 드랍 개수(확률)
+
 // 캐릭터마다 다른 기본 체력
 RD.CHAR_HP = { fox: 110, rabbit: 85, bear: 140, owl: 90, cat: 80, panda: 100, mech: 70, frog: 95 };
 

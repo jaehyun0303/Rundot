@@ -138,6 +138,34 @@
   let dex = save.get("dex", {}); // 몬스터 종류 → 쓰러뜨린 수
   let dexTab = "mon", dexSel = null;
 
+  // ---------- 장비 아이템 ----------
+  // 테스트 모드는 따로 저장 (진짜 가방은 건드리지 않는다)
+  const invState = { key: null, items: [], eq: {}, next: 1 };
+  function INV() {
+    const key = testMode ? "inv_test" : "inv";
+    if (invState.key !== key) { const d = save.get(key, { items: [], eq: {}, next: 1 }); Object.assign(invState, d, { key }); }
+    return invState;
+  }
+  const saveInv = () => { const I = INV(); save.set(I.key, { items: I.items, eq: I.eq, next: I.next }); };
+  function rollGear(luck = 0) {
+    const I = INV(), keys = Object.keys(RD.GEAR), base = keys[Math.floor(Math.random() * keys.length)];
+    const GG = RD.GEAR_GRADES, ws = Object.entries(GG).map(([g, d], i) => [g, d.w * (1 + luck * i)]);
+    let r = Math.random() * ws.reduce((a, w) => a + w[1], 0), grade = "C";
+    for (const [g, w] of ws) { if ((r -= w) <= 0) { grade = g; break; } }
+    const it = { uid: `i${Date.now().toString(36)}${(I.next++).toString(36)}`, base, grade, lv: 0 };
+    I.items.push(it); saveInv();
+    return it;
+  }
+  const findItem = (uid) => INV().items.find((x) => x.uid === uid);
+  const equippedBy = (uid) => { const E = INV().eq; for (const [cid, sl] of Object.entries(E)) for (const v of Object.values(sl)) if (v === uid) return cid; return null; };
+  function gearSum(cid) {
+    const out = {}, sl = INV().eq[cid] || {};
+    for (const uid of Object.values(sl)) { const it = findItem(uid); if (!it) continue; for (const [k, v] of Object.entries(RD.gearStats(it))) out[k] = (out[k] || 0) + v; }
+    return out;
+  }
+  const statText = (k, v) => { const [n, u] = RD.GEAR_STAT_NAMES[k]; return `${n} ${v >= 0 ? "+" : ""}${u === "%" ? Math.round(v * 1000) / 10 : Math.round(v * 100) / 100}${u}`; };
+  let bag = { cid: null, slot: "all", sel: null, page: 0 };
+
   // ---------- 결투 ----------
   let trophy = save.get("trophy", 0), duelRec = save.get("duelRec", { w: 0, l: 0 });
   let match = null; // 매칭 화면 상태
@@ -162,7 +190,7 @@
       scene = "match";
       return;
     }
-    run = new RD.Run(id, mode, diff, { stars: Math.max(1, starsOf(id)), awakened: useAwake(id), mastery: mlv(id), stage: mode === "stageselect" ? pickStage : 0, raidBoss: RD.RAID_BOSSES[raidPick][0], raidLv: raidLv[RD.RAID_BOSSES[raidPick][0]] || 1,
+    run = new RD.Run(id, mode, diff, { stars: Math.max(1, starsOf(id)), awakened: useAwake(id), mastery: mlv(id), gear: gearSum(id), stage: mode === "stageselect" ? pickStage : 0, raidBoss: RD.RAID_BOSSES[raidPick][0], raidLv: raidLv[RD.RAID_BOSSES[raidPick][0]] || 1,
       duel: match && match.go ? { rival: match.rival, aiLv: match.aiLv, name: match.name, arena: match.arena } : null });
     if (mode === "duel") match = null;
     RD.playerTitle = titleOf(RD.CHARACTERS[selected]);
@@ -195,6 +223,16 @@
     const AS = RD.AWAKEN.sources;
     run.stones = (run.bossKills || 0) * AS.boss + (run.raid && !run.duel && run.win ? AS.raidWin : 0) + (run.duel && run.win ? AS.duelWin : 0);
     if (run.stones) { stones += run.stones; save.set("stones", stones); }
+    // 장비 드랍: 보스 1개, 중간 보스 40%, 레이드 성공 2개, 결투 승리 1개 (어려울수록 좋은 등급)
+    if (!run.isAdv) {
+      const GD = RD.gearDrop;
+      let n = (run.bossKills || 0) * GD.boss + (run.raid && !run.duel && run.win ? GD.raidWin : 0) + (run.duel && run.win ? GD.duelWin : 0);
+      for (let i = 0; i < (run.midKills || 0); i++) if (Math.random() < GD.midboss) n++;
+      const luck = { easy: 0, normal: 0.15, hard: 0.35, hell: 0.6 }[diff] || 0;
+      run.gearDrops = [];
+      for (let i = 0; i < Math.min(n, 6); i++) run.gearDrops.push(rollGear(luck));
+      if (run.gear && run.gear.coin) run.coins = Math.round(run.coins * (1 + run.gear.coin));
+    }
     // 숙련도: 처치 + 점수 + 버틴 시간 + 승리
     const xp = Math.round((run.kills || 0) + (run.score || 0) / 500 + (run.t || 0) / 10 + (run.win ? 100 : 0));
     run.mastery = { xp, ...addMastery(run.charId || RD.CHARACTERS[selected].id, xp) };
@@ -339,7 +377,7 @@
       if (e.code === "KeyG") scene = "gacha";
       if (e.code === "KeyT") { testMode = !testMode; save.set("testMode", testMode); }
       if (e.code === "Enter" || e.code === "Space") { if (isOwned(selected)) startRun(); }
-    } else if (scene === "missions" || scene === "dex") {
+    } else if (scene === "missions" || scene === "dex" || scene === "bag") {
       if (e.code === "Escape") scene = "select";
     } else if (scene === "match") {
       if (e.code === "Escape") { match = null; scene = "select"; }
@@ -631,15 +669,15 @@
     // 아래: 메뉴 바
     UI.panel(g, 16, 436, 628, 90, "#231a36");
     const mr = missionsReady();
-    [["캐릭터", "up", "#ff8a3d", () => { scene = "chars"; }], ["뽑기", "chest", "#c58aff", () => { scene = "gacha"; }], ["미션", "flag", "#ffd34d", () => { scene = "missions"; }],
+    [["캐릭터", "up", "#ff8a3d", () => { scene = "chars"; }], ["뽑기", "chest", "#c58aff", () => { scene = "gacha"; }], ["가방", "shield", "#ff9a5a", () => { bag.cid = RD.CHARACTERS[selected].id; bag.sel = null; scene = "bag"; }], ["미션", "flag", "#ffd34d", () => { scene = "missions"; }],
       ["도감", "book", "#9fffb0", () => { scene = "dex"; }], ["소리", "sound", "#7fe6ff", () => RD.audio && RD.audio.toggle()], ["테스트", "gear", "#7fe08a", () => { testMode = !testMode; save.set("testMode", testMode); }]]
       .forEach(([label, ic, col, fn], i) => {
-        const x = 26 + i * 103, y = 448, w = 94;
+        const x = 24 + i * 88, y = 448, w = 82;
         UI.btn(g, x, y, w, 66, "#2b2140");
         UI.icon(g, ic, x + w / 2 - 12, y + 8, 24, col);
         RD.text(g, label, x + w / 2, y + 48, 14, "#fff", "center");
-        if (label === "테스트" && testMode) UI.chip(g, x + 56, y - 8, 36, 14, "#7fe08a", "ON", 10);
-        if (label === "미션" && mr) UI.chip(g, x + 66, y - 8, 26, 16, "#ff4d5e", String(mr), 11, "#fff");
+        if (label === "테스트" && testMode) UI.chip(g, x + 46, y - 8, 34, 14, "#7fe08a", "ON", 10);
+        if (label === "미션" && mr) UI.chip(g, x + 56, y - 8, 24, 16, "#ff4d5e", String(mr), 11, "#fff");
         buttons.push({ x, y, w, h: 66, onClick: fn });
       });
     // 출격
@@ -687,8 +725,94 @@
     if (missions.bonus) UI.chip(g, 770, y + 26, 140, 44, "#3d2f5a", "받음", 15, "#9a8ab8");
     else button(770, y + 24, 140, 48, all ? "보너스 받기" : "잠김", () => {
       if (!all || missions.bonus) return;
-      missions.bonus = true; coins += RD.MISSION_BONUS; stones += RD.AWAKEN.sources.missionBonus; save.set("stones", stones); save.set("coins", coins); save.set("missions", missions); RD.audio && RD.audio.sfx("clear");
+      missions.bonus = true; coins += RD.MISSION_BONUS; for (let i = 0; i < RD.gearDrop.missionBonus; i++) rollGear(0.3); stones += RD.AWAKEN.sources.missionBonus; save.set("stones", stones); save.set("coins", coins); save.set("missions", missions); RD.audio && RD.audio.sfx("clear");
     }, all ? "#ff8a3d" : "#4a3d60");
+  }
+
+  // ---------- 가방 (장비) ----------
+  function drawBag() {
+    const I = INV();
+    backHeader("가방", `장비 ${I.items.length}개` + (testMode ? " · 테스트 모드 가방" : ""));
+    const ownedIds = RD.CHARACTERS.filter((c, i) => isOwned(i)).map((c) => c.id);
+    if (!ownedIds.includes(bag.cid)) bag.cid = ownedIds[0];
+    const ci = RD.CHARACTERS.findIndex((c) => c.id === bag.cid), ch = dispChar(ci);
+    // 왼쪽: 캐릭터와 장착 칸
+    UI.panel(g, 16, 64, 322, 462, "#231a36");
+    const cyc = (d) => { const k = ownedIds.indexOf(bag.cid); bag.cid = ownedIds[(k + d + ownedIds.length) % ownedIds.length]; };
+    button(24, 72, 36, 36, "<", () => cyc(-1), "#3d2f5a"); button(294, 72, 36, 36, ">", () => cyc(1), "#3d2f5a");
+    UI.fitText(g, ch.name, 177, 90, 220, 16, "#fff", "center");
+    UI.portrait(g, ch, 108, 118, 138, 112);
+    const sl = I.eq[bag.cid] || {};
+    RD.GEAR_SLOTS.forEach(([sid, sname, ic, col], i) => {
+      const y = 240 + i * 66, it = sl[sid] && findItem(sl[sid]);
+      g.fillStyle = it ? "#2f2550" : "#1d1428"; g.fillRect(28, y, 298, 58);
+      UI.iconBox(g, 36, y + 9, 40, it ? RD.GEAR[it.base].icon : ic, it ? UI.gradeCol(it.grade) : "#4a3d60");
+      if (it) {
+        UI.fitText(g, `${RD.GEAR[it.base].name}${it.lv ? " +" + it.lv : ""}`, 88, y + 18, 170, 14, UI.gradeCol(it.grade));
+        UI.fitText(g, Object.entries(RD.gearStats(it)).map(([k, v]) => statText(k, v)).join(" · "), 88, y + 40, 230, 11, "#cfc6e0");
+      } else { RD.text(g, sname, 88, y + 18, 14, col); RD.text(g, "비어 있음 · 오른쪽에서 골라 장착", 88, y + 40, 11, "#7a6a90"); }
+      buttons.push({ x: 28, y, w: 298, h: 58, onClick: () => { if (it) bag.sel = it.uid; bag.slot = sid; bag.page = 0; } });
+    });
+    const sum = gearSum(bag.cid), st = Object.entries(sum);
+    RD.text(g, "장비 효과 합계", 28, 452, 12, "#ffd34d");
+    UI.fitText(g, st.length ? st.map(([k, v]) => statText(k, v)).join(" · ") : "없음", 28, 474, 296, 11, "#9fffb0");
+    if (testMode) button(28, 488, 296, 30, "테스트: 장비 6개 받기", () => { for (let i = 0; i < 6; i++) rollGear(1.5); }, "#3d6a46");
+    // 오른쪽: 필터와 목록
+    [["all", "전체", "#ffd34d"], ...RD.GEAR_SLOTS.map(([id, n, , c]) => [id, n, c])].forEach(([id, n, c], i) => tab(352 + i * 86, 66, 80, 28, n, bag.slot === id, c, () => { bag.slot = id; bag.page = 0; }));
+    const order = Object.keys(RD.GEAR_GRADES);
+    const list = I.items.filter((it) => bag.slot === "all" || RD.GEAR[it.base].slot === bag.slot)
+      .sort((a, b) => order.indexOf(b.grade) - order.indexOf(a.grade) || b.lv - a.lv);
+    const per = 18, pages = Math.max(1, Math.ceil(list.length / per));
+    bag.page = Math.min(bag.page, pages - 1);
+    UI.panel(g, 352, 104, 592, 252, "#1d1428");
+    if (!list.length) RD.text(g, "장비가 없어요 · 보스, 레이드, 결투, 미션 보너스에서 얻는다", 648, 230, 13, "#9a8ab8", "center");
+    list.slice(bag.page * per, bag.page * per + per).forEach((it, i) => {
+      const x = 362 + (i % 6) * 96, y = 112 + Math.floor(i / 6) * 80, gc = UI.gradeCol(it.grade), who = equippedBy(it.uid);
+      g.fillStyle = bag.sel === it.uid ? "#ffd34d" : gc; g.fillRect(x - 2, y - 2, 90, 74);
+      g.fillStyle = "#2b2140"; g.fillRect(x, y, 86, 70);
+      UI.iconBox(g, x + 25, y + 6, 36, RD.GEAR[it.base].icon, gc);
+      UI.fitText(g, RD.GEAR[it.base].name, x + 43, y + 54, 80, 10, "#fff", "center");
+      if (it.lv) RD.text(g, `+${it.lv}`, x + 82, y + 12, 11, "#ffd34d", "right");
+      if (who) UI.chip(g, x + 2, y + 2, 22, 14, "#7fe6ff", "E", 9);
+      buttons.push({ x, y, w: 86, h: 70, onClick: () => { bag.sel = it.uid; } });
+    });
+    if (pages > 1) {
+      button(352, 362, 60, 28, "◀", () => { bag.page = Math.max(0, bag.page - 1); }, "#3d2f5a");
+      RD.text(g, `${bag.page + 1}/${pages}`, 440, 377, 12, "#cfc6e0", "center");
+      button(468, 362, 60, 28, "▶", () => { bag.page = Math.min(pages - 1, bag.page + 1); }, "#3d2f5a");
+    }
+    // 아래: 고른 장비
+    UI.panel(g, 352, 398, 592, 128, "#231a36");
+    const it = bag.sel && findItem(bag.sel);
+    if (!it) { RD.text(g, "장비를 눌러 자세히 보기 · 장착 · 강화 · 분해", 648, 462, 13, "#9a8ab8", "center"); return; }
+    const B = RD.GEAR[it.base], gc = UI.gradeCol(it.grade), who = equippedBy(it.uid), slotName = RD.GEAR_SLOTS.find((s) => s[0] === B.slot)[1];
+    UI.iconBox(g, 364, 412, 50, B.icon, gc);
+    RD.text(g, `${B.name}${it.lv ? " +" + it.lv : ""}`, 426, 422, 16, gc);
+    UI.chip(g, 426, 436, 50, 16, gc, RD.GEAR_GRADES[it.grade].name, 10);
+    UI.chip(g, 482, 436, 50, 16, "#3d2f5a", slotName, 10, "#fff");
+    if (who) RD.text(g, `${RD.CHARACTERS.find((c) => c.id === who).name} 장착 중`, 540, 444, 11, "#7fe6ff");
+    UI.fitText(g, Object.entries(RD.gearStats(it)).map(([k, v]) => statText(k, v)).join(" · ") + " · " + B.desc, 364, 482, 330, 11, "#cfc6e0");
+    const mine = who === bag.cid;
+    button(714, 406, 220, 34, mine ? "장착 해제" : who ? "이 캐릭터로 옮겨 장착" : `${ch.name.split(" ")[0]}에게 장착`, () => {
+      const E = I.eq;
+      if (mine) { delete E[bag.cid][B.slot]; }
+      else { if (who) for (const [s, u] of Object.entries(E[who])) if (u === it.uid) delete E[who][s]; E[bag.cid] = E[bag.cid] || {}; E[bag.cid][B.slot] = it.uid; }
+      saveInv(); RD.audio && RD.audio.sfx("click");
+    }, mine ? "#5a4a78" : "#7fe6ff");
+    const cost = RD.gearUpCost(it), maxed = it.lv >= RD.GEAR_MAX_LV, canUp = !maxed && (testMode || coins >= cost);
+    button(714, 446, 106, 34, maxed ? "최대" : `강화 ${testMode ? "무료" : cost}`, () => {
+      if (!canUp) return;
+      if (!testMode) { coins -= cost; save.set("coins", coins); }
+      it.lv++; saveInv(); RD.audio && RD.audio.sfx("levelup");
+    }, canUp ? "#ff8a3d" : "#4a3d60");
+    const sell = RD.gearSellValue(it);
+    button(828, 446, 106, 34, `분해 +${sell}`, () => {
+      if (who) for (const [s, u] of Object.entries(I.eq[who])) if (u === it.uid) delete I.eq[who][s];
+      I.items = I.items.filter((x) => x.uid !== it.uid); bag.sel = null;
+      if (!testMode) { coins += sell; save.set("coins", coins); }
+      saveInv(); RD.audio && RD.audio.sfx("coin");
+    }, "#a04a5a");
+    RD.text(g, "분해하면 장비가 사라지고 코인을 받는다", 934, 500, 10, "#7a6a90", "right");
   }
 
   // ---------- 도감 ----------
@@ -1214,9 +1338,13 @@
     if (run.duel) rewards.push(["star", "트로피", `${run.trophyGain > 0 ? "+" : ""}${run.trophyGain} → ${trophy}`, run.trophyGain > 0 ? "#ffd34d" : "#ff8a8a"]);
     else if (run.raid) rewards.push(["sword", "레이드 레벨업", run.win ? `Lv.${run.raid.lv} → Lv.${run.raid.lv + 1}` : "클리어 시 획득", run.win ? "#ffd34d" : "#6a5a80"]);
     if (run.mastery) rewards.push(["up", run.mastery.after > run.mastery.before ? `숙련 Lv.${run.mastery.after} 달성!` : `숙련도 Lv.${run.mastery.after}`, `+${run.mastery.xp}`, run.mastery.after > run.mastery.before ? "#9fffb0" : "#fff"]);
+    if (run.gearDrops && run.gearDrops.length) {
+      const top = run.gearDrops.reduce((a, b) => (Object.keys(RD.GEAR_GRADES).indexOf(b.grade) > Object.keys(RD.GEAR_GRADES).indexOf(a.grade) ? b : a));
+      rewards.push(["chest", `장비 ${run.gearDrops.length}개`, `최고 ${RD.GEAR_GRADES[top.grade].name} ${RD.GEAR[top.base].name}`, UI.gradeCol(top.grade)]);
+    }
     if (run.stones) rewards.push(["star", "각성석", `+${run.stones} (보유 ${stones})`, "#ff9ad8"]);
     if (run.missionDone || run.dexNew) rewards.push(["flag", run.missionDone ? `미션 완료 ${run.missionDone}개` : "도감 새 등록", run.dexNew ? `도감 +${run.dexNew}` : "로비에서 받기", "#ffd34d"]);
-    if (rewards.length > 4) rewards.splice(1, 1); // 칸이 모자라면 보유 코인 줄을 뺀다
+    while (rewards.length > 4) rewards.splice(1, 1); // 칸이 모자라면 보유 코인 줄부터 뺀다
     rewards.slice(0, 4).forEach(([ic, k, v, col], i) => {
       const y = 296 + i * 26;
       g.fillStyle = "#2b2140"; g.fillRect(696, y, 236, 24);
@@ -1303,6 +1431,8 @@
       if (awakenFx) drawAwakenFx(dt);
     } else if (scene === "missions") {
       drawMissions();
+    } else if (scene === "bag") {
+      drawBag();
     } else if (scene === "dex") {
       drawDex();
     } else if (scene === "match") {
