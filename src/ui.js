@@ -114,8 +114,11 @@
   // 캐릭터 그림 (일러스트가 없으면 도트 캐릭터)
   function portrait(g, ch, x, y, w, h, frame = 0) {
     g.fillStyle = "#3a2d58"; g.fillRect(x, y, w, h);
-    const im = RD.img(ch.illust);
-    if (im && im.complete && im.naturalWidth) {
+    // 각성: 각성 일러스트 → 각성 도트 그림 → 원래 일러스트 순서
+    const ok = (x) => x && x.complete && x.naturalWidth;
+    let im = RD.img(ch.illust);
+    if (ch.awakened) { const ai = RD.img(ch.illust + "_awake"); if (ok(ai)) im = ai; else if (RD.playerPic && RD.img(`player_${ch.id}_awake_0`) && ok(RD.img(`player_${ch.id}_awake_0`))) im = null; }
+    if (ok(im)) {
       const ar = w / h, iar = im.width / im.height;
       let sw = im.width, sh = im.height, sx = 0, sy = 0;
       if (iar > ar) { sw = im.height * ar; sx = (im.width - sw) / 2; } else { sh = im.width / ar; sy = 0; }
@@ -123,7 +126,7 @@
       g.drawImage(im, sx, sy, sw, sh, x, y, w, h);
       g.imageSmoothingEnabled = false;
     } else {
-      const pic = RD.playerPic && RD.playerPic(ch.id, 0);
+      const pic = RD.playerPic && RD.playerPic(ch.id, 0, ch.awakened);
       if (pic) {
         const k = Math.min(w / pic.width, h / pic.height) * 0.9;
         g.imageSmoothingEnabled = true;

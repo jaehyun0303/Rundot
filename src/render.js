@@ -749,7 +749,7 @@
     const frame = run.charId === "owl" ? Math.floor(p.animT * 12) % 4 : 0;
     // 메가 프로그: 0 둥실, 1 포효, 2 혀 (꿀꺽), 3 피격
     const megaPic = run.mega ? RD.playerPic("megafrog", p.hurt > 0 ? 3 : run.ult && run.ult.kind === "megafrog" ? 2 : p.atkT > 0 || run.roars.length ? 1 : 0) : null;
-    const pic = megaPic || RD.playerPic(run.charId, p.hurt > 0 ? 3 : p.atkT > 0 ? 2 : Math.floor(run.t * 6) % 2);
+    const pic = megaPic || RD.playerPic(run.charId, p.hurt > 0 ? 3 : p.atkT > 0 ? 2 : Math.floor(run.t * 6) % 2, run.awak);
     const spr = pic || RD.getCharacterFrame(run.charId, run.charId === "owl" ? "run" : "jump", frame);
     const s = C.spriteScale * (run.mega ? 1.55 : 1), size = RD.SPRITE_SIZE * s;
     g.save();
@@ -1030,7 +1030,8 @@
     const im = RD.img && RD.img(`mech_mk${evo + 1}_${f}`);
     return im && im.complete && im.naturalWidth ? im : null;
   };
-  RD.playerPic = function (id, f) {
+  RD.playerPic = function (id, f, awake) {
+    if (awake) { const a = RD.img && RD.img(`player_${id}_awake_${f}`); if (a && a.complete && a.naturalWidth) return a; }
     const im = RD.img && RD.img(`player_${id}_${f}`);
     return im && im.complete && im.naturalWidth ? im : null;
   };
@@ -1133,7 +1134,7 @@
       const bx = 14, by = C.height - 74;
       UI.panel(g, bx, by, 176, 60, "rgba(35,26,54,0.88)");
       text(g, "목숨", bx + 10, by + 17, 11, UI.COL.dim);
-      const head = RD.playerPic(run.charId, 0) || RD.getCharacterFrame(run.charId, "jump", 0);
+      const head = RD.playerPic(run.charId, 0, run.awak) || RD.getCharacterFrame(run.charId, "jump", 0);
       const hw = head.width * 26 / head.height;
       g.imageSmoothingEnabled = true;
       for (let i = 0; i < Math.min(run.lives, 5); i++) g.drawImage(head, bx + 40 + i * 24, by + 3, Math.min(30, hw), 26);

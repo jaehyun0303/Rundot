@@ -803,6 +803,8 @@ RD.IMAGES = [
   // 플레이 캐릭터 그림 (4프레임: 날기 2, 공격, 피격). 없으면 코드로 그린 도트를 쓴다
   ...["fox", "rabbit", "bear", "owl", "cat", "panda", "mech", "frog"].flatMap((id) => [0, 1, 2, 3].map((f) => `player_${id}_${f}`)),
   "player_megafrog_0", "player_megafrog_1", "player_megafrog_2", "player_megafrog_3",
+  // 각성 캐릭터 그림 (받은 것만. 없으면 원래 그림에 각성 오라)
+  ...["frog"].flatMap((id) => [0, 1, 2, 3].map((f) => `player_${id}_awake_${f}`)),
   // 다람쥐 메카 Mk.I~III (4프레임), 판다 아군 정령 (서 있기 2, 공격 1)
   ...[1, 2, 3].flatMap((n) => [0, 1, 2, 3].map((f) => `mech_mk${n}_${f}`)),
   ...["fairy", "slime", "wisp", "beetle", "mushroom"].flatMap((id) => [0, 1, 2].map((f) => `ally_${id}_${f}`)),
