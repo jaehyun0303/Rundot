@@ -858,7 +858,7 @@
       RD.text(g, isTouch() ? "왼쪽 누르기: 슬라이드   오른쪽 누르기: 점프 (두 번 = 2단 점프)" : "점프: Space / ↑ (두 번 = 2단 점프)    슬라이드: ↓ (누르고 있기)", C.width / 2, C.height - 50, 15, "#ffffff", "center");
       return;
     }
-    if (run.choosing || run.cutscene) return;
+    if (run.choosing || run.cutscene || run.techOpen || run.paused) return;
     if (run.raid) {
       if (run.t < 7) RD.text(g, isTouch() ? "왼쪽: 이동 스틱 · 오른쪽 공격 스틱: 끌어서 조준, 떼면 발사 (톡 치면 자동 조준) · 맞히면 궁극기 충전" : "이동: WASD · 조준: 마우스 · 공격: 왼쪽 클릭/Space · 궁극기: 오른쪽 클릭/E · 맞히면 궁극기 충전", C.width / 2, C.height - 50, 13, "#ffffff", "center");
       return;

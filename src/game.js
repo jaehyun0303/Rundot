@@ -164,7 +164,8 @@
     get mechMax() { return RD.MECH.hp[this.mech.evo] * (1 + 0.15 * this.lv("hp")) * (this.tech.has.plate ? 1.3 : 1); }
 
     // 테크트리 해금
-    canUnlock(t) { return !this.tech.has[t.id] && (!t.req || this.tech.has[t.req]) && this.tech.pts >= t.cost; }
+    techOpenFor(t) { return (!t.req || this.tech.has[t.req]) && (!t.req2 || this.tech.has[t.req2]); }
+    canUnlock(t) { return !this.tech.has[t.id] && this.techOpenFor(t) && this.tech.pts >= t.cost; }
     unlockTech(id) {
       const t = RD.MECH_TECH.find((x) => x.id === id), M = this.mech;
       if (!t || !M || !this.canUnlock(t)) return false;
@@ -218,6 +219,31 @@
     updateMech(dt) {
       const M = this.mech;
       M.flash = Math.max(0, M.flash - dt);
+      M.reactT = Math.max(0, (M.reactT || 0) - dt);
+      const p0 = this.player;
+      // 호위 드론: 메카가 부서져 있는 동안
+      if (this.tech.has.drone && !M.alive && p0.dead <= 0) {
+        M.droneT = (M.droneT || 0) - dt;
+        if (M.droneT <= 0) {
+          M.droneT = 0.35;
+          for (let i = 0; i < 2; i++) {
+            const a = this.t * 3 + i * Math.PI, dx = p0.x + Math.cos(a) * 46, dy = p0.y + Math.sin(a) * 46;
+            const an = this.autoAim();
+            this.addShot({ kind: "bullet", main: true, x: dx, y: dy, vx: Math.cos(an) * 900, vy: Math.sin(an) * 900, w: 12, h: 6, dmg: 2.2 * this.dmgMul, pierce: 0, homing: true, color: "#9fffb0", brawl: !!this.raid, charge: 0.015, hit: [], t: 0 });
+          }
+        }
+      }
+      // EMP 펄스
+      if (this.tech.has.emp && M.alive && p0.dead <= 0 && (M.empT = (M.empT ?? 10) - dt) <= 0) {
+        M.empT = 10;
+        this.bullets = this.bullets.filter((b) => Math.hypot(b.x - p0.x, b.y - p0.y) > 320);
+        for (const e of this.enemies) if (!e.dead && !(e.delay > 0) && Math.hypot(e.x - p0.x, e.y - p0.y) < 320 + RD.ENEMIES[e.type].w / 2) this.damage(e, 25 * this.dmgMul, true);
+        this.effects.push({ type: "ring", x: p0.x, y: p0.y, t: 0, life: 0.7 });
+        this.effects.push({ type: "text", x: p0.x, y: p0.y - 80, text: "EMP!", color: "#7fe6ff", t: 0, life: 0.8 });
+        M.empFx = 0.5;
+        RD.audio && RD.audio.sfx("laser");
+      }
+      M.empFx = Math.max(0, (M.empFx || 0) - dt);
       if (!M.alive && this.player.dead <= 0) { M.prog += dt / (RD.MECH.rebuildTime * (this.tech.has.quick ? 0.75 : 1)); if (M.prog >= 1) this.rebuildMech(RD.MECH.rebuildHp); }
       if (!M.alive || this.player.dead > 0) { M.flameOn = false; M.beam = null; return; }
       this.updateMechWeapons(dt);
@@ -309,7 +335,10 @@
       // 화염방사기: 앞쪽 가까운 적이 있으면 불을 뿜는다
       M.flameOn = false;
       if (M.evo >= 1) {
-        const F = MC.flame, tg = aimAt(F.range, !this.raid);
+        const F0 = MC.flame, hot = this.tech.has.flamer;
+        const F = hot ? { range: F0.range * 1.3, arc: F0.arc, dps: F0.dps * 1.4 } : F0;
+        M.flameRange = F.range;
+        const tg = aimAt(F.range, !this.raid);
         if (tg) {
           M.flameOn = true;
           const a = this.raid ? Math.atan2(tg.y - oy, tg.x - ox) : (flip > 0 ? 0 : Math.PI) + Math.max(-0.35, Math.min(0.35, Math.atan2(tg.y - oy, (tg.x - ox) * flip)));
@@ -331,8 +360,7 @@
         if (M.beam) {
           const bm = M.beam;
           bm.t += dt; bm.x = ox; bm.y = oy;
-          const cs = Math.cos(bm.ang), sn = Math.sin(bm.ang);
-          const onBeam = (x, y, pad) => { const dx = x - ox, dy = y - oy, along = dx * cs + dy * sn; return along > 0 && Math.abs(-dx * sn + dy * cs) < L.width / 2 + pad; };
+          const onBeam = (x, y, pad) => bm.angs.some((an) => { const cs = Math.cos(an), sn = Math.sin(an), dx = x - ox, dy = y - oy, along = dx * cs + dy * sn; return along > 0 && Math.abs(-dx * sn + dy * cs) < L.width / 2 + pad; });
           if (bm.t > 0.15) {
             for (const e of live) if (onBeam(e.x, e.y, RD.ENEMIES[e.type].w / 2)) { this.damage(e, L.dps * this.dmgMul * dt, true); if (this.brawl) this.gainCharge(0.05 * dt); }
             this.bullets = this.bullets.filter((b) => !onBeam(b.x, b.y, b.r));
@@ -341,14 +369,16 @@
         } else if ((M.laserT = (M.laserT ?? 1.5) - dt) <= 0) {
           const tg = aimAt(2000, !this.raid);
           if (tg) {
-            M.laserT = L.cd;
-            M.beam = { t: 0, ang: Math.atan2(tg.y - oy, tg.x - ox), x: ox, y: oy };
+            M.laserT = L.cd * (this.mechOver ? 0.7 : 1);
+            const a0 = Math.atan2(tg.y - oy, tg.x - ox);
+            M.beam = { t: 0, ang: a0, angs: this.tech.has.prism ? [a0 - 0.24, a0, a0 + 0.24] : [a0], x: ox, y: oy };
             this.shake = Math.max(this.shake, 0.12);
             RD.audio && RD.audio.sfx("laser");
           }
         }
       }
     }
+    get mechOver() { return this.mechOn && this.tech.has.overdrive && this.mech.hp < this.mechMax * 0.5; }
     get mechOn() { return this.mech && this.mech.alive; }
     get magnetR() { return 100 * (1 + 0.6 * this.lv("magnet")); }
     get scoreMul() { return this.D.score * (this.M.scoreMul || 1) * (1 + 0.15 * this.lv("luck")); }
@@ -819,7 +849,7 @@
       p.shotCd -= dt;
       if (p.shotCd > 0 || p.dead > 0) return;
       const s = this.char.shot;
-      p.shotCd = s.cd * Math.pow(0.88, this.lv("rate")) * (this.rush > 0 ? 0.5 : 1);
+      p.shotCd = s.cd * Math.pow(0.88, this.lv("rate")) * (this.rush > 0 ? 0.5 : 1) * (this.mechOver ? 0.7 : 1);
       const sig = this.lv("sig");
       const pw = this.power;
       const dmg = s.dmg * this.dmgMul;
@@ -911,7 +941,8 @@
             this.addShot({ kind: "bullet", main: true, x: p.x + 34, y: p.y + 4 + oy, vx: Math.cos(a) * s.speed, vy: Math.sin(a) * s.speed, w: big ? 24 : 14, h: big ? 11 : 6, dmg: md * (big ? 1.25 : 1), pierce: big ? 1 : 0, color: on ? (big ? "#ffb347" : s.color) : "#fff3a0" });
           }
           p.volley = (p.volley || 0) + 1;
-          if (on && p.volley % ((sig ? 6 : 9) - (evo >= 2 ? 3 : 0)) === 0) for (let i = 0; i <= (sig ? 1 + Math.floor(sig / 2) : 0); i++) {
+          const rk = on && this.tech.has.rockets;
+          if (on && p.volley % ((sig ? 6 : 9) - (evo >= 2 ? 3 : 0) - (rk ? 2 : 0)) === 0) for (let i = 0; i <= (sig ? 1 + Math.floor(sig / 2) : 0) + (rk ? 2 : 0); i++) {
             this.addShot({ kind: "missile", x: p.x, y: p.y - 10, vx: 300, vy: -200 + i * 120, w: 18, h: 12, dmg: 6 * this.dmgMul * (1 + 0.25 * sig), homing: true, color: "#ffd34d" });
           }
           break;
@@ -1044,7 +1075,7 @@
           const big = on && evo >= 2;
           this.addShot({ ...base, kind: "bullet", x: p.x + 20 + i * 6, y: p.y + rand(-6, 6), vx: Math.cos(a) * 1000, vy: Math.sin(a) * 1000, w: big ? 24 : 14, h: big ? 11 : 6, dmg: md * (big ? 1.25 : 1), pierce: big ? 1 : 0, color: big ? "#ffb347" : base.color });
         }
-        if (on) for (let i = 0; i < this.bst("wave") + (evo >= 2 ? 1 : 0); i++) this.addShot({ ...base, kind: "missile", x: p.x, y: p.y - 10, vx: Math.cos(ang + 0.6 - i * 0.6) * 400, vy: Math.sin(ang + 0.6 - i * 0.6) * 400, w: 18, h: 12, dmg: dmg * 2.5, pierce: 0, homing: true, charge: ch * 2 });
+        if (on) for (let i = 0; i < this.bst("wave") + (evo >= 2 ? 1 : 0) + (this.tech.has.rockets ? 2 : 0); i++) this.addShot({ ...base, kind: "missile", x: p.x, y: p.y - 10, vx: Math.cos(ang + 0.6 - i * 0.6) * 400, vy: Math.sin(ang + 0.6 - i * 0.6) * 400, w: 18, h: 12, dmg: dmg * 2.5, pierce: 0, homing: true, charge: ch * 2 });
       } else {
         const n = W.count + this.bst("count");
         for (let i = 0; i < n; i++) {
@@ -1536,6 +1567,12 @@
         M.hp -= amount * this.D.damage * this.armor * RD.MECH.armor * (1 - 0.1 * M.evo) * (this.judgFire > 0 ? 1.3 : 1);
         p.invuln = C.hitInvuln; p.hurt = 0.3; M.flash = 0.15;
         this.shake = Math.max(this.shake, 0.12);
+        if (this.tech.has.reactive && !(M.reactT > 0)) {
+          // 반응 장갑: 충격파
+          M.reactT = 6;
+          this.bullets = this.bullets.filter((b) => Math.hypot(b.x - p.x, b.y - p.y) > 220);
+          this.effects.push({ type: "ring", x: p.x, y: p.y, t: 0, life: 0.5 });
+        }
         if (M.hp <= 0) this.breakMech();
         return;
       }

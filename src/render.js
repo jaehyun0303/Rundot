@@ -620,7 +620,7 @@
       const M = run.mech, flip = run.raid && run.brawl && Math.cos(run.brawl.aimAng) < 0 ? -1 : 1;
       const ox = p.x + 48 * flip, oy = p.y - 6;
       if (M.flameOn && M.flameAng != null) {
-        const F = RD.MECH.flame;
+        const F = { range: M.flameRange || RD.MECH.flame.range, arc: RD.MECH.flame.arc };
         g.save(); g.translate(ox, oy); g.rotate(M.flameAng);
         const gr = g.createLinearGradient(0, 0, F.range, 0);
         gr.addColorStop(0, "rgba(255,255,200,0.95)"); gr.addColorStop(0.3, "rgba(255,180,60,0.8)"); gr.addColorStop(0.75, "rgba(255,80,20,0.55)"); gr.addColorStop(1, "rgba(255,40,0,0)");
@@ -635,7 +635,8 @@
       }
       if (M.beam) {
         const L = RD.MECH.laser, bm = M.beam, k = bm.t / L.life;
-        g.save(); g.translate(ox, oy); g.rotate(bm.ang);
+        for (const an of bm.angs || [bm.ang]) {
+        g.save(); g.translate(ox, oy); g.rotate(an);
         if (bm.t < 0.15) { // 충전
           g.strokeStyle = `rgba(127,230,255,${0.5 + Math.random() * 0.5})`; g.lineWidth = 2;
           g.beginPath(); g.moveTo(0, 0); g.lineTo(1400, 0); g.stroke();
@@ -648,6 +649,21 @@
           g.fillStyle = "#ffffff"; g.beginPath(); g.arc(0, 0, w * 0.8, 0, Math.PI * 2); g.fill();
         }
         g.restore();
+        }
+      }
+      if (M.empFx > 0) {
+        g.strokeStyle = `rgba(127,230,255,${M.empFx * 1.6})`; g.lineWidth = 6;
+        g.beginPath(); g.arc(p.x, p.y, 320 * (1 - M.empFx * 1.6) + 40, 0, Math.PI * 2); g.stroke();
+      }
+    }
+    // 호위 드론
+    if (run.mech && !run.mech.alive && run.tech.has.drone && p.dead <= 0) {
+      for (let i = 0; i < 2; i++) {
+        const a = run.t * 3 + i * Math.PI, dx = p.x + Math.cos(a) * 46, dy = p.y + Math.sin(a) * 46;
+        g.fillStyle = "#1d1622"; g.fillRect(dx - 10, dy - 6, 20, 12);
+        g.fillStyle = "#8ab0d0"; g.fillRect(dx - 8, dy - 4, 16, 8);
+        g.fillStyle = "#9fffb0"; g.fillRect(dx - 2, dy - 2, 4, 4);
+        g.fillStyle = "rgba(255,255,255,0.5)"; g.fillRect(dx - 12 + (Math.floor(run.t * 30) % 2) * 4, dy - 9, 8, 2); g.fillRect(dx + 4 - (Math.floor(run.t * 30) % 2) * 4, dy - 9, 8, 2);
       }
     }
     // 메가 프로그 포효 (퍼져 나가는 초록 고리)
@@ -1127,7 +1143,7 @@
     const close = { x: C.width - 226, y: 18, w: 160, h: 40 };
     UI.btn(g, close.x, close.y, close.w, close.h, "#5a4a78");
     text(g, "닫기", close.x + close.w / 2, close.y + 19, 16, "#fff", "center", "#5a4a78");
-    const cw = 250, ch = 66, gx = 40, x0 = (C.width - (cw * 3 + gx * 2)) / 2, y0 = 112, gy = 30;
+    const NC = RD.MECH_TECH_COLS.length, cw = 212, ch = 60, gx = 18, x0 = (C.width - (cw * NC + gx * (NC - 1))) / 2, y0 = 108, gy = 18;
     RD.MECH_TECH_COLS.forEach(([nm, col], i) => text(g, nm, x0 + i * (cw + gx) + cw / 2, 92, 14, col, "center"));
     const pos = (t) => ({ x: x0 + t.col * (cw + gx), y: y0 + t.row * (ch + gy) });
     // 연결선
@@ -1139,12 +1155,12 @@
     RD.techRects = [];
     for (const t of RD.MECH_TECH) {
       const { x, y } = pos(t), col = RD.MECH_TECH_COLS[t.col][1];
-      const has = T.has[t.id], open = !t.req || T.has[t.req], can = run.canUnlock(t), sel = run.techSel === t.id;
+      const has = T.has[t.id], open = run.techOpenFor(t), can = run.canUnlock(t), sel = run.techSel === t.id;
       if (sel) { g.fillStyle = UI.COL.gold; g.fillRect(x - 6, y - 6, cw + 12, ch + 12); }
       UI.panel(g, x, y, cw, ch, has ? UI.shade(col, 0.45) : open ? "#2b2140" : "#1d1428");
-      UI.iconBox(g, x + 10, y + 11, 44, open ? t.icon : "lock", has ? "#fff" : open ? col : "#5a4a70", has ? col : null);
-      UI.fitText(g, t.name, x + 66, y + 22, cw - 76, 15, open ? "#fff" : "#7a6a90");
-      text(g, has ? "해금 완료" : `${t.cost}포인트`, x + 66, y + 46, 12, has ? UI.COL.green : can ? UI.COL.gold : "#8a7aa8");
+      UI.iconBox(g, x + 9, y + 10, 40, open ? t.icon : "lock", has ? "#fff" : open ? col : "#5a4a70", has ? col : null);
+      UI.fitText(g, t.name, x + 58, y + 20, cw - 64, 14, open ? "#fff" : "#7a6a90");
+      text(g, has ? "해금 완료" : `${t.cost}포인트` + (t.req2 ? ` · ${RD.MECH_TECH.find((q) => q.id === t.req2).name.split(" ")[0]} 필요` : ""), x + 58, y + 42, 11, has ? UI.COL.green : can ? UI.COL.gold : "#8a7aa8");
       RD.techRects.push({ id: t.id, x, y, w: cw, h: ch });
     }
     // 설명과 해금 버튼
@@ -1153,7 +1169,8 @@
     UI.panel(g, 30, py, C.width - 330, 70, "#231a36");
     if (t) {
       text(g, t.name, 46, py + 22, 16, RD.MECH_TECH_COLS[t.col][1]);
-      UI.fitText(g, t.desc + (t.req && !T.has[t.req] ? ` (먼저 ${RD.MECH_TECH.find((q) => q.id === t.req).name} 필요)` : ""), 46, py + 48, C.width - 370, 13, "#fff");
+      const need = [t.req, t.req2].filter((r) => r && !T.has[r]).map((r) => RD.MECH_TECH.find((q) => q.id === r).name);
+      UI.fitText(g, t.desc + (need.length ? ` (먼저 ${need.join(", ")} 필요)` : ""), 46, py + 48, C.width - 370, 13, "#fff");
     } else text(g, "기술을 눌러서 설명을 보고, 해금하세요", 46, py + 35, 14, "#b9add0");
     const ub = { x: C.width - 280, y: py + 4, w: 250, h: 62 };
     const ok = t && run.canUnlock(t);

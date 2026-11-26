@@ -472,8 +472,8 @@ RD.ALLIES = [
 ];
 RD.ALLY_RESPAWN = 5; // 쓰러지면 5초 뒤 다시 소환
 
-// 메카 테크트리: 레벨이 오를 때마다 테크 포인트 1점 (모두 찍으려면 28점) (전투 중 테크트리 버튼으로 해금)
-RD.MECH_TECH_COLS = [["진화", "#ffb347"], ["방어", "#7fe6ff"], ["정비", "#9fffb0"]];
+// 메카 테크트리: 레벨이 오를 때마다 테크 포인트 1점 (모두 찍으려면 50점, 한 판에 다 찍을 수는 없다) (전투 중 테크트리 버튼으로 해금)
+RD.MECH_TECH_COLS = [["진화", "#ffb347"], ["방어", "#7fe6ff"], ["정비", "#9fffb0"], ["무장", "#ff7a8a"]];
 RD.MECH_TECH = [
   { id: "mk2", col: 0, row: 0, cost: 3, icon: "up", name: "Mk.II 강습 메카", desc: "메카 진화 + 화염방사기: 가까운 적을 불태우고 적 탄을 녹인다 · 총열 +1 · 메카 체력 100" },
   { id: "mk3", col: 0, row: 1, cost: 5, req: "mk2", icon: "star", name: "Mk.III 요새 메카", desc: "최종 진화 + 플라즈마 레이저: 3초마다 모든 것을 꿰뚫는 레이저 · 대구경 탄 · 메카 체력 140" },
@@ -483,6 +483,13 @@ RD.MECH_TECH = [
   { id: "barrier", col: 1, row: 2, cost: 4, req: "repair", icon: "shield", name: "방어막 발생기", desc: "12초마다 적 공격 1번을 막는 방어막이 생긴다" },
   { id: "quick", col: 2, row: 0, cost: 2, icon: "gear", name: "빠른 재조립", desc: "다시 조립하는 데 필요한 부품과 시간 -25%" },
   { id: "eject", col: 2, row: 1, cost: 2, req: "quick", icon: "skull", name: "비상 탈출", desc: "메카가 부서질 때 크게 폭발해 주변 탄을 지우고 적에게 피해" },
+  { id: "overdrive", col: 0, row: 3, cost: 4, req: "cannon", icon: "bolt", name: "오버드라이브 코어", desc: "메카 체력이 절반 이하면 연사 속도 +40%, 레이저 대기 시간 -30%" },
+  { id: "reactive", col: 1, row: 3, cost: 3, req: "barrier", icon: "shield", name: "반응 장갑", desc: "메카가 맞으면 충격파로 주변 적 탄을 지운다 (6초마다)" },
+  { id: "drone", col: 2, row: 3, cost: 3, req: "call", icon: "target", name: "호위 드론", desc: "메카가 부서져 있는 동안 드론 2대가 다람쥐를 지키며 쏜다" },
+  { id: "rockets", col: 3, row: 0, cost: 2, icon: "up", name: "유도 미사일 포드", desc: "로켓이 더 자주, 한 번에 2발 더 나간다" },
+  { id: "emp", col: 3, row: 1, cost: 3, req: "rockets", icon: "chaos", name: "EMP 펄스", desc: "10초마다 주변 적 탄을 모두 지우고 적에게 피해를 준다" },
+  { id: "flamer", col: 3, row: 2, cost: 3, req: "emp", req2: "mk2", icon: "skull", name: "고열 화염", desc: "화염방사기 사거리 +30%, 위력 +40% (Mk.II 필요)" },
+  { id: "prism", col: 3, row: 3, cost: 4, req: "flamer", req2: "mk3", icon: "star", name: "프리즘 레이저", desc: "레이저가 세 갈래로 갈라진다 (Mk.III 필요)" },
   { id: "call", col: 2, row: 2, cost: 3, req: "eject", icon: "bolt", name: "긴급 호출", desc: "궁극기 +1 · 거대 메카 탑승 시간 +2초" },
 ];
 
