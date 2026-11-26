@@ -487,7 +487,14 @@
       g.arc(x, p.y - 34, 50 + Math.sin(run.t * 8) * 6, 0, Math.PI * 2);
       g.stroke();
     }
-    g.drawImage(spr, dx, dy, size, size);
+    const pic = RD.playerPic && RD.playerPic(run.charId, pose === "hurt" ? 3 : pose === "jump" ? 1 : pose === "slide" ? 0 : Math.floor(p.animT * 6) % 2);
+    if (pic) {
+      // 그림 캐릭터: 발이 땅에 닿게, 슬라이드는 납작하게
+      const hh = 78 * p.scale * (pose === "slide" ? 0.62 : 1), ww = pic.width * (78 * p.scale) / pic.height;
+      g.imageSmoothingEnabled = true;
+      g.drawImage(pic, x - ww / 2, p.y - hh + 4, ww, hh);
+      g.imageSmoothingEnabled = false;
+    } else g.drawImage(spr, dx, dy, size, size);
     if (RD.debug) {
       const hb = run.hitbox();
       g.strokeStyle = "lime";

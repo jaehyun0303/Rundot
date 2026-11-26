@@ -136,12 +136,19 @@
         this.brawl = { ammo: 3, charge: 0, aimAng: 0 }; // 브롤스타즈식: 탄환과 궁극기 게이지
         this.pendingLevels = 4; // 시작할 때 강화 4개
       }
+      // 파티: 인원수에 따라 조금씩 어려워진다 (적 체력, 공격 빈도, 점수)
+      this.party = opts.party || null;
+      if (this.party && this.party.n > 1) {
+        const k = this.party.n - 1, D0 = this.D;
+        this.D = { ...D0, enemyHp: D0.enemyHp * (1 + 0.3 * k), fireRate: D0.fireRate * (1 + 0.12 * k), score: D0.score * (1 + 0.1 * k), bulletSpeed: D0.bulletSpeed * (1 + 0.04 * k) };
+      }
+      this.wbInfo = opts.worldBoss || null; // 월드보스: { season, hp, name }
       if (mode === "duel") {
         // 1대1 결투: 레이드 경기장과 조작을 그대로 쓴다. 상대는 AI 라이벌 (나중에 온라인 상대로 바뀔 자리)
         const du = opts.duel || {};
         const arena = du.arena || pick(RD.RAID_BOSSES)[0];
         this.raid = { type: arena, lv: 1, dmg: 0, rage: 0, spawned: true, duel: true };
-        this.duel = { rival: du.rival || "fox", aiLv: du.aiLv || 1, name: du.name || "AI 라이벌", started: false, result: null };
+        this.duel = { rival: du.rival || "fox", aiLv: du.aiLv || 1, name: du.name || "AI 라이벌", started: false, result: null, net: du.net || null, host: du.host !== false };
         this.brawl = { ammo: 3, charge: 0, aimAng: 0 };
         this.pendingLevels = 3;
       }
@@ -610,9 +617,11 @@
         const y = def.ground ? C.groundY - def.h / 2 : 240;
         const b = this.addEnemy(type, C.width - 170, 270, { path: "boss", phase: 1, name: `[레이드 Lv.${R.lv}] ${name}`, baseY: y, raidBoss: true });
         b.maxHp = b.hp = RC.baseHp * (1 + RC.lvHp * (R.lv - 1)) * this.D.enemyHp; // 보스와 상관없이 같은 체력
+        if (this.wbInfo) { b.maxHp = b.hp = Math.max(1000, this.wbInfo.hp); b.name = `[월드보스 시즌 ${this.wbInfo.season}] ${name}`; } // 남은 공동 체력
         if (def.style === "crystal") this.spawnShards(b);
         RD.audio && RD.audio.sfx("warning");
-        this.banner = { text: "RAID", sub: `${name} · 레이드 Lv.${R.lv}`, sub2: "3분 안에 쓰러뜨려라! 시간이 갈수록 광폭해진다", color: "#ff4d5e", t: 0, life: 3 };
+        if (this.wbInfo) this.banner = { text: "WORLD BOSS", sub: `${name} · 모두가 함께 깎는 체력`, sub2: "3분 동안 준 피해가 월드보스에 더해진다", color: "#ff5ad8", t: 0, life: 3 };
+        else this.banner = { text: "RAID", sub: `${name} · 레이드 Lv.${R.lv}`, sub2: "3분 안에 쓰러뜨려라! 시간이 갈수록 광폭해진다", color: "#ff4d5e", t: 0, life: 3 };
       }
       const b = this.enemies.find((e) => e.raidBoss && !e.dead);
       if (b) R.dmg = b.maxHp - b.hp;
@@ -636,6 +645,7 @@
     // ---------- 1대1 결투 ----------
     directDuel(dt) {
       const Du = this.duel;
+      if (Du.net) return this.directNetDuel(dt);
       if (!Du.started && this.t > 1.2) {
         Du.started = true;
         const ch = RD.CHARACTERS.find((c) => c.id === Du.rival);
@@ -647,6 +657,52 @@
       }
       const r = this.enemies.find((e) => e.rival && !e.dead);
       if (r) this.raid.dmg = r.maxHp - r.hp;
+    }
+
+    // 온라인 1대1: 상대의 위치·체력·공격은 상대 presence 로 받는다. 내 체력은 내 화면에서 맞은 것만 깎인다
+    directNetDuel(dt) {
+      const Du = this.duel, p = this.player, net = Du.net;
+      if (!Du.started) {
+        Du.started = true;
+        if (!Du.host) { p.x = C.width - 200; }
+        const r = this.addEnemy("rival", Du.host ? C.width - 200 : 200, C.height / 2, { path: "net", rival: true, net: true, ch: Du.rival, name: Du.name, ammo: 3, cd: 0, lastAtk: -1, lastSup: -1, missing: 0 });
+        r.maxHp = r.hp = 100;
+        this.banner = { text: "FIGHT!", sub: `온라인 대전 · ${Du.name}`, color: "#ff5ad8", t: 0, life: 1.6 };
+        RD.audio && RD.audio.sfx("warning");
+      }
+      // 내 상태 보내기 (방이 알아서 초당 30번쯤으로 묶는다)
+      if (!this.over && net.room && !net.dead) net.room.presence({ x: Math.round(p.x), y: Math.round(p.y), hp: Math.max(0, Math.round(p.hp)), maxHp: Math.round(this.maxHp), atkN: this.netAtk || 0, atkA: this.netAtkA || 0, supN: this.netSup || 0, ch: this.charId, dead: p.dead > 0 ? 1 : 0 }).catch(() => {});
+    }
+    updateNet(e, dt) {
+      const net = this.duel.net, p = this.player, A = RD.DUEL.ai[e.ch];
+      const rp = net.peers.find((pp) => !pp.sameTab && pp.presence && pp.presence.x != null);
+      if (!rp) { if ((e.missing += dt) > 6 && !this.over) this.duelEnd(true, "상대가 나갔어요", "연결이 끊겨 승리"); return; }
+      e.missing = 0;
+      const r = rp.presence;
+      e.x += (r.x - e.x) * Math.min(1, dt * 14); e.y += (r.y - e.y) * Math.min(1, dt * 14);
+      e.face = p.x >= e.x ? 1 : -1;
+      if (r.maxHp) { e.maxHp = r.maxHp; e.hp = Math.max(0.01, r.hp); }
+      if (r.ch && r.ch !== e.ch && RD.DUEL.ai[r.ch]) e.ch = r.ch;
+      if (r.dead || r.hp <= 0) { if (!this.over) this.duelEnd(true, "K.O.!"); return; }
+      // 상대가 공격했다 → 내 화면에 그 공격을 그려서 맞으면 내 체력이 깎인다
+      if (e.lastAtk < 0) e.lastAtk = r.atkN || 0;
+      if ((r.atkN || 0) > e.lastAtk) {
+        e.lastAtk = r.atkN; e.cd = 0.35;
+        const a = r.atkA || 0;
+        this._firing = e;
+        if (A.melee) {
+          this.effects.push({ type: "arcslash", x: e.x, y: e.y, ang: a, range: 150, arc: 0.65, t: 0, life: 0.18 });
+          const da = Math.atan2(p.y - e.y, p.x - e.x) - a, dd = Math.abs(((da + Math.PI * 3) % (Math.PI * 2)) - Math.PI);
+          if (Math.hypot(p.x - e.x, p.y - e.y) < 160 && dd < 0.8 && p.invuln <= 0) this.hurt(A.dmg * 0.8);
+        } else for (let i = 0; i < A.n; i++) { const an = a + (i - (A.n - 1) / 2) * A.spread; this.bullets.push({ x: e.x, y: e.y, vx: Math.cos(an) * A.speed, vy: Math.sin(an) * A.speed, r: A.r, color: A.color, boss: true, dmg: A.dmg * 0.8 }); }
+        this._firing = null;
+      }
+      if (e.lastSup < 0) e.lastSup = r.supN || 0;
+      if ((r.supN || 0) > e.lastSup) {
+        e.lastSup = r.supN;
+        for (let i = 0; i < 14; i++) { const an = (i / 14) * Math.PI * 2; this.bullets.push({ x: e.x, y: e.y, vx: Math.cos(an) * 300, vy: Math.sin(an) * 300, r: 9, color: A.color, boss: true, dmg: 10 }); }
+        this.effects.push({ type: "text", x: e.x, y: e.y - 60, text: "궁극기!", color: A.color, t: 0, life: 0.8 });
+      }
     }
 
     updateRival(e, dt) {
@@ -708,6 +764,7 @@
 
     duelEnd(win, title, sub) {
       if (this.duel.result) return;
+      if (this.duel.net && this.duel.net.room) this.duel.net.room.presence({ dead: win ? 0 : 1, hp: win ? Math.round(this.player.hp) : 0 }).catch(() => {});
       this.duel.result = win ? "win" : "lose";
       this.over = true; this.win = win;
       this.bullets = [];
@@ -1157,6 +1214,41 @@
     get brawlMaxAmmo() { return RD.BRAWL[this.charId].ammo + this.bst("ammo"); }
     get superReady() { return this.brawl && this.brawl.charge >= 1; }
 
+    // 각성 공격 (레이드·결투: 조준 방향으로)
+    awakBrawl(ang, dmg, base) {
+      const p = this.player, F = RD.AWAKEN.forms[this.charId], ch = base.charge, live = this.enemies.filter((e) => !e.dead && !(e.delay > 0));
+      const D = dmg * 0.9;
+      const fan = (n, spread, mk) => { for (let i = 0; i < n; i++) mk(ang + (i - (n - 1) / 2) * spread); };
+      switch (this.charId) {
+        case "fox": fan(3, 0.16, (a) => this.addShot({ ...base, kind: "wave", x: p.x, y: p.y, vx: Math.cos(a) * 900, vy: Math.sin(a) * 900, w: 30, h: 90, dmg: D * 0.6, pierce: 99, cutB: 3 })); break;
+        case "rabbit": fan(3, 0.2, (a) => this.addShot({ ...base, kind: "shuriken", x: p.x, y: p.y, vx: Math.cos(a) * 820, vy: Math.sin(a) * 820, w: 22, h: 22, dmg: D * 1.5, pierce: 0, homing: true, chain: 2 })); break;
+        case "bear": {
+          // 대지 가르기: 조준한 곳으로 땅이 갈라지며 줄 위를 모두 때린다
+          const len = 420, cs = Math.cos(ang), sn = Math.sin(ang);
+          for (let k = 1; k <= 6; k++) this.effects.push({ type: "rocks", x: p.x + cs * k * 70, y: p.y + sn * k * 70, t: -k * 0.04, life: 0.5 });
+          for (const e of live) { const dx = e.x - p.x, dy = e.y - p.y, al = dx * cs + dy * sn; if (al > 0 && al < len && Math.abs(-dx * sn + dy * cs) < 40 + RD.ENEMIES[e.type].w / 2) { this.damage(e, D * 1.5); this.gainCharge(ch); } }
+          this.shake = Math.max(this.shake, 0.15);
+          break;
+        }
+        case "owl": {
+          // 연쇄 번개: 조준한 쪽 가장 가까운 적부터
+          let from = { x: p.x, y: p.y }; const hit = new Set();
+          for (let k = 0; k < 5; k++) {
+            let best = null, bd = 1e9;
+            for (const e of live) { if (hit.has(e)) continue; const d = Math.hypot(e.x - from.x, e.y - from.y); const off = k === 0 ? Math.abs(((Math.atan2(e.y - p.y, e.x - p.x) - ang + Math.PI * 3) % (Math.PI * 2)) - Math.PI) : 0; if (k === 0 && off > 0.7) continue; if (d < (k === 0 ? 700 : 240) && d < bd) { bd = d; best = e; } }
+            if (!best) break;
+            hit.add(best); this.effects.push({ type: "zap", x: from.x, y: from.y, x2: best.x, y2: best.y, t: 0, life: 0.2, color: F.color });
+            this.damage(best, D * (k === 0 ? 3.5 : 2.5)); this.gainCharge(ch); from = best;
+          }
+          break;
+        }
+        case "cat": this.addShot({ ...base, kind: "blackhole", x: p.x, y: p.y, vx: Math.cos(ang) * 380, vy: Math.sin(ang) * 380, w: 56, h: 56, dmg: D * 0.4, pierce: 99, life: 1.6, tick: new Map() }); break;
+        case "panda": fan(3, 0.25, (a) => this.addShot({ ...base, kind: "skull", x: p.x, y: p.y, vx: Math.cos(a) * 600, vy: Math.sin(a) * 600, w: 18, h: 18, dmg: D * 0.9, pierce: 0, homing: true, raise: true })); break;
+        case "mech": fan(6, 0.14, (a) => this.addShot({ ...base, kind: "missile", x: p.x, y: p.y, vx: Math.cos(a) * 420, vy: Math.sin(a) * 420, w: 14, h: 8, dmg: D * 0.3, pierce: 0, homing: true, small: true })); break;
+        case "frog": fan(5, 0.22, (a) => this.addShot({ ...base, kind: "card", x: p.x, y: p.y, vx: Math.cos(a) * 640, vy: Math.sin(a) * 640, w: 16, h: 22, dmg: D * 0.6, pierce: 0, homing: true, burst: 55 })); break;
+      }
+    }
+
     gainCharge(n) {
       if (!this.brawl) return;
       const was = this.brawl.charge >= 1;
@@ -1195,6 +1287,7 @@
       }
       B.ammo -= 1;
       B.aimAng = ang;
+      this.netAtk = (this.netAtk || 0) + 1; this.netAtkA = ang; // 온라인 대전: 내 공격을 상대에게 알린다
       p.atkT = 0.2;
       const W = RD.BRAWL[this.charId];
       const dmg = W.dmg * this.dmgMul * (1 + this.bst("dmg"));
@@ -1202,6 +1295,7 @@
       RD.audio && RD.audio.sfx("shot_" + this.charId);
       const base = { brawl: true, charge: ch, hit: [], t: 0, color: this.char.shot.color, main: true };
       if (this.mega) { this.roar(dmg * 1.8); return true; } // 레이드 메가 프로그: 포효
+      if (this.awak) { this.awakBrawl(ang, dmg, base); return true; } // 각성 캐릭터: 레이드·결투에서도 각성 공격
       if (this.charId === "fox") {
         // 부채꼴 베기 (조준 방향), 적 탄도 벤다
         const range = W.range * (1 + this.bst("range")), arc = W.arc;
@@ -1279,6 +1373,7 @@
     brawlSuper() {
       if (!this.superReady || this.bombT > 0 || this.player.dead > 0 || this.over || this.choosing) return;
       this.brawl.charge = 0;
+      this.netSup = (this.netSup || 0) + 1;
       this.bomb(true);
       if (this.bst("refill")) this.brawl.ammo = this.brawlMaxAmmo;
     }
@@ -2110,6 +2205,7 @@
 
     damage(e, dmg, quiet) {
       if (e.dead) return;
+      if (e.net) { e.flash = 0.06; return; } // 온라인 상대 체력은 상대 화면이 정한다
       const D0 = RD.ENEMIES[e.type];
       if (!this.ult) {
         if (D0.armor && !e.dashing) dmg *= D0.armor; // 딱정벌레 갑옷 (돌진 중에는 없음)
@@ -2314,6 +2410,10 @@
           case "midboss":
             if (e.t < e.life) e.x += (e.stopX - e.x) * Math.min(1, dt * 1.2);
             else e.x -= C.scrollSpeed * dt; // 시간이 지나면 떠난다
+            break;
+          case "net":
+            this.updateNet(e, dt);
+            e.fireT = 1e9;
             break;
           case "rival":
             this.updateRival(e, dt);

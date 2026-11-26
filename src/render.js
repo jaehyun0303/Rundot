@@ -855,6 +855,13 @@
         const cur = e.ang - e.arc + (e.arc * 2) * Math.min(1, k * 1.6);
         g.beginPath(); g.arc(e.x, e.y, e.range * 0.92, e.ang - e.arc, cur); g.stroke();
         g.restore();
+      } else if (e.type === "rocks") {
+        // 위에서 본 땅 갈라짐: 바위가 솟았다 가라앉는다
+        if (e.t >= 0) {
+          const up = Math.sin(Math.min(1, k) * Math.PI);
+          g.fillStyle = "rgba(60,40,20,0.5)"; g.fillRect(e.x - 26, e.y - 6, 52, 12);
+          for (let i = 0; i < 4; i++) { const ox = (i - 1.5) * 13, h = (14 + (i % 2) * 10) * up; g.fillStyle = i % 2 ? "#8a6a40" : "#b08850"; g.fillRect(e.x + ox - 6, e.y - h, 12, h); g.fillStyle = "#e8c890"; g.fillRect(e.x + ox - 6, e.y - h, 12, 3); }
+        }
       } else if (e.type === "zap") {
         // 연쇄 번개
         g.strokeStyle = e.color || "#9fe8ff"; g.globalAlpha = 1 - k; g.lineWidth = 5;
@@ -1844,6 +1851,24 @@
     }
   }
 
+  // 파티 동료: 각자 화면에서 싸우는 동료의 위치를 반투명하게 보여 준다
+  function drawPartyGhosts(g, run) {
+    const O = RD.online;
+    let total = run.score, k = 0;
+    for (const p of run.party.st.peers) {
+      if (p.sameTab || !p.presence || p.presence.x == null || !p.presence.inGame) continue;
+      const pr = p.presence, pic = RD.playerPic(pr.ch, Math.floor(run.t * 6) % 2);
+      g.globalAlpha = 0.5;
+      if (pic) { const hh = 70, ww = pic.width * hh / pic.height; g.imageSmoothingEnabled = true; g.drawImage(pic, pr.x - ww / 2, pr.y - hh / 2 - 4, ww, hh); g.imageSmoothingEnabled = false; }
+      g.globalAlpha = 1;
+      text(g, p.by && O ? O.nameOf(p.by) : "동료", pr.x, pr.y - 48, 10, "#7fe6ff", "center");
+      g.fillStyle = "#1d1622"; g.fillRect(pr.x - 20, pr.y - 40, 40, 5);
+      g.fillStyle = "#7fe6ff"; g.fillRect(pr.x - 19, pr.y - 39, 38 * Math.max(0, (pr.hp || 0) / (pr.maxHp || 1)), 3);
+      total += pr.score || 0; k++;
+    }
+    RD.UI.chip(g, C.width / 2 - 90, C.height - 30, 180, 18, "#7fe6ff", `파티 ${k + 1}명 · 합계 ${total.toLocaleString()}`, 10);
+  }
+
   RD.drawRun = function (g, run) {
     g.save();
     if (run.shake > 0) g.translate((Math.random() - 0.5) * 12 * run.shake * 2, (Math.random() - 0.5) * 10 * run.shake * 2);
@@ -1853,6 +1878,7 @@
     drawEnemies(g, run);
     drawShots(g, run);
     drawPlayer(g, run);
+    if (run.party && run.party.st) drawPartyGhosts(g, run);
     drawEffects(g, run);
     drawUltFront(g, run);
     drawDarkness(g, run);

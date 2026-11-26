@@ -9,7 +9,7 @@
   // ---------- 저장 (최고 점수, 코인) ----------
   const save = {
     get(k, d) { try { const v = localStorage.getItem("rundot_" + k); return v == null ? d : JSON.parse(v); } catch { return d; } },
-    set(k, v) { try { localStorage.setItem("rundot_" + k, JSON.stringify(v)); } catch { /* 저장 불가 환경 */ } },
+    set(k, v) { try { localStorage.setItem("rundot_" + k, JSON.stringify(v)); if (k !== "testMode" && RD.onSave) RD.onSave(); } catch { /* 저장 불가 환경 */ } },
   };
 
   // ---------- 이미지 ----------
@@ -167,8 +167,14 @@
   let bag = { cid: null, slot: "all", sel: null, page: 0 };
 
   // ---------- 결투 ----------
+  let wbTotal = save.get("wbTotal", 0);
   let trophy = save.get("trophy", 0), duelRec = save.get("duelRec", { w: 0, l: 0 });
   let match = null; // 매칭 화면 상태
+  // ---------- 온라인: 파티, 월드보스, 거래소, 랭킹 ----------
+  let party = null; // { st, code, host, n, inGame, startAt }
+  let wbStart = null; // 월드보스로 출격할 때 { season, hp }
+  let hub = { tab: "wb", rankField: "s_story", sellPick: null, msg: "", msgT: 0, wbClaimChecked: false };
+  const hubMsg = (m) => { hub.msg = m; hub.msgT = 3; };
   loadBest();
 
 
@@ -187,11 +193,20 @@
       const rivals = RD.CHARACTERS.map((c) => c.id);
       const aiLv = Math.max(1, Math.min(5, 1 + Math.floor(trophy / 100)));
       match = { t: 0, rival: rivals[Math.floor(Math.random() * rivals.length)], aiLv, name: `${RD.DUEL.names[Math.floor(Math.random() * RD.DUEL.names.length)]} 라이벌`, arena: RD.RAID_BOSSES[Math.floor(Math.random() * RD.RAID_BOSSES.length)][0] };
+      // 온라인: 같은 시간에 결투를 찾는 사람이 있으면 그 사람과 붙는다
+      const O = RD.online;
+      match.online = !!(O && O.room && O.room.connected && O.room.connected());
+      if (match.online) O.duelSearch({ ch: id, aw: useAwake(id) ? 1 : 0, trophy });
       scene = "match";
       return;
     }
-    run = new RD.Run(id, mode, diff, { stars: Math.max(1, starsOf(id)), awakened: useAwake(id), mastery: mlv(id), gear: gearSum(id), stage: mode === "stageselect" ? pickStage : 0, raidBoss: RD.RAID_BOSSES[raidPick][0], raidLv: raidLv[RD.RAID_BOSSES[raidPick][0]] || 1,
-      duel: match && match.go ? { rival: match.rival, aiLv: match.aiLv, name: match.name, arena: match.arena } : null });
+    const runMode = wbStart ? "raid" : mode;
+    run = new RD.Run(id, runMode, diff, { stars: Math.max(1, starsOf(id)), awakened: useAwake(id), mastery: mlv(id), gear: gearSum(id), stage: mode === "stageselect" ? pickStage : 0, raidBoss: wbStart ? wbStart.type : RD.RAID_BOSSES[raidPick][0], raidLv: wbStart ? 1 : raidLv[RD.RAID_BOSSES[raidPick][0]] || 1,
+      duel: match && match.go ? { rival: match.rival, aiLv: match.aiLv, name: match.name, arena: match.arena, net: match.net || null, host: match.partner ? match.partner.host : true } : null,
+      party: party && party.inGame ? { n: party.n, st: party.st } : null,
+      worldBoss: wbStart || null });
+    wbStart = null;
+    if (party) party.inGame = false;
     if (mode === "duel") match = null;
     RD.playerTitle = titleOf(RD.CHARACTERS[selected]);
     scene = "play";
@@ -199,7 +214,7 @@
 
   function endRun() {
     scene = "result";
-    if (run.raid && run.win) { const k = run.raid.type; raidLv[k] = (raidLv[k] || 1) + 1; save.set("raidLv", raidLv); }
+    if (run.raid && run.win && !run.wbInfo && !run.duel) { const k = run.raid.type; raidLv[k] = (raidLv[k] || 1) + 1; save.set("raidLv", raidLv); }
     if (["story", "hardcore"].includes(run.mode) && run.reached > maxStage) {
       maxStage = Math.min(RD.STAGES.length - 1, run.reached);
       save.set("maxStage", maxStage);
@@ -236,6 +251,22 @@
     // 숙련도: 처치 + 점수 + 버틴 시간 + 승리
     const xp = Math.round((run.kills || 0) + (run.score || 0) / 500 + (run.t || 0) / 10 + (run.win ? 100 : 0));
     run.mastery = { xp, ...addMastery(run.charId || RD.CHARACTERS[selected].id, xp) };
+    // 파티 보상: 인원수만큼 코인 +15%씩
+    if (run.party && run.party.n > 1) run.coins = Math.round(run.coins * (1 + 0.15 * (run.party.n - 1)));
+    // 월드보스: 준 피해를 공동 체력에 더하고, 피해 비례 코인
+    if (run.wbInfo && !testMode && RD.online) {
+      RD.online.addWorldBossDamage(run.wbInfo.season, run.raid.dmg);
+      run.coins += Math.round(run.raid.dmg / 150);
+      wbTotal += Math.round(run.raid.dmg); save.set("wbTotal", wbTotal);
+    }
+    // 랭킹 (테스트 모드 기록은 올리지 않는다)
+    if (!testMode && RD.online && !run.isAdv) {
+      const f = { trophy };
+      if (!run.duel && !run.wbInfo) f["s_" + run.mode] = run.score;
+      if (run.wbInfo) f.wb = wbTotal;
+      RD.online.submitScore(f);
+    }
+    if (run.duel && run.duel.net) { run.duel.net.room.leave().catch(() => {}); run.duel.net.dead = true; }
     coins += run.coins;
     save.set("coins", coins);
     run.newBest = run.score > best;
@@ -377,10 +408,10 @@
       if (e.code === "KeyG") scene = "gacha";
       if (e.code === "KeyT") { testMode = !testMode; save.set("testMode", testMode); }
       if (e.code === "Enter" || e.code === "Space") { if (isOwned(selected)) startRun(); }
-    } else if (scene === "missions" || scene === "dex" || scene === "bag") {
+    } else if (scene === "missions" || scene === "dex" || scene === "bag" || scene === "online") {
       if (e.code === "Escape") scene = "select";
     } else if (scene === "match") {
-      if (e.code === "Escape") { match = null; scene = "select"; }
+      if (e.code === "Escape") cancelMatch();
     } else if (scene === "result") {
       if (e.code === "Enter" || e.code === "Space") startRun();
       if (e.code === "Escape") scene = "select";
@@ -657,6 +688,13 @@
     UI.icon(g, "gear", tbx + 9, 21, 20, testMode ? "#7fe08a" : "#cfc6e0");
     buttons.push({ x: tbx, y: 14, w: 38, h: 34, onClick: () => { testMode = !testMode; save.set("testMode", testMode); } });
     if (testMode) RD.text(g, "테스트 모드", tbx - 8, 31, 11, "#7fe08a", "right");
+    // 온라인 (월드보스·랭킹·거래소·파티)
+    const O = RD.online, on = O && O.ready;
+    UI.panel(g, C.width - 60, 14, 44, 34, on ? "#3a2050" : "#2b2140");
+    UI.icon(g, "target", C.width - 50, 21, 20, on ? "#ff9ad8" : "#7a6a90");
+    g.fillStyle = on && O.canWrite ? "#7fe08a" : on ? "#ffd34d" : "#6a5a80"; g.fillRect(C.width - 24, 16, 6, 6);
+    buttons.push({ x: C.width - 60, y: 14, w: 44, h: 34, onClick: () => { scene = "online"; hub.wbClaimChecked = false; } });
+    if (party) UI.chip(g, C.width - 140, 52 - 4, 76, 14, "#ff9ad8", `파티 ${party.n}명`, 9);
     // 모드 선택 (2열)
     UI.panel(g, 660, 60, 284, 360);
     RD.text(g, "모드 선택", 672, 78, 15, "#ffd34d");
@@ -727,6 +765,251 @@
       if (!all || missions.bonus) return;
       missions.bonus = true; coins += RD.MISSION_BONUS; for (let i = 0; i < RD.gearDrop.missionBonus; i++) rollGear(0.3); stones += RD.AWAKEN.sources.missionBonus; save.set("stones", stones); save.set("coins", coins); save.set("missions", missions); RD.audio && RD.audio.sfx("clear");
     }, all ? "#ff8a3d" : "#4a3d60");
+  }
+
+  // ---------- 온라인 화면 ----------
+  let paidTrades = save.get("paidTrades", []);
+  let wbClaimed = save.get("wbClaimed", []);
+  function onSold(r) {
+    if (paidTrades.includes(r.id)) { RD.online.markPaid(r.id); return; }
+    paidTrades.push(r.id); save.set("paidTrades", paidTrades.slice(-200));
+    coins += r.price; save.set("coins", coins);
+    RD.online.markPaid(r.id);
+    hubMsg(`판매 완료! 코인 +${r.price}`);
+  }
+  const tradeLabel = (gv) => (gv.kind === "item" ? `${RD.GEAR_GRADES[gv.grade].name} ${RD.GEAR[gv.base].name}${gv.lv ? " +" + gv.lv : ""}` : `캐릭터 ${RD.CHARACTERS.find((c) => c.id === gv.id).name}`);
+  function giveToMe(gv) {
+    if (gv.kind === "item") { const I = INV(); I.items.push({ uid: `i${Date.now().toString(36)}${(I.next++).toString(36)}`, base: gv.base, grade: gv.grade, lv: gv.lv || 0 }); saveInv(); }
+    else { const max = G.maxStars + (awak[gv.id] ? 1 : 0); owned[gv.id] = Math.min(max, (owned[gv.id] || 0) + 1); save.set("owned", owned); }
+  }
+  const PARTY_MODES = ["story", "stageselect", "endless", "bossrush", "timeattack", "hardcore", "chaos", "dream", "trumpets", "raid"];
+  async function createParty() {
+    const O = RD.online, code = Math.random().toString(36).slice(2, 6);
+    const st = await O.joinRoom("p-" + code);
+    if (!st) { hubMsg("파티를 만들 수 없어요"); return; }
+    party = { st, code, host: true, n: 1, lastStart: 0 };
+    st.room.presence({ host: 1, ch: RD.CHARACTERS[selected].id }).catch(() => {});
+    hubMsg(`파티 ${code} 를 만들었어요`);
+  }
+  async function joinParty(code) {
+    const st = await RD.online.joinRoom("p-" + code);
+    if (!st) { hubMsg("파티에 들어갈 수 없어요"); return; }
+    party = { st, code, host: false, n: 1, lastStart: Date.now() };
+    st.room.presence({ ch: RD.CHARACTERS[selected].id }).catch(() => {});
+    hubMsg(`파티 ${code} 에 들어갔어요`);
+  }
+  function leaveParty() {
+    if (!party) return;
+    party.st.room.leave().catch(() => {});
+    if (party.host) RD.online.setLobby({ party: null });
+    party = null;
+  }
+  // 매 프레임: 파티 상태 주고받기
+  let partyT = 0;
+  function partyTick(dt) {
+    if (!party) return;
+    if (party.st.dead) { party = null; hubMsg("파티 연결이 끊겼어요"); return; }
+    const peers = party.st.peers.filter((p) => p.kind === "viewer");
+    party.n = Math.max(1, peers.length);
+    if ((partyT -= dt) > 0) return;
+    partyT = 0.1;
+    const inPlay = scene === "play" && run && run.party;
+    const pres = inPlay ? { x: Math.round(run.player.x), y: Math.round(run.player.y), hp: Math.round(run.player.hp), maxHp: Math.round(run.maxHp), ch: run.charId, score: run.score, inGame: 1 }
+      : { ch: RD.CHARACTERS[selected].id, inGame: 0, x: null };
+    party.st.room.presence(pres).catch(() => {});
+    if (party.host) RD.online.setLobby({ party: { host: 1, code: party.code, mode, n: party.n } });
+    // 파티원: 파티장이 출격하면 같이 시작
+    if (!party.host) {
+      const h = peers.find((p) => p.presence && p.presence.host && p.presence.start);
+      if (h && h.presence.start.at > party.lastStart && scene !== "play") {
+        party.lastStart = h.presence.start.at;
+        if (RD.MODES[h.presence.start.mode]) mode = h.presence.start.mode;
+        if (RD.DIFFICULTY[h.presence.start.diff]) diff = h.presence.start.diff;
+        party.inGame = true; startRun();
+      }
+    }
+  }
+  function partyStart() {
+    if (!party || !party.host) return;
+    if (!PARTY_MODES.includes(mode)) { hubMsg("이 모드는 파티로 할 수 없어요 (로비에서 모드를 바꿔 주세요)"); return; }
+    party.st.room.presence({ host: 1, start: { at: Date.now(), mode, diff } }).catch(() => {});
+    party.inGame = true; startRun();
+  }
+
+  function drawOnline(dt) {
+    const O = RD.online;
+    backHeader("온라인", O ? `${O.status}${O.room ? ` · 지금 접속 ${O.onlineCount()}명` : ""}` : "오프라인");
+    hub.msgT = Math.max(0, hub.msgT - dt);
+    [["wb", "월드보스", "#ff5ad8"], ["rank", "랭킹", "#ffd34d"], ["market", "거래소", "#9fffb0"], ["party", "파티", "#7fe6ff"]].forEach(([id, n, c], i) => tab(30 + i * 130, 66, 120, 30, n, hub.tab === id, c, () => { hub.tab = id; }));
+    UI.panel(g, 16, 108, 928, 418, "#231a36");
+    if (hub.msgT > 0) UI.chip(g, 560, 70, 380, 24, "#ffd34d", hub.msg, 12);
+    if (!O || !O.ready) {
+      RD.text(g, "온라인 기능을 쓸 수 없어요", 480, 260, 20, "#ff8a8a", "center");
+      RD.text(g, "claude.ai 에 로그인하고, 이 페이지를 공유받은 상태(참여 권한)에서 열어 주세요", 480, 296, 13, "#b9add0", "center");
+      RD.text(g, "혼자 하는 모드와 결투(AI 라이벌)는 그대로 할 수 있어요", 480, 322, 12, "#8a7aa8", "center");
+      return;
+    }
+    if (hub.tab === "wb") drawWB(O);
+    else if (hub.tab === "rank") drawRank(O);
+    else if (hub.tab === "market") drawMarket(O);
+    else drawParty(O);
+  }
+
+  function drawWB(O) {
+    if (!O.db) { RD.text(g, "월드보스는 로그인이 필요해요", 480, 300, 16, "#ff8a8a", "center"); return; }
+    O.watchWorldBoss();
+    const W = O.wb;
+    if (!hub.wbClaimChecked && W.loaded) {
+      hub.wbClaimChecked = true;
+      O.wbRewardFor().then((seasons) => {
+        const fresh = seasons.filter((s) => !wbClaimed.includes(s));
+        if (!fresh.length) return;
+        for (const s of fresh) { coins += 300; stones += 3; rollGear(0.6); rollGear(0.6); wbClaimed.push(s); }
+        save.set("coins", coins); save.set("stones", stones); save.set("wbClaimed", wbClaimed.slice(-50));
+        hubMsg(`월드보스 처치 보상! 코인 ${300 * fresh.length}, 각성석 ${3 * fresh.length}, 장비 ${2 * fresh.length}`);
+      });
+    }
+    if (!W.loaded) { RD.text(g, "월드보스 불러오는 중...", 480, 300, 16, "#b9add0", "center"); return; }
+    const def = RD.DEX[W.type] || ["월드보스"], left = Math.max(0, W.maxHp - W.dmg);
+    const im = monThumb(W.type), s = Math.min(300 / im.width, 220 / im.height);
+    g.imageSmoothingEnabled = true; g.drawImage(im, 190 - im.width * s / 2, 120 + (220 - im.height * s) / 2, im.width * s, im.height * s); g.imageSmoothingEnabled = false;
+    RD.text(g, `시즌 ${W.season} 월드보스`, 40, 132, 13, "#ff9ad8");
+    RD.text(g, def[0], 190, 362, 22, "#fff", "center");
+    UI.segBar(g, 40, 380, 300, 16, left / W.maxHp, "#ff4d5e", 20);
+    RD.text(g, `${left.toLocaleString()} / ${W.maxHp.toLocaleString()}`, 190, 414, 12, "#cfc6e0", "center");
+    RD.text(g, `참가 ${W.players || 0}명 · 내가 준 피해 ${Math.round(W.mine).toLocaleString()}`, 190, 436, 12, "#ffd34d", "center");
+    button(60, 452, 260, 60, testMode ? "도전 (테스트: 기록 안 됨)" : "도전하기 (3분)", () => {
+      if (!isOwned(selected)) { scene = "chars"; return; }
+      wbStart = { season: W.season, hp: left, type: W.type }; startRun();
+    }, "#ff5ad8");
+    // 오른쪽: 순위
+    UI.panel(g, 380, 120, 548, 394, "#1d1428");
+    RD.text(g, "피해 순위 (이번 시즌)", 396, 140, 14, "#ffd34d");
+    RD.text(g, "모두가 함께 체력을 깎는다 · 쓰러뜨리면 참가자 모두 보상 (코인 300, 각성석 3, 장비 2)", 396, 162, 11, "#b9add0");
+    W.top.forEach((r, i) => {
+      const y = 186 + i * 31, me = r.id === O.me;
+      g.fillStyle = me ? "#3a2050" : "#2b2140"; g.fillRect(392, y, 524, 27);
+      RD.text(g, `${i + 1}`, 410, y + 14, 14, i < 3 ? "#ffd34d" : "#cfc6e0", "center");
+      UI.fitText(g, O.nameOf(r.id) + (me ? " (나)" : ""), 432, y + 14, 300, 13, me ? "#ff9ad8" : "#fff");
+      RD.text(g, Math.round(r.v).toLocaleString(), 904, y + 14, 13, "#ffd34d", "right");
+    });
+    if (!W.top.length) RD.text(g, "아직 아무도 도전하지 않았어요. 첫 번째가 되어 보세요!", 654, 320, 13, "#9a8ab8", "center");
+  }
+
+  const RANK_FIELDS = [["s_story", "스토리"], ["s_endless", "무한"], ["s_bossrush", "보스 러시"], ["s_timeattack", "타임 어택"], ["trophy", "결투 트로피"], ["wb", "월드보스"]];
+  function drawRank(O) {
+    if (!O.db) { RD.text(g, "랭킹은 로그인이 필요해요", 480, 300, 16, "#ff8a8a", "center"); return; }
+    if (O.board.field !== hub.rankField && !O.board.loading) O.loadBoard(hub.rankField);
+    RANK_FIELDS.forEach(([f, n], i) => tab(32 + i * 150, 120, 140, 28, n, hub.rankField === f, "#ffd34d", () => { hub.rankField = f; O.loadBoard(f); }));
+    const rows = O.board.field === hub.rankField ? O.board.rows : [];
+    if (O.board.loading && !rows.length) RD.text(g, "불러오는 중...", 480, 300, 14, "#b9add0", "center");
+    else if (!rows.length) RD.text(g, "아직 기록이 없어요", 480, 300, 14, "#9a8ab8", "center");
+    rows.slice(0, 12).forEach((r, i) => {
+      const x = 32 + Math.floor(i / 6) * 452, y = 164 + (i % 6) * 56, me = r.id === O.me;
+      g.fillStyle = me ? "#3a2050" : "#2b2140"; g.fillRect(x, y, 440, 48);
+      RD.text(g, `${i + 1}`, x + 26, y + 24, 22, i < 3 ? "#ffd34d" : "#cfc6e0", "center");
+      UI.fitText(g, O.nameOf(r.id) + (me ? " (나)" : ""), x + 56, y + 24, 230, 15, me ? "#ff9ad8" : "#fff");
+      RD.text(g, Math.round(r.v).toLocaleString(), x + 424, y + 24, 16, "#ffd34d", "right");
+    });
+    RD.text(g, "테스트 모드 기록은 랭킹에 올라가지 않아요", 480, 516, 11, "#8a7aa8", "center");
+  }
+
+  function drawMarket(O) {
+    if (!O.db) { RD.text(g, "거래소는 로그인이 필요해요", 480, 300, 16, "#ff8a8a", "center"); return; }
+    if (testMode) { RD.text(g, "테스트 모드에서는 거래할 수 없어요 (진짜 진행 상황 보호)", 480, 300, 15, "#ffd34d", "center"); return; }
+    O.watchMarket(onSold);
+    // 왼쪽: 팔고 있는 물건
+    RD.text(g, `판매 중 ${O.market.rows.length}개`, 32, 128, 14, "#9fffb0");
+    const rows = O.market.rows.slice(0, 8);
+    if (O.market.loaded && !rows.length) RD.text(g, "지금 팔고 있는 물건이 없어요", 260, 300, 13, "#9a8ab8", "center");
+    rows.forEach((r, i) => {
+      const y = 142 + i * 46, mine = r.seller === O.me, gv = r.give || {};
+      g.fillStyle = mine ? "#2f2a50" : "#2b2140"; g.fillRect(28, y, 480, 40);
+      const col = gv.kind === "item" ? UI.gradeCol(gv.grade) : UI.gradeCol((RD.CHARACTERS.find((c) => c.id === gv.id) || {}).grade);
+      UI.iconBox(g, 34, y + 6, 28, gv.kind === "item" ? RD.GEAR[gv.base].icon : "up", col);
+      UI.fitText(g, tradeLabel(gv), 72, y + 13, 230, 12, col);
+      UI.fitText(g, (mine ? "내 판매" : O.nameOf(r.seller)), 72, y + 30, 230, 10, "#b9add0");
+      RD.text(g, `${r.price}`, 382, y + 20, 14, "#ffd34d", "right");
+      UI.icon(g, "coin", 386, y + 12, 16, "#ffd34d");
+      if (mine) button(414, y + 5, 88, 30, "취소", async () => { const d = await O.cancelTrade(r.id); if (d) { giveToMe(d.give); hubMsg("판매를 취소하고 돌려받았어요"); } }, "#5a4a78");
+      else button(414, y + 5, 88, 30, "구매", async () => {
+        if (coins < r.price) { hubMsg("코인이 모자라요"); return; }
+        if (!O.canWrite) { hubMsg("참여 권한이 있어야 살 수 있어요"); return; }
+        const res = await O.buyTrade(r.id);
+        if (!res.ok) { hubMsg(res.why); return; }
+        coins -= r.price; save.set("coins", coins); giveToMe(res.trade.give); hubMsg(`${tradeLabel(res.trade.give)} 구매!`); RD.audio && RD.audio.sfx("coin");
+      }, coins >= r.price ? "#9fffb0" : "#4a3d60");
+    });
+    // 오른쪽: 팔기
+    UI.panel(g, 524, 120, 404, 394, "#1d1428");
+    RD.text(g, "팔기", 540, 140, 15, "#ffd34d");
+    RD.text(g, "장착하지 않은 장비, 2성 이상 캐릭터(1장씩) · 팔리면 코인이 들어온다", 540, 160, 10, "#b9add0");
+    const I = INV();
+    const cands = [...I.items.filter((it) => !equippedBy(it.uid)).map((it) => ({ kind: "item", it })),
+      ...RD.CHARACTERS.filter((c) => (owned[c.id] || 0) - (awak[c.id] ? 1 : 0) >= 2).map((c) => ({ kind: "char", c }))];
+    hub.sellPage = Math.min(hub.sellPage || 0, Math.max(0, Math.ceil(cands.length / 8) - 1));
+    cands.slice(hub.sellPage * 8, hub.sellPage * 8 + 8).forEach((cd, i) => {
+      const x = 540 + (i % 4) * 96, y = 176 + Math.floor(i / 4) * 80, key = cd.kind === "item" ? cd.it.uid : "c:" + cd.c.id, sel = hub.sellPick === key;
+      const col = UI.gradeCol(cd.kind === "item" ? cd.it.grade : cd.c.grade);
+      g.fillStyle = sel ? "#ffd34d" : col; g.fillRect(x - 2, y - 2, 90, 72); g.fillStyle = "#2b2140"; g.fillRect(x, y, 86, 68);
+      UI.iconBox(g, x + 25, y + 6, 36, cd.kind === "item" ? RD.GEAR[cd.it.base].icon : "up", col);
+      UI.fitText(g, cd.kind === "item" ? RD.GEAR[cd.it.base].name + (cd.it.lv ? " +" + cd.it.lv : "") : cd.c.name, x + 43, y + 54, 80, 10, "#fff", "center");
+      buttons.push({ x, y, w: 86, h: 68, onClick: () => { hub.sellPick = key; } });
+    });
+    if (!cands.length) RD.text(g, "팔 수 있는 물건이 없어요", 726, 250, 12, "#9a8ab8", "center");
+    if (cands.length > 8) { button(540, 340, 50, 24, "◀", () => { hub.sellPage = Math.max(0, hub.sellPage - 1); }, "#3d2f5a"); button(864, 340, 50, 24, "▶", () => { hub.sellPage++; }, "#3d2f5a"); }
+    const pick = cands.find((cd) => (cd.kind === "item" ? cd.it.uid : "c:" + cd.c.id) === hub.sellPick);
+    RD.text(g, pick ? (pick.kind === "item" ? tradeLabel({ kind: "item", ...pick.it }) : tradeLabel({ kind: "char", id: pick.c.id })) : "팔 물건을 골라 주세요", 540, 386, 12, pick ? "#fff" : "#8a7aa8");
+    [100, 300, 1000, 3000].forEach((price, i) => button(540 + i * 96, 404, 88, 40, `${price}`, async () => {
+      if (!pick) return;
+      if (!O.canWrite) { hubMsg("참여 권한이 있어야 팔 수 있어요"); return; }
+      let give;
+      if (pick.kind === "item") { give = { kind: "item", base: pick.it.base, grade: pick.it.grade, lv: pick.it.lv }; I.items = I.items.filter((x) => x.uid !== pick.it.uid); saveInv(); }
+      else { give = { kind: "char", id: pick.c.id }; owned[pick.c.id]--; save.set("owned", owned); }
+      hub.sellPick = null;
+      const id = await O.postTrade(give, price);
+      if (id) hubMsg(`${tradeLabel(give)} 를 ${price} 코인에 올렸어요`); else { giveToMe(give); hubMsg("올리지 못해서 돌려받았어요"); }
+    }, pick ? "#ffd34d" : "#4a3d60"));
+    RD.text(g, "가격을 누르면 바로 올라가요 · 내 판매는 왼쪽에서 취소", 540, 466, 10, "#8a7aa8");
+    const sold = O.market.mine.filter((r) => r.status === "sold").length;
+    RD.text(g, `지금까지 팔린 물건 ${sold}개`, 540, 490, 11, "#9fffb0");
+  }
+
+  function drawParty(O) {
+    if (!O.room) { RD.text(g, "파티는 실시간 연결이 필요해요 (로그인)", 480, 300, 16, "#ff8a8a", "center"); return; }
+    if (!party) {
+      button(40, 124, 260, 60, "파티 만들기", createParty, "#7fe6ff");
+      RD.text(g, "파티장이 고른 모드로 함께 출격 · 인원이 많을수록 적이 단단해지고 보상이 커진다", 320, 154, 12, "#b9add0");
+      RD.text(g, "지금 열린 파티", 40, 210, 14, "#ffd34d");
+      const list = O.openParties();
+      if (!list.length) RD.text(g, "열린 파티가 없어요. 직접 만들어 보세요!", 480, 320, 13, "#9a8ab8", "center");
+      list.slice(0, 6).forEach((pt, i) => {
+        const y = 226 + i * 48;
+        g.fillStyle = "#2b2140"; g.fillRect(36, y, 888, 42);
+        if (pt.by) O.resolveNames([pt.by]);
+        RD.text(g, `${pt.by ? O.nameOf(pt.by) : "파티장"} 의 파티`, 52, y + 21, 14, "#fff");
+        RD.text(g, `${(RD.MODES[pt.mode] || {}).name || ""} · ${pt.n || 1}명`, 420, y + 21, 12, "#cfc6e0");
+        button(800, y + 5, 116, 32, "들어가기", () => joinParty(pt.code), "#7fe6ff");
+      });
+      return;
+    }
+    const peers = party.st.peers.filter((p) => p.kind === "viewer");
+    O.resolveNames(peers.map((p) => p.by).filter(Boolean));
+    RD.text(g, `파티 ${party.code}${party.host ? " (내가 파티장)" : ""}`, 40, 134, 18, "#7fe6ff");
+    const n = party.n;
+    RD.text(g, `${n}명 · 적 체력 +${30 * (n - 1)}% · 적 공격 +${12 * (n - 1)}% · 점수 +${10 * (n - 1)}% · 코인 +${15 * (n - 1)}%`, 40, 160, 12, "#ffd34d");
+    peers.slice(0, 8).forEach((p, i) => {
+      const x = 40 + (i % 4) * 222, y = 186 + Math.floor(i / 4) * 130, ch = RD.CHARACTERS.find((c) => c.id === (p.presence && p.presence.ch)) || RD.CHARACTERS[0];
+      g.fillStyle = p.sameTab ? "#3a2050" : "#2b2140"; g.fillRect(x, y, 210, 120);
+      UI.portrait(g, ch, x + 6, y + 6, 80, 108);
+      UI.fitText(g, (p.by ? O.nameOf(p.by) : "플레이어") + (p.sameTab ? " (나)" : ""), x + 96, y + 26, 108, 13, "#fff");
+      UI.fitText(g, ch.name, x + 96, y + 48, 108, 11, "#cfc6e0");
+      if (p.presence && p.presence.host) UI.chip(g, x + 96, y + 66, 60, 16, "#ffd34d", "파티장", 10);
+      if (p.presence && p.presence.inGame) UI.chip(g, x + 96, y + 90, 60, 16, "#9fffb0", "게임 중", 10);
+    });
+    if (party.host) button(40, 452, 300, 60, `파티로 출격 (${RD.MODES[mode].name})`, partyStart, "#ff8a3d");
+    else RD.text(g, "파티장이 출격하면 함께 시작해요", 190, 482, 14, "#9fffb0", "center");
+    button(700, 452, 220, 60, "파티 나가기", leaveParty, "#5a4a78");
   }
 
   // ---------- 가방 (장비) ----------
@@ -886,27 +1169,52 @@
   }
 
   // ---------- 결투 매칭 ----------
+  function cancelMatch() {
+    if (RD.online) RD.online.duelStop();
+    if (match && match.net) match.net.room.leave().catch(() => {});
+    match = null; scene = "select";
+  }
   function drawMatch(dt) {
     menuBackdrop();
     match.t += dt;
-    const S = RD.DUEL.searchTime, me = RD.CHARACTERS[selected], rv = RD.CHARACTERS.find((c) => c.id === match.rival);
+    const O = RD.online;
+    // 온라인 상대 찾기 (최대 10초)
+    if (match.online && !match.partner) {
+      const p = O.findDuelPartner();
+      if (p) {
+        match.partner = p; // 상대도 나를 찾을 수 있게, 방에서 만날 때까지 찾는 표시는 그대로 둔다
+        match.rival = RD.DUEL.ai[p.info.ch] ? p.info.ch : match.rival;
+        match.name = "온라인 상대"; match.arena = RD.RAID_BOSSES[(p.room.length) % RD.RAID_BOSSES.length][0];
+        if (p.by) O.resolveNames([p.by]).then(() => { if (match) match.name = O.nameOf(p.by); });
+        O.joinRoom(p.room).then((st) => { if (match) { match.net = st; } else if (st) st.room.leave(); });
+      }
+    }
+    if (match.net && !match.stopped && (match.net.peers.length >= 2 || match.t > 15)) { match.stopped = true; O.duelStop(); }
+    if (match.online && match.partner && !match.net && match.t > 20) { match.partner = null; match.online = false; } // 방에 못 들어가면 AI 로
+    // 둘 다 방에 들어오면 VS 화면으로
+    if (match.net && !match.vs && match.net.peers.filter((pp) => pp.kind === "viewer").length >= 2) { match.vs = true; match.t = Math.max(match.t, RD.DUEL.searchTime + 1.6 - 0.01); }
+    if (match.net && !match.vs && match.t > 25) { match.vs = true; match.t = RD.DUEL.searchTime + 1.6; } // 상대가 안 들어와도 시작 (기권승)
+    const S = match.online && !match.partner ? 10 : match.partner && !match.vs ? 1e9 : RD.DUEL.searchTime;
+    if (match.online && !match.partner && match.t >= S) { O.duelStop(); match.online = false; match.t = RD.DUEL.searchTime; }
+    const me = RD.CHARACTERS[selected], rv = RD.CHARACTERS.find((c) => c.id === match.rival);
     if (match.t < S + 1.6) {
       // 상대 찾는 중 → 없으면 AI
       UI.panel(g, 230, 120, 500, 300, "#231a36");
       const ai = match.t >= S;
-      RD.text(g, ai ? "대전 상대를 찾지 못했어요" : "대전 상대를 찾는 중", 480, 170, 22, ai ? "#ff8a8a" : "#fff", "center");
+      RD.text(g, match.partner ? "상대를 찾았어요! 연결하는 중" : ai ? "대전 상대를 찾지 못했어요" : "대전 상대를 찾는 중", 480, 170, 22, match.partner ? "#9fffb0" : ai ? "#ff8a8a" : "#fff", "center");
       if (!ai) {
         for (let i = 0; i < 8; i++) {
           const a = match.t * 4 + (i / 8) * Math.PI * 2, on = i === Math.floor(match.t * 8) % 8;
           g.fillStyle = on ? "#ff5ad8" : "#3d2f5a"; g.fillRect(480 + Math.cos(a) * 46 - 6, 270 + Math.sin(a) * 46 - 6, 12, 12);
         }
-        RD.text(g, `${Math.floor(match.t)}초 · 트로피 ${trophy} 근처 상대`, 480, 350, 13, "#b9add0", "center");
+        RD.text(g, match.online ? `${Math.floor(match.t)}초 · 지금 접속 ${O.onlineCount()}명 중 상대 찾기` : `${Math.floor(match.t)}초 · 트로피 ${trophy} 근처 상대`, 480, 350, 13, "#b9add0", "center");
+        if (!match.online) RD.text(g, "온라인에 연결되지 않아 AI 라이벌만 찾아요", 480, 376, 11, "#8a7aa8", "center");
       } else {
         UI.iconBox(g, 448, 222, 64, "gear", "#ff5ad8");
         RD.text(g, "AI 라이벌과 매칭합니다", 480, 330, 18, "#ffd34d", "center");
         RD.text(g, `실력 Lv.${match.aiLv}`, 480, 356, 13, "#b9add0", "center");
       }
-      button(390, 440, 180, 56, "매칭 취소", () => { match = null; scene = "select"; }, "#5a4a78");
+      button(390, 440, 180, 56, "매칭 취소", cancelMatch, "#5a4a78");
       return;
     }
     // VS 화면
@@ -918,7 +1226,7 @@
     UI.panel(g, 540 + (1 - k) * 400, 80, 380, 360, "#231a36");
     UI.portrait(g, rv, 550 + (1 - k) * 400, 90, 360, 260);
     UI.fitText(g, match.name, 730 + (1 - k) * 400, 372, 340, 22, "#ff8a8a", "center");
-    UI.fitText(g, `${rv.name} · AI 실력 Lv.${match.aiLv}`, 730 + (1 - k) * 400, 404, 340, 14, "#fff", "center");
+    UI.fitText(g, match.net ? `${rv.name} · 온라인 대전` : `${rv.name} · AI 실력 Lv.${match.aiLv}`, 730 + (1 - k) * 400, 404, 340, 14, "#fff", "center");
     RD.text(g, "VS", 480, 260, 64 * (0.6 + 0.4 * k), "#ff5ad8", "center");
     if (match.t > S + 3.8) { match.go = true; startRun(); }
   }
@@ -1411,6 +1719,7 @@
       RD.audio.music(track);
     }
 
+    partyTick(dt);
     if (scene === "loading") {
       g.fillStyle = "#120c1c";
       g.fillRect(0, 0, C.width, C.height);
@@ -1433,6 +1742,8 @@
       drawMissions();
     } else if (scene === "bag") {
       drawBag();
+    } else if (scene === "online") {
+      drawOnline(dt);
     } else if (scene === "dex") {
       drawDex();
     } else if (scene === "match") {
@@ -1459,7 +1770,7 @@
     if (run.raid) { run.brawlAttack(null); return; } // 세로 화면의 버튼 = 자동 조준 공격
     if (action === "bomb") run.bomb();
   };
-  RD.debugState = () => ({ scene, run, coins, owned, pity });
+  RD.debugState = () => ({ scene, run, coins, owned, pity, match });
   RD.debugGacha = (c) => { coins = c; scene = "gacha"; };
   RD.startRun = (i) => { selected = i; startRun(); };
 })();
