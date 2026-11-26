@@ -64,7 +64,8 @@
       this.parry = RD.FOX_PARRY.max; // 여우 베기 게이지 (탄을 벨 수 있는 횟수)
       this.shield = 0; // 고양이 마력 보호막 충전 시간
       this.charId = charId;
-      this.char = RD.CHARACTERS.find((c) => c.id === charId);
+      this.awak = !!opts.awakened;
+      this.char = this.awak ? RD.awakenedChar(charId) : RD.CHARACTERS.find((c) => c.id === charId);
       this.mode = mode;
       this.diff = diff;
       this.D = RD.DIFFICULTY[diff];
@@ -101,7 +102,8 @@
       this.tech = { pts: (this.mpas ? 2 : 0) + (charId === "mech" && this.stars >= 6 ? 1 : 0), has: {} }; // 메카 테크트리 (숙련 패시브: 2점으로 시작)
       this.techOpen = false; this.techSel = null;
       this.mega = false; this.megaPow = 0; this.roars = []; // 개구리 메가 프로그
-      this.player = { vx: 0, vy: 0, x: 160, y: 260, hp: (RD.CHAR_HP[charId] || C.maxHp) * (1 + this.mastHp + RD.GACHA.starHpPct * (this.stars - 1)), gulp: 0, invuln: C.respawnInvuln, hurt: 0, dead: 0, animT: 0, shotCd: 0, tilt: 0 };
+      this.player = { vx: 0, vy: 0, x: 160, y: 260, hp: (RD.CHAR_HP[charId] || C.maxHp) * (1 + this.mastHp + RD.GACHA.starHpPct * (this.stars - 1) + (opts.awakened ? RD.AWAKEN.hpBonus : 0)), gulp: 0, invuln: C.respawnInvuln, hurt: 0, dead: 0, animT: 0, shotCd: 0, tilt: 0 };
+      if (this.mech && this.awak) { this.mech.evo = 1; this.tech.has.mk2 = true; } // 메가 메카닉: Mk.II로 시작
       if (this.mech) this.mech.hp = this.mechMax;
       this.pet = { x: 100, y: 260, t: 0, cd: 0 };
       this.sub = { missile: 1, laser: 2, rear: 0.5, lightning: 1.5, laserOn: 0 };
@@ -175,8 +177,8 @@
     // ---------- 능력치 (강화 단계에서 계산) ----------
     lv(id) { return this.up[id] || 0; }
     get power() { return 1 + this.lv("multi"); }
-    get dmgMul() { return (1 + 0.2 * this.lv("dmg")) * (1 + RD.GACHA.starDmg * (this.stars - 1)) * (1 + this.megaPow) * (1 + this.mastDmg); }
-    get maxHp() { return ((RD.CHAR_HP[this.charId] || C.maxHp) * (1 + this.mastHp + RD.GACHA.starHpPct * (this.stars - 1)) + 25 * this.lv("hp")) * (this.mega ? RD.MEGA_FROG.hpMul : 1); }
+    get dmgMul() { return (1 + 0.2 * this.lv("dmg")) * (1 + RD.GACHA.starDmg * (this.stars - 1)) * (1 + this.megaPow) * (1 + this.mastDmg) * (this.awak ? 1 + RD.AWAKEN.dmgBonus : 1); }
+    get maxHp() { return ((RD.CHAR_HP[this.charId] || C.maxHp) * (1 + this.mastHp + RD.GACHA.starHpPct * (this.stars - 1) + (this.awak ? RD.AWAKEN.hpBonus : 0)) + 25 * this.lv("hp")) * (this.mega ? RD.MEGA_FROG.hpMul : 1); }
     get shieldEvery() { return this.mpas && this.charId === "cat" ? 6 : RD.CAT_SHIELD.every; }
     get armor() { return (1 - 0.15 * this.lv("armor")) * (this.mpas && this.charId === "bear" ? 0.9 : 1); }
     get mechMax() { return RD.MECH.hp[this.mech.evo] * (1 + 0.15 * this.lv("hp")) * (this.tech.has.plate ? 1.3 : 1) * (this.st(2) ? 1.15 : 1); }
@@ -964,6 +966,85 @@
       RD.audio && RD.audio.sfx("shot_" + this.charId);
 
       switch (s.kind) {
+        // ---------- 각성 공격 ----------
+        case "a_crescent": {
+          // 검성 여우: 초승달 검기 (적을 꿰뚫고 적 탄을 벤다)
+          // 가장 가까운 앞쪽 적을 향해 날린다
+          let aim = 0, bd = 1e9;
+          for (const e of this.enemies) { if (e.dead || e.delay > 0 || e.x < p.x + 20 || e.x > C.width) continue; const d = Math.hypot(e.x - p.x, e.y - p.y); if (d < bd) { bd = d; aim = Math.max(-0.7, Math.min(0.7, Math.atan2(e.y - p.y, e.x - p.x))); } }
+          const n = pw + 1;
+          for (let i = 0; i < n; i++) { const a = aim + (i - (n - 1) / 2) * 0.16; this.addShot({ kind: "wave", main: true, x: p.x + 30, y: p.y, vx: Math.cos(a) * 900, vy: Math.sin(a) * 900, w: 30, h: 96 * (1 + 0.2 * sig), dmg, pierce: 99, cutB: 2 + sig, color: s.color }); }
+          break;
+        }
+        case "a_shuriken": {
+          // 그림자 토끼: 따라가는 표창, 맞으면 다음 적에게 튕긴다
+          for (let i = 0; i < pw; i++) this.addShot({ kind: "shuriken", main: true, x: p.x + 24, y: p.y + (i - (pw - 1) / 2) * 16, vx: 820, vy: (i - (pw - 1) / 2) * 90, w: 22, h: 22, dmg, pierce: 0, homing: true, chain: 2 + Math.floor(sig / 2), color: s.color });
+          break;
+        }
+        case "a_quake": {
+          // 대지의 곰: 지진파 (세로줄 전체를 훑는다)
+          for (let i = 0; i < Math.min(2, pw); i++) this.addShot({ kind: "quake", main: true, x: p.x + 40 + i * 70, y: C.groundY / 2, vx: 520 + i * 60, vy: 0, w: 46 + 10 * pw, h: C.groundY, dmg: dmg * (1 + 0.25 * (pw - 1)), pierce: 99, tick: new Map(), color: s.color });
+          this.shake = Math.max(this.shake, 0.12);
+          break;
+        }
+        case "a_chain": {
+          // 뇌제 부엉이: 연쇄 번개 (탄도 지운다)
+          const hit = new Set(); let from = { x: p.x + 20, y: p.y };
+          for (let k = 0; k < 2 + pw + sig; k++) {
+            let best = null, bd = k === 0 ? 700 : 220;
+            for (const e of this.enemies) { if (e.dead || e.delay > 0 || e.x > C.width || hit.has(e)) continue; const d = Math.hypot(e.x - from.x, e.y - from.y); if (d < bd) { bd = d; best = e; } }
+            if (!best) break;
+            hit.add(best);
+            this.effects.push({ type: "zap", x: from.x, y: from.y, x2: best.x, y2: best.y, t: 0, life: 0.18, color: s.color });
+            this.damage(best, dmg * (k === 0 ? 1.4 : 1), true);
+            this.bullets = this.bullets.filter((b) => b.boss || Math.hypot(b.x - best.x, b.y - best.y) > 50);
+            from = best;
+          }
+          break;
+        }
+        case "a_blackhole": {
+          // 별의 대마법사: 작은 블랙홀
+          // 적이 많은 쪽을 향해 천천히 날아간다
+          const tg = this.enemies.filter((e) => !e.dead && !(e.delay > 0) && e.x > p.x && e.x < C.width).sort((a, b) => Math.hypot(a.x - p.x, a.y - p.y) - Math.hypot(b.x - p.x, b.y - p.y));
+          for (let i = 0; i < pw; i++) {
+            const t = tg[i % Math.max(1, tg.length)], a = t ? Math.atan2(t.y - p.y, t.x - p.x) : (i - (pw - 1) / 2) * 0.3;
+            this.addShot({ kind: "blackhole", main: true, x: p.x + 40, y: p.y, vx: Math.cos(a) * 380, vy: Math.sin(a) * 380, w: 56, h: 56, dmg, pierce: 99, life: 1.9 + 0.2 * sig, tick: new Map(), color: s.color });
+          }
+          break;
+        }
+        case "a_vine": {
+          // 숲의 왕 판다: 덩굴 채찍 (줄 위의 적을 모두 때린다)
+          let aim = 0, bd = 1e9;
+          for (const e of this.enemies) { if (e.dead || e.delay > 0 || e.x < p.x + 20 || e.x > C.width) continue; const d = Math.hypot(e.x - p.x, e.y - p.y); if (d < bd) { bd = d; aim = Math.max(-0.6, Math.min(0.6, Math.atan2(e.y - p.y, e.x - p.x))); } }
+          const len = 430 + 30 * sig;
+          for (let i = 0; i < pw; i++) {
+            const a = aim + (i - (pw - 1) / 2) * 0.22, cs = Math.cos(a), sn = Math.sin(a);
+            this.effects.push({ type: "vine", x: p.x + 16, y: p.y, ang: a, len, t: 0, life: 0.25 });
+            for (const e of this.enemies) {
+              if (e.dead || e.delay > 0) continue;
+              const dx = e.x - p.x, dy = e.y - p.y, al = dx * cs + dy * sn;
+              if (al > 0 && al < len && Math.abs(-dx * sn + dy * cs) < 22 + RD.ENEMIES[e.type].h / 2) this.damage(e, dmg, true);
+            }
+          }
+          break;
+        }
+        case "a_souls": {
+          // 판다 네크로맨서: 망자의 해골 (쓰러뜨린 적은 망령이 되어 다른 적을 덮친다)
+          for (let i = 0; i <= pw; i++) { const a = (i - pw / 2) * 0.3; this.addShot({ kind: "skull", main: true, x: p.x + 20, y: p.y, vx: Math.cos(a) * 600, vy: Math.sin(a) * 600, w: 18, h: 18, dmg, pierce: 0, homing: true, raise: true, color: s.color }); }
+          break;
+        }
+        case "a_swarm": {
+          // 메가 메카닉: 마이크로 미사일 군단
+          const n = 2 + pw + (this.mechOn ? this.mech.evo : 0);
+          for (let i = 0; i < n; i++) { const a = -0.9 + (i / Math.max(1, n - 1)) * 1.8; this.addShot({ kind: "missile", main: true, x: p.x + 20, y: p.y - 4, vx: Math.cos(a) * 420, vy: Math.sin(a) * 420, w: 14, h: 8, dmg, pierce: 0, homing: true, small: true, color: s.color }); }
+          break;
+        }
+        case "a_cards": {
+          // 각성 개구리 광대: 폭죽 카드 마술
+          const n = 2 + pw;
+          for (let i = 0; i < n; i++) { const a = (i - (n - 1) / 2) * 0.28; this.addShot({ kind: "card", main: true, x: p.x + 20, y: p.y, vx: Math.cos(a) * 640, vy: Math.sin(a) * 640, w: 16, h: 22, dmg, pierce: 0, homing: true, burst: 55 + 10 * sig, color: s.color }); }
+          break;
+        }
         case "slash": {
           // 여우: 앞쪽을 벤다. 파워 3부터 위아래 두 번
           const r = s.range * s.multi[pw - 1] * (this.st(2) ? 1.15 : 1);
@@ -1245,6 +1326,18 @@
 
     // 주무기가 적에게 맞았을 때 (토끼 급소, 고양이 분열)
     mainHit(s, e, spawned) {
+      if (s.raise) {
+        // 해골에 쓰러진 적 → 망령
+        const left = e.hp - s.dmg * (this.ult ? 1 : (RD.ENEMIES[e.type].armor || 1));
+        if (left <= 0 && !RD.ENEMIES[e.type].boss) spawned.push({ kind: "ghost", x: e.x, y: e.y, vx: -100, vy: -200, w: 26, h: 26, dmg: s.dmg * 1.5, pierce: 2, homing: true, hit: [e], t: 0, color: "#d8c0ff" });
+      }
+      if (s.burst) { this.explode(s.x, s.y, s.burst, s.dmg * 0.8); this.effects.push({ type: "confetti", x: s.x, y: s.y, t: 0, life: 0.5 }); }
+      if (s.chain > 0) {
+        // 표창: 다음 적에게 튕긴다
+        let best = null, bd = 260;
+        for (const o of this.enemies) { if (o === e || o.dead || o.delay > 0 || s.hit.includes(o)) continue; const d = Math.hypot(o.x - s.x, o.y - s.y); if (d < bd) { bd = d; best = o; } }
+        if (best) { const a = Math.atan2(best.y - s.y, best.x - s.x); spawned.push({ ...s, hit: [...s.hit, e], t: 0, x: s.x, y: s.y, vx: Math.cos(a) * 900, vy: Math.sin(a) * 900, chain: s.chain - 1, dmg: s.dmg * 0.85 }); }
+      }
       if (s.brawl) {
         let dmg = s.dmg;
         if (s.crit && Math.random() < s.crit) { dmg *= 3; this.effects.push({ type: "text", x: e.x, y: e.y - 30, text: "급소!", color: "#ffd34d", t: 0, life: 0.4, size: 14 }); }
@@ -1292,7 +1385,7 @@
       this.summons.length = n;
       if (!n) return;
       const cdMul = 1 / (1 + 0.25 * sig) * (this.raid ? 1 - Math.min(0.5, this.bst("reload")) : 1);
-      const base = (this.raid ? 7 : 3.6) * this.dmgMul * (1 + 0.2 * sig) * (this.raid ? 1 + this.bst("dmg") : 1) * (this.st(2) ? 1.15 : 1);
+      const base = (this.raid ? 7 : 3.6) * this.dmgMul * (1 + 0.2 * sig) * (this.raid ? 1 + this.bst("dmg") : 1) * (this.st(2) ? 1.15 : 1) * (this.awak ? 1.25 : 1);
       const live = this.enemies.filter((e) => !e.dead && !(e.delay > 0) && e.x < C.width - 10 && e.x > 0 && e.y > 0 && e.y < C.height);
       const minY = 60, maxY = this.raid ? C.height - 40 : C.groundY - 20;
       this.summons.forEach((m, i) => {
@@ -1954,6 +2047,30 @@
           continue;
         }
 
+        if (s.kind === "quake") {
+          // 지진파: 세로줄 전체를 훑으며 지나간다 (적마다 한 번)
+          s.x += s.vx * dt;
+          for (const e of this.enemies) { if (!live(e) || s.tick.has(e) || Math.abs(e.x - s.x) > s.w / 2 + RD.ENEMIES[e.type].w / 2) continue; s.tick.set(e, 1); this.damage(e, s.dmg, true); }
+          continue;
+        }
+        if (s.kind === "blackhole") {
+          // 블랙홀: 적과 탄을 끌어당기고, 끝나면 터진다
+          s.x += s.vx * dt; s.y += s.vy * dt; if (s.x > C.width - 30) s.t = Math.max(s.t, s.life);
+          const R = 180;
+          for (const e of this.enemies) {
+            if (!live(e) || RD.ENEMIES[e.type].boss || RD.ENEMIES[e.type].midboss || e.rival) continue;
+            const d = Math.hypot(e.x - s.x, e.y - s.y);
+            if (d < R) { e.x += (s.x - e.x) * Math.min(1, dt * 2.5); e.y += (s.y - e.y) * Math.min(1, dt * 2.5); }
+          }
+          for (const e of this.enemies) { if (!live(e) || Math.hypot(e.x - s.x, e.y - s.y) > 80 + RD.ENEMIES[e.type].w / 2) continue; const last = s.tick.get(e) || -1; if (s.t - last >= 0.15) { s.tick.set(e, s.t); this.damage(e, s.dmg, true); } }
+          this.bullets = this.bullets.filter((b) => b.boss || Math.hypot(b.x - s.x, b.y - s.y) > 110);
+          if (s.t > s.life) { s.gone = true; this.explode(s.x, s.y, 160, s.dmg * 8); this.effects.push({ type: "ring", x: s.x, y: s.y, t: 0, life: 0.4 }); }
+          continue;
+        }
+        if (s.cutB) {
+          // 검기: 닿은 적 탄을 벤다 (보스 탄 제외)
+          this.bullets = this.bullets.filter((b) => { if (s.cutB <= 0 || b.boss || Math.abs(b.x - s.x) > s.w / 2 + b.r || Math.abs(b.y - s.y) > s.h / 2 + b.r) return true; s.cutB--; this.effects.push({ type: "pop", x: b.x, y: b.y, t: 0, life: 0.2 }); return false; });
+        }
         if (s.homing) {
           let best = null, bd = 1e9;
           for (const e of this.enemies) {

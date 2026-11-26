@@ -244,7 +244,33 @@
     for (const s of run.shots) {
       g.save();
       g.translate(Math.round(s.x), Math.round(s.y));
-      if (s.kind === "wave") {
+      if (s.kind === "skull" || s.kind === "ghost") {
+        // 망자의 해골 / 망령
+        if (s.kind === "ghost") { g.globalAlpha = 0.75; g.fillStyle = "rgba(216,192,255,0.35)"; g.beginPath(); g.arc(0, 0, 18, 0, Math.PI * 2); g.fill(); P(-8, -10, 16, 18, "#e8dcff"); P(-8, 6, 4, 6, "#e8dcff"); P(0, 6, 4, 8, "#e8dcff"); P(-5, -4, 3, 4, "#3a2058"); P(2, -4, 3, 4, "#3a2058"); g.globalAlpha = 1; }
+        else { g.fillStyle = "rgba(176,122,255,0.35)"; g.beginPath(); g.arc(0, 0, 14, 0, Math.PI * 2); g.fill(); P(-7, -8, 14, 12, "#f0eadc"); P(-5, 4, 10, 4, "#f0eadc"); P(-5, -4, 4, 4, "#5a2a8a"); P(1, -4, 4, 4, "#5a2a8a"); P(-2, 4, 1, 3, "#5a2a8a"); P(1, 4, 1, 3, "#5a2a8a"); }
+      } else if (s.kind === "shuriken") {
+        // 그림자 표창
+        g.rotate(s.t * 20);
+        g.fillStyle = "rgba(154,122,255,0.35)"; g.beginPath(); g.arc(0, 0, 15, 0, Math.PI * 2); g.fill();
+        for (let k = 0; k < 4; k++) { g.rotate(Math.PI / 2); P(-3, -13, 6, 13, "#3a2d58"); P(-2, -12, 4, 10, s.color); }
+        P(-4, -4, 8, 8, "#e8e0ff");
+      } else if (s.kind === "quake") {
+        // 대지 가르기: 땅에서 솟는 바위와 흙먼지 기둥
+        g.translate(0, -s.y);
+        const w = s.w;
+        g.fillStyle = "rgba(216,160,96,0.18)"; g.fillRect(-w / 2, 0, w, C.groundY);
+        for (let k = 0; k < 5; k++) { const hh = 30 + ((k * 37 + Math.floor(s.t * 30)) % 40); P(-w / 2 + k * (w / 5), C.groundY - hh, w / 5 - 2, hh, k % 2 ? "#8a6a40" : "#b08850"); P(-w / 2 + k * (w / 5), C.groundY - hh, w / 5 - 2, 4, "#e8c890"); }
+        for (let k = 0; k < 6; k++) P(-w / 2 + Math.random() * w, C.groundY - 40 - Math.random() * 200, 5, 5, "rgba(232,200,144,0.7)");
+      } else if (s.kind === "blackhole") {
+        // 작은 블랙홀
+        const k = Math.min(1, s.t * 4);
+        g.rotate(s.t * 5);
+        g.strokeStyle = "rgba(197,138,255,0.5)"; g.lineWidth = 3;
+        for (let r = 0; r < 3; r++) { g.beginPath(); g.arc(0, 0, (40 + r * 16) * k, r, r + 4.2); g.stroke(); }
+        g.fillStyle = "#c58aff"; g.beginPath(); g.arc(0, 0, 24 * k, 0, Math.PI * 2); g.fill();
+        g.fillStyle = "#1a0f2a"; g.beginPath(); g.arc(0, 0, 18 * k, 0, Math.PI * 2); g.fill();
+        g.fillStyle = "#fff"; g.fillRect(-2, -2, 4, 4);
+      } else if (s.kind === "wave") {
         // 여우: 초승달 검기
         const h = s.h / 2;
         g.fillStyle = "rgba(191,228,255,0.3)";
@@ -560,7 +586,9 @@
       const spr = hasPic ? apic : RD.getMonsterFrame(A.sprite, f, false, "ally");
       const h = hasPic ? A.picH : spr.height * A.scale, w = hasPic ? spr.width * h / spr.height : spr.width * A.scale;
       g.save();
-      g.fillStyle = "rgba(159,255,176,0.22)"; g.beginPath(); g.ellipse(m.x, m.y + h * 0.3, w * 0.35, 6, 0, 0, Math.PI * 2); g.fill();
+      const necro = run.awak && run.charId === "panda"; // 네크로맨서: 언데드 정령
+      g.fillStyle = necro ? "rgba(140,80,220,0.35)" : "rgba(159,255,176,0.22)"; g.beginPath(); g.ellipse(m.x, m.y + h * 0.3, w * 0.35, 6, 0, 0, Math.PI * 2); g.fill();
+      if (necro) { g.fillStyle = `rgba(120,60,200,${0.25 + Math.sin(m.anim * 5) * 0.1})`; g.beginPath(); g.arc(m.x, m.y, Math.max(w, h) * 0.55, 0, Math.PI * 2); g.fill(); }
       g.translate(Math.round(m.x), 0);
       if (hasPic ? m.face < 0 : m.face > 0) g.scale(-1, 1); // 그림 정령은 오른쪽, 도트 몬스터는 왼쪽을 본다
       g.imageSmoothingEnabled = !!hasPic;
@@ -699,6 +727,13 @@
       g.globalAlpha = 0.12 * (1 - k); g.fillStyle = "#9fff6a"; g.beginPath(); g.arc(p.x, p.y, rad, 0, Math.PI * 2); g.fill();
       g.restore();
     }
+    if (run.awak && p.dead <= 0) {
+      // 각성 오라
+      const col = RD.AWAKEN.forms[run.charId].color, a = 0.25 + Math.sin(run.t * 4) * 0.1;
+      g.save(); g.globalAlpha = a; g.strokeStyle = col; g.lineWidth = 3;
+      for (let i = 0; i < 6; i++) { const an = run.t * 2 + (i / 6) * Math.PI * 2; g.beginPath(); g.arc(p.x, p.y - 6, 46, an, an + 0.5); g.stroke(); }
+      g.restore();
+    }
     if (run.mega) {
       const gl = g.createRadialGradient(p.x, p.y, 10, p.x, p.y, 70);
       gl.addColorStop(0, "rgba(159,255,106,0.35)"); gl.addColorStop(1, "rgba(159,255,106,0)");
@@ -820,6 +855,23 @@
         const cur = e.ang - e.arc + (e.arc * 2) * Math.min(1, k * 1.6);
         g.beginPath(); g.arc(e.x, e.y, e.range * 0.92, e.ang - e.arc, cur); g.stroke();
         g.restore();
+      } else if (e.type === "zap") {
+        // 연쇄 번개
+        g.strokeStyle = e.color || "#9fe8ff"; g.globalAlpha = 1 - k; g.lineWidth = 5;
+        g.beginPath(); g.moveTo(e.x, e.y);
+        const n = 6;
+        for (let i = 1; i < n; i++) { const t = i / n; g.lineTo(e.x + (e.x2 - e.x) * t + (Math.random() - 0.5) * 22, e.y + (e.y2 - e.y) * t + (Math.random() - 0.5) * 22); }
+        g.lineTo(e.x2, e.y2); g.stroke();
+        g.strokeStyle = "#fff"; g.lineWidth = 2; g.stroke(); g.globalAlpha = 1;
+      } else if (e.type === "vine") {
+        // 덩굴 채찍
+        g.save(); g.translate(e.x, e.y); g.rotate(e.ang); g.globalAlpha = 1 - k * 0.8;
+        const L = e.len * Math.min(1, k * 4 + 0.3);
+        g.strokeStyle = "#3a7a30"; g.lineWidth = 12; g.beginPath(); g.moveTo(0, 0);
+        for (let x = 20; x <= L; x += 20) g.lineTo(x, Math.sin(x / 30 + e.t * 20) * 8);
+        g.stroke(); g.strokeStyle = "#9fffb0"; g.lineWidth = 5; g.stroke();
+        for (let x = 40; x < L; x += 60) { g.fillStyle = "#5fcf6a"; g.fillRect(x, Math.sin(x / 30) * 8 - 10, 10, 6); }
+        g.restore(); g.globalAlpha = 1;
       } else if (e.type === "bolt") {
         // 번개: 하늘에서 지그재그로 떨어진다
         g.strokeStyle = `rgba(200,240,255,${1 - k})`;

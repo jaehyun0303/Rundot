@@ -39,8 +39,15 @@
   let pity = save.get("pity", 0);
   // 테스트 모드: 켜 두면 모든 캐릭터와 지역이 열리고 뽑기가 무료 (진짜 진행 상황은 건드리지 않는다)
   let testMode = !!save.get("testMode", false);
-  const starsOf = (id) => (testMode ? Math.max(1, owned[id] || 0) : owned[id] || 0);
-  const isOwned = (i) => starsOf(RD.CHARACTERS[i].id) > 0;
+  // 각성: 왕별(6성)에서 각성하면 성급이 0성부터 다시 (owned 값 1 = 0성)
+  let awak = save.get("awak", {}), stones = save.get("stones", 0);
+  const testAwak = {}; // 테스트 모드 각성은 저장하지 않는다
+  const awakOf = (id) => (testMode ? !!(testAwak[id] || awak[id]) : !!awak[id]);
+  const rawOf = (id) => (testMode ? Math.max(1, owned[id] || 0) : owned[id] || 0);
+  const starsOf = (id) => Math.max(0, rawOf(id) - (awakOf(id) ? 1 : 0)); // 0성~5성, 6 = 왕별
+  const isOwned = (i) => rawOf(RD.CHARACTERS[i].id) > 0;
+  const dispChar = (i) => (awakOf(RD.CHARACTERS[i].id) ? RD.awakenedChar(RD.CHARACTERS[i].id) : RD.CHARACTERS[i]);
+  const starName = (n) => (n >= 6 ? "왕별" : `${n}성`);
   let selected = save.get("char", 0);
   if (!RD.CHARACTERS[selected] || !isOwned(selected)) selected = 0;
   let gachaResult = null; // 뽑기 결과 연출
@@ -151,7 +158,7 @@
       scene = "match";
       return;
     }
-    run = new RD.Run(id, mode, diff, { stars: starsOf(id) || 1, mastery: mlv(id), stage: mode === "stageselect" ? pickStage : 0, raidBoss: RD.RAID_BOSSES[raidPick][0], raidLv: raidLv[RD.RAID_BOSSES[raidPick][0]] || 1,
+    run = new RD.Run(id, mode, diff, { stars: Math.max(1, starsOf(id)), awakened: awakOf(id), mastery: mlv(id), stage: mode === "stageselect" ? pickStage : 0, raidBoss: RD.RAID_BOSSES[raidPick][0], raidLv: raidLv[RD.RAID_BOSSES[raidPick][0]] || 1,
       duel: match && match.go ? { rival: match.rival, aiLv: match.aiLv, name: match.name, arena: match.arena } : null });
     if (mode === "duel") match = null;
     RD.playerTitle = titleOf(RD.CHARACTERS[selected]);
@@ -180,6 +187,10 @@
     // 일일 미션
     if (!run.isAdv) run.missionDone = missionAdd((m, d) => d.stat(run, m));
     else run.missionDone = missionAdd((m, d) => (m.id === "runs" ? 1 : m.id === "char" && run.charId === m.ch ? 1 : 0));
+    // 각성석: 보스 처치, 레이드 성공, 결투 승리
+    const AS = RD.AWAKEN.sources;
+    run.stones = (run.bossKills || 0) * AS.boss + (run.raid && !run.duel && run.win ? AS.raidWin : 0) + (run.duel && run.win ? AS.duelWin : 0);
+    if (run.stones) { stones += run.stones; save.set("stones", stones); }
     // 숙련도: 처치 + 점수 + 버틴 시간 + 승리
     const xp = Math.round((run.kills || 0) + (run.score || 0) / 500 + (run.t || 0) / 10 + (run.win ? 100 : 0));
     run.mastery = { xp, ...addMastery(run.charId || RD.CHARACTERS[selected].id, xp) };
@@ -203,16 +214,17 @@
     const pool = RD.CHARACTERS.filter((c) => c.grade === grade);
     const ch = pool[Math.floor(Math.random() * pool.length)];
     let kind;
+    const maxRaw = G.maxStars + (awak[ch.id] ? 1 : 0);
     if (!owned[ch.id]) { owned[ch.id] = 1; kind = "new"; }
-    else if (owned[ch.id] < G.maxStars) { owned[ch.id]++; kind = "star"; }
-    else { coins += 50; kind = "refund"; }
-    return { ch, grade, kind, stars: owned[ch.id] };
+    else if (owned[ch.id] < maxRaw) { owned[ch.id]++; kind = "star"; }
+    else { coins += 50; stones += RD.AWAKEN.sources.kingDup; kind = "refund"; } // 왕별 이후 중복: 코인 + 각성석
+    return { ch, grade, kind, stars: owned[ch.id] - (awak[ch.id] ? 1 : 0) };
   }
 
   function gacha(n) {
     const cost = testMode ? 0 : n === 10 ? G.cost10 : G.cost1;
     if (coins < cost) return;
-    const backup = testMode ? { owned: { ...owned }, coins, pity } : null;
+    const backup = testMode ? { owned: { ...owned }, coins, pity, stones } : null;
     coins -= cost;
     const list = [];
     for (let i = 0; i < n; i++) list.push(rollOne(false));
@@ -225,7 +237,7 @@
       pity = Math.max(0, pity - 1);
       list.push(rollOne(true));
     }
-    if (backup) { owned = backup.owned; coins = backup.coins; pity = backup.pity; } // 테스트 모드: 결과만 보여 준다
+    if (backup) { owned = backup.owned; coins = backup.coins; pity = backup.pity; stones = backup.stones; } // 테스트 모드: 결과만 보여 준다
     save.set("owned", owned);
     save.set("coins", coins);
     save.set("pity", pity);
@@ -538,7 +550,7 @@
   // 메인 로비
   function drawSelect() {
     menuBackdrop();
-    const D = RD.DIFFICULTY[diff], ch = RD.CHARACTERS[selected];
+    const D = RD.DIFFICULTY[diff], ch = dispChar(selected);
     // 왼쪽 위: 로고, 보유, 코인
     UI.panel(g, 16, 14, 312, 132);
     RD.text(g, "RUNDOT", 30, 48, 42, "#ffd34d");
@@ -594,7 +606,8 @@
     UI.stars(g, 390, 394, starsOf(ch.id), G.maxStars, 1.6);
     const ml = mlv(ch.id), tt = titleOf(ch);
     UI.chip(g, 524, 394, 50, 16, ml >= 10 ? "#ffd34d" : "#7fe6ff", `숙련 ${ml}`, 10);
-    if (tt) UI.fitText(g, tt, 494 - 30, 340 - 0, 260, 12, ml >= 10 ? "#ffd34d" : "#9fffb0", "center");
+    const tline = [ch.awakened ? `[${ch.epithet}]` : null, tt].filter(Boolean).join(" · ");
+    if (tline) UI.fitText(g, tline, 494 - 30, 340 - 0, 280, 12, ch.awakened ? "#ff9ad8" : ml >= 10 ? "#ffd34d" : "#9fffb0", "center");
     buttons.push({ x: 344, y: 14, w: 300, h: 406, onClick: () => { scene = "chars"; } });
     // 오른쪽 위: 소리, 테스트 모드
     const tbx = C.width - 106;
@@ -665,11 +678,12 @@
     UI.iconBox(g, 46, y + 20, 56, "chest", all ? "#ff8a3d" : "#5a4a70");
     RD.text(g, "미션 3개 모두 받기 보너스", 124, y + 34, 18, "#fff");
     RD.text(g, "매일 밤 12시에 새 미션 3개가 나온다", 124, y + 62, 12, "#b9add0");
-    RD.text(g, `+${RD.MISSION_BONUS}`, 700, y + 46, 16, "#ffd34d");
+    RD.text(g, `+${RD.MISSION_BONUS}`, 700, y + 38, 16, "#ffd34d");
+    RD.text(g, `각성석 +${RD.AWAKEN.sources.missionBonus}`, 700, y + 60, 11, "#ff9ad8");
     if (missions.bonus) UI.chip(g, 770, y + 26, 140, 44, "#3d2f5a", "받음", 15, "#9a8ab8");
     else button(770, y + 24, 140, 48, all ? "보너스 받기" : "잠김", () => {
       if (!all || missions.bonus) return;
-      missions.bonus = true; coins += RD.MISSION_BONUS; save.set("coins", coins); save.set("missions", missions); RD.audio && RD.audio.sfx("clear");
+      missions.bonus = true; coins += RD.MISSION_BONUS; stones += RD.AWAKEN.sources.missionBonus; save.set("stones", stones); save.set("coins", coins); save.set("missions", missions); RD.audio && RD.audio.sfx("clear");
     }, all ? "#ff8a3d" : "#4a3d60");
   }
 
@@ -782,24 +796,71 @@
   }
 
   // 성급 보상 창 (캐릭터 화면에서 별을 누르면)
-  let starPopup = false;
-  function drawStarPopup(ch) {
-    const st = starsOf(ch.id), T = RD.STAR_TRAITS[ch.id] || {};
-    buttons = [];
-    g.fillStyle = "rgba(10,6,20,0.8)"; g.fillRect(0, 0, C.width, C.height);
-    UI.panel(g, 150, 50, 660, 440, "#231a36");
-    RD.text(g, `${ch.name} 성급`, 172, 82, 22, "#ffd34d");
-    RD.text(g, "같은 캐릭터를 또 뽑으면 성급이 오른다 · '각성'은 앞으로 나올 다른 시스템", 172, 108, 12, "#b9add0");
-    for (let n = 1; n <= G.maxStars; n++) {
-      const y = 132 + (n - 1) * 54, on = st >= n;
-      g.fillStyle = on ? "#2f2550" : "#1d1428"; g.fillRect(172, y, 616, 46);
-      UI.stars(g, 182, y + 16, n, n, 1.4);
-      RD.text(g, `공격력 +${Math.round(G.starDmg * (n - 1) * 100)}% · 체력 +${Math.round(G.starHpPct * (n - 1) * 100)}%`, 300, y + 15, 12, on ? "#fff" : "#7a6a90");
-      if (T[n]) { UI.chip(g, 300, y + 26, 34, 15, on ? "#ffd34d" : "#4a3d60", "특성", 9, on ? "#1d1622" : "#9a8ab8"); UI.fitText(g, T[n], 342, y + 34, 440, 12, on ? "#9fffb0" : "#7a6a90"); }
-      else RD.text(g, n === 1 ? "기본" : "-", 300, y + 34, 11, "#6a5a80");
-      if (on && n === st) UI.chip(g, 712, y + 12, 66, 20, "#7fe6ff", "지금", 11);
+  let starPopup = false, awakenFx = null;
+  function awakenNow(c) {
+    const need = RD.AWAKEN.stones[c.grade];
+    if (testMode) { testAwak[c.id] = true; }
+    else {
+      if (starsOf(c.id) < 6 || awak[c.id] || stones < need || coins < RD.AWAKEN.coins) return;
+      stones -= need; coins -= RD.AWAKEN.coins;
+      awak[c.id] = true; owned[c.id] = 1; // 성급은 0성부터 다시
+      save.set("awak", awak); save.set("owned", owned); save.set("stones", stones); save.set("coins", coins);
     }
-    button(380, 462 - 10, 200, 40, "닫기", () => { starPopup = false; }, "#5a4a78");
+    starPopup = false;
+    awakenFx = { t: 0, id: c.id };
+    RD.audio && RD.audio.sfx("levelup");
+  }
+  function drawStarPopup(ch0) {
+    const base = RD.CHARACTERS.find((c) => c.id === ch0.id), st = starsOf(base.id), T = RD.STAR_TRAITS[base.id] || {}, aw = awakOf(base.id);
+    buttons = [];
+    g.fillStyle = "rgba(10,6,20,0.82)"; g.fillRect(0, 0, C.width, C.height);
+    UI.panel(g, 120, 24, 720, 492, "#231a36");
+    RD.text(g, `${ch0.name} 성급`, 142, 52, 22, "#ffd34d");
+    RD.text(g, aw ? "각성한 캐릭터 · 성급을 0성부터 다시 올린다" : "같은 캐릭터를 또 뽑으면 성급이 오른다 · 왕별(6성)이면 각성 가능", 142, 76, 12, "#b9add0");
+    UI.chip(g, 712, 40, 112, 22, "#ff9ad8", `각성석 ${stones}`, 12);
+    for (let n = 1; n <= G.maxStars; n++) {
+      const y = 92 + (n - 1) * 44, on = st >= n;
+      g.fillStyle = on ? "#2f2550" : "#1d1428"; g.fillRect(142, y, 676, 38);
+      UI.stars(g, 152, y + 12, n, n, 1.3);
+      RD.text(g, starName(n), 262, y + 19, 12, n >= 6 ? "#ff5ad8" : "#ffd34d");
+      RD.text(g, `공격력 +${Math.round(G.starDmg * (n - 1) * 100)}% · 체력 +${Math.round(G.starHpPct * (n - 1) * 100)}%`, 318, y + 11, 11, on ? "#fff" : "#7a6a90");
+      if (T[n]) { UI.chip(g, 318, y + 21, 30, 13, on ? "#ffd34d" : "#4a3d60", "특성", 8, on ? "#1d1622" : "#9a8ab8"); UI.fitText(g, T[n], 354, y + 28, 440, 11, on ? "#9fffb0" : "#7a6a90"); }
+      if (on && n === st) UI.chip(g, 756, y + 9, 54, 18, "#7fe6ff", "지금", 10);
+    }
+    // 각성
+    const ay = 362, F = RD.AWAKEN.forms[base.id], need = RD.AWAKEN.stones[base.grade];
+    UI.panel(g, 142, ay, 676, 94, aw ? "#3a2050" : "#2b1d3a", "#ff5ad8");
+    RD.text(g, aw ? "각성 완료" : "캐릭터 각성", 156, ay + 18, 15, "#ff5ad8");
+    UI.fitText(g, `${F.name} [${F.epithet}] · ${F.shot}: ${F.desc}`, 156, ay + 42, 640, 12, "#fff");
+    if (aw) RD.text(g, "공격 방식이 바뀌고 체력·공격력 +20%. 성급은 0성부터 다시 올린다", 156, ay + 70, 12, "#b9add0");
+    else {
+      const ok1 = st >= 6, ok2 = stones >= need, ok3 = coins >= RD.AWAKEN.coins, can = testMode || (ok1 && ok2 && ok3);
+      RD.text(g, `왕별 ${ok1 ? "✓" : `(지금 ${starName(st)})`}`, 156, ay + 70, 12, ok1 ? "#9fffb0" : "#ff8a8a");
+      RD.text(g, `각성석 ${stones}/${need}`, 290, ay + 70, 12, ok2 ? "#9fffb0" : "#ff8a8a");
+      RD.text(g, `코인 ${RD.AWAKEN.coins}`, 420, ay + 70, 12, ok3 ? "#9fffb0" : "#ff8a8a");
+      button(640, ay + 46, 164, 40, testMode ? "각성 (테스트)" : "각성하기", () => { if (can) awakenNow(base); }, can ? "#ff5ad8" : "#4a3d60");
+    }
+    button(380, 466, 200, 40, "닫기", () => { starPopup = false; }, "#5a4a78");
+  }
+  // 각성 연출
+  function drawAwakenFx(dt) {
+    awakenFx.t += dt;
+    const t = awakenFx.t, c = RD.awakenedChar(awakenFx.id), F = RD.AWAKEN.forms[awakenFx.id];
+    buttons = [{ x: 0, y: 0, w: C.width, h: C.height, onClick: () => { if (t > 1) awakenFx = null; } }];
+    g.fillStyle = `rgba(10,6,20,${Math.min(0.92, t * 2)})`; g.fillRect(0, 0, C.width, C.height);
+    g.save(); g.translate(C.width / 2, 250);
+    for (let i = 0; i < 16; i++) { g.rotate(Math.PI / 8 + t * 0.01); g.fillStyle = `rgba(255,90,216,${0.08 * Math.min(1, t)})`; g.beginPath(); g.moveTo(0, 0); g.lineTo(600, -50); g.lineTo(600, 50); g.fill(); }
+    g.restore();
+    const k = Math.min(1, t * 1.5);
+    if (t < 0.4) { g.fillStyle = `rgba(255,255,255,${1 - t / 0.4})`; g.fillRect(0, 0, C.width, C.height); }
+    UI.panel(g, C.width / 2 - 170, 70 + (1 - k) * 40, 340, 260, "#1d1428", F.color);
+    UI.portrait(g, c, C.width / 2 - 164, 76 + (1 - k) * 40, 328, 248);
+    RD.text(g, "각성!", C.width / 2, 372, 40, "#ff5ad8", "center");
+    RD.text(g, `${c.name}`, C.width / 2, 414, 26, "#fff", "center");
+    RD.text(g, `[${c.epithet}]`, C.width / 2, 446, 16, F.color, "center");
+    RD.text(g, `새 공격: ${F.shot}`, C.width / 2, 476, 13, "#cfc6e0", "center");
+    if (t > 1) RD.text(g, "화면을 누르면 닫힘", C.width / 2, 508, 11, "#9a8ab8", "center");
+    if (t > 6) awakenFx = null;
   }
 
   // 캐릭터 선택과 상세
@@ -821,18 +882,23 @@
       if (!own) { g.fillStyle = "rgba(10,6,20,0.7)"; g.fillRect(x + 6, y + 6, cw - 12, 100); UI.icon(g, "lock", x + cw / 2 - 12, y + 30, 24, "#fff"); UI.chip(g, x + 10, y + 70, cw - 20, 18, "#c58aff", "뽑기로 얻기", 10, "#fff"); }
       UI.chip(g, x + cw - 40, y + 2, 36, 16, gc, RD.GRADES[c.grade].name, 10);
       if (sel) UI.chip(g, x - 2, y - 2, 34, 16, "#ffd34d", "선택", 10);
-      UI.fitText(g, c.name, x + cw / 2, y + 124, cw - 8, 14, own ? "#fff" : "#9a8ab8", "center");
+      const dc = dispChar(i);
+      UI.fitText(g, dc.name, x + cw / 2, y + 124, cw - 8, 14, own ? (dc.awakened ? "#ff9ad8" : "#fff") : "#9a8ab8", "center");
+      if (dc.awakened) UI.chip(g, x + 4, y + 86, 40, 16, "#ff5ad8", "각성", 10, "#fff");
+      else if (own && starsOf(c.id) >= 6) UI.chip(g, x + 4, y + 86, 60, 16, "#ffd34d", "각성 가능", 9);
       const st = starsOf(c.id);
       UI.stars(g, x + (cw - G.maxStars * 13) / 2, y + 140, st, G.maxStars, 1.4);
+      if (own) RD.text(g, starName(st), x + cw / 2, y + 158, 10, st >= 6 ? "#ff5ad8" : "#b9add0", "center");
       buttons.push({ x, y, w: cw, h: chh, onClick: () => { selected = i; if (own) save.set("char", i); } });
     });
     // 상세
-    const ch = RD.CHARACTERS[selected], own = isOwned(selected);
+    const ch = dispChar(selected), own = isOwned(selected);
     UI.panel(g, 16, 250, 928, 278, "#231a36");
     UI.panel(g, 28, 262, 180, 254, "#1d1428");
     UI.portrait(g, ch, 31, 265, 174, 248, Math.floor(menuT * 8) % 4);
     UI.fitText(g, ch.name, 224, 282, 200, 24, "#fff");
     UI.chip(g, 432, 270, 50, 22, UI.gradeCol(ch.grade), RD.GRADES[ch.grade].name, 12);
+    if (ch.awakened) RD.text(g, `[${ch.epithet}]`, 224, 302, 11, "#ff9ad8");
     UI.chip(g, 490, 270, 60, 22, "#3d2f5a", ch.type, 12, "#fff");
     UI.stars(g, 560, 273, starsOf(ch.id), G.maxStars, 1.6);
     buttons.push({ x: 556, y: 266, w: 80, h: 26, onClick: () => { starPopup = true; } });
@@ -1052,7 +1118,7 @@
       if (r.kind === "new") UI.chip(g, x + cw / 2 - 24, y + ch * 0.82, 48, 20, gc, RD.GRADES[r.grade].name, 11);
       else {
         UI.chip(g, x + cw / 2 - 52, y + ch * 0.82, 40, 20, gc, RD.GRADES[r.grade].name, 10);
-        UI.chip(g, x + cw / 2 - 6, y + ch * 0.82, 58, 20, "#3d2f5a", r.kind === "star" ? `성급 ★${r.stars}` : "코인 +50", 10, "#ffd34d");
+        UI.chip(g, x + cw / 2 - 6, y + ch * 0.82, 58, 20, "#3d2f5a", r.kind === "star" ? (r.stars >= 6 ? "왕별!" : `${r.stars}성`) : "코인+각성석", 10, "#ffd34d");
       }
       if (r.kind === "new") UI.chip(g, x + cw - 56, y - 10, 52, 18, "#ff4d5e", "NEW!", 11, "#fff");
     });
@@ -1135,6 +1201,7 @@
     if (run.duel) rewards.push(["star", "트로피", `${run.trophyGain > 0 ? "+" : ""}${run.trophyGain} → ${trophy}`, run.trophyGain > 0 ? "#ffd34d" : "#ff8a8a"]);
     else if (run.raid) rewards.push(["sword", "레이드 레벨업", run.win ? `Lv.${run.raid.lv} → Lv.${run.raid.lv + 1}` : "클리어 시 획득", run.win ? "#ffd34d" : "#6a5a80"]);
     if (run.mastery) rewards.push(["up", run.mastery.after > run.mastery.before ? `숙련 Lv.${run.mastery.after} 달성!` : `숙련도 Lv.${run.mastery.after}`, `+${run.mastery.xp}`, run.mastery.after > run.mastery.before ? "#9fffb0" : "#fff"]);
+    if (run.stones) rewards.push(["star", "각성석", `+${run.stones} (보유 ${stones})`, "#ff9ad8"]);
     if (run.missionDone || run.dexNew) rewards.push(["flag", run.missionDone ? `미션 완료 ${run.missionDone}개` : "도감 새 등록", run.dexNew ? `도감 +${run.dexNew}` : "로비에서 받기", "#ffd34d"]);
     if (rewards.length > 4) rewards.splice(1, 1); // 칸이 모자라면 보유 코인 줄을 뺀다
     rewards.slice(0, 4).forEach(([ic, k, v, col], i) => {
@@ -1219,7 +1286,8 @@
       drawResult();
     } else if (scene === "chars") {
       drawChars();
-      if (starPopup) drawStarPopup(RD.CHARACTERS[selected]);
+      if (starPopup) drawStarPopup(dispChar(selected));
+      if (awakenFx) drawAwakenFx(dt);
     } else if (scene === "missions") {
       drawMissions();
     } else if (scene === "dex") {

@@ -187,3 +187,23 @@ Generate an image: 16-bit pixel art sprite sheet for a retro arcade shoot 'em up
 ```
 A dramatic fantasy storybook illustration of Mega Frog, the awakened form of a mythic frog clown jester, standing on a broken circus stage in a dark magical forest at night: a huge muscular deep-green frog king with glowing yellow eyes, a heavy golden crown, a torn pink, yellow and cyan jester cape, golden bells on the wrists, roaring with a giant wide mouth, green sound-wave rings and scattered playing cards around, a strong green and rainbow aura. Soft watercolor and digital painting style, full body, front three-quarter view, centered.
 ```
+
+## 4. 각성 캐릭터 (Gemini)
+
+각성하면 외형이 조금 달라진다. 기존 그림과 같은 캐릭터임을 알아볼 수 있게, 기존 프롬프트에 각성 요소만 더한다.
+스프라이트는 player_<id>_awake, 일러스트는 illust_<id>_awake 로 이름 붙여 보내 주면 연결한다.
+
+### 극장의 개구리 [극장의 지배자] (player_frog_awake)
+```
+Generate an image: 16-bit pixel art player character sprite sheet for a retro arcade side-scrolling shoot 'em up. The Theater Frog, ruler of the stage: the same bright green frog clown with big bulging eyes and red clown nose, now wearing a deep crimson ringmaster tailcoat with gold buttons and epaulettes, a tall black top hat with a gold band, a white ruffled collar, holding a golden cane, glowing magic playing cards floating around, a small red velvet curtain cape. Flying in a theatrical side view, facing right. 4 frames in a single horizontal row, each in an equal-sized square cell, evenly spaced: 1) flying with a bow, cards circling, 2) flying, cape lifted, 3) flinging a fan of glowing cards forward with the cane, 4) hurt, flinching backward, top hat tilted. Same size and same position in every frame. Chibi proportions, bold dark 1-pixel outline, limited 16-color palette, flat shading, no anti-aliasing, crisp hard pixel edges. Solid flat pure magenta (#FF00FF) background filling the whole image, no checkerboard, no shadow, no ground, no text, no frame borders.
+```
+
+### 슈퍼 사이보그 다람쥐 [강철의 심장] (player_mech_awake)
+```
+Generate an image: 16-bit pixel art player character sprite sheet for a retro arcade side-scrolling shoot 'em up. Super Cyborg Squirrel: the same small orange squirrel with a huge fluffy tail, now a cyborg with a glowing red mechanical eye, a chrome robotic arm, a glowing orange reactor heart in the chest, steel shoulder armor and micro missile launchers on the back, riding on top of a sleek orange-and-steel battle mech. Side view facing right. 4 frames in a single horizontal row, each in an equal-sized square cell, evenly spaced: 1) hovering, thrusters on, 2) hovering, legs stretched, 3) launching a swarm of tiny missiles forward, 4) damaged, sparks and smoke. Same size and same position in every frame. Chunky proportions, bold dark 1-pixel outline, limited 16-color palette, flat shading, no anti-aliasing, crisp hard pixel edges. Solid flat pure magenta (#FF00FF) background filling the whole image, no checkerboard, no shadow, no ground, no text, no frame borders.
+```
+
+### 판다 네크로맨서 [잔혹한 흑마법사] (player_panda_awake)
+```
+Generate an image: 16-bit pixel art player character sprite sheet for a retro arcade side-scrolling shoot 'em up. Panda Necromancer: the same small panda, now with glowing purple eyes, a tattered dark purple hooded robe with bone ornaments, a staff topped with a glowing skull, purple ghost wisps and small floating skulls around. Flying in a dynamic side view, facing right. 4 frames in a single horizontal row, each in an equal-sized square cell, evenly spaced: 1) flying, robe streaming back, 2) flying, robe lifted, 3) casting a glowing purple skull forward from the staff, 4) hurt, flinching backward with eyes shut. Same size and same position in every frame. Chibi proportions, bold dark 1-pixel outline, limited 16-color palette, flat shading, no anti-aliasing, crisp hard pixel edges. Solid flat pure magenta (#FF00FF) background filling the whole image, no checkerboard, no shadow, no ground, no text, no frame borders.
+```

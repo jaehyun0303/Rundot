@@ -370,7 +370,7 @@ RD.GACHA = {
   startCoins: 600, // 처음 시작할 때 주는 코인
   pity: 50, // 이 횟수 안에 전설이 안 나오면 다음에 전설 확정
   rates: { MY: 0.006, SSR: 0.025, SR: 0.08, R: 0.22 }, // 나머지는 일반
-  maxStars: 6, // 같은 캐릭터가 또 나오면 성급 (별 +1). ※ '각성'은 나중에 따로 넣을 시스템 이름
+  maxStars: 6, // 같은 캐릭터가 또 나오면 성급 +1: 1성~5성, 6성 = 왕별 (왕별이면 각성 가능)
   starDmg: 0.06, // 성급 별 하나당 공격력 +6%
   starHpPct: 0.08, // 성급 별 하나당 기본 체력 +8%
   starHp: 0, // (예전 방식: 별 하나당 체력 +6 → 지금은 starHpPct)
@@ -506,6 +506,32 @@ RD.STAR_TRAITS = {
   panda: { 2: "아군 정령 위력 +15%", 4: "쓰러진 정령이 40% 빨리 돌아온다", 6: "정령왕이 2초 더 머문다" },
   mech: { 2: "메카 체력 +15%", 4: "메카 재조립 시간 -20%", 6: "테크 포인트 1점을 더 갖고 시작" },
   frog: { 2: "익살꾼의 운 +5% (30%)", 4: "저글링 공이 한 번 더 튕긴다", 6: "메가 프로그로 변신하면 보호막 60" },
+};
+
+// ---------- 캐릭터 각성 ----------
+// 왕별(6성)을 찍은 캐릭터만 각성할 수 있다. 각성하면 이름(이명)과 공격이 완전히 바뀌고, 성급은 0성부터 다시 시작
+RD.AWAKEN = {
+  stones: { C: 10, R: 15, SR: 20, SSR: 30, MY: 40 }, // 필요한 각성석 (등급별)
+  coins: 500,
+  hpBonus: 0.2, dmgBonus: 0.2, // 각성 기본 보너스
+  // 각성석 얻는 곳
+  sources: { boss: 1, raidWin: 3, duelWin: 1, missionBonus: 2, kingDup: 1 },
+  forms: {
+    fox: { name: "검성 여우", epithet: "천 개의 칼날", color: "#bfe4ff", kind: "a_crescent", cd: 0.24, dmg: 4.2, shot: "천검 검기", desc: "베지 않고 초승달 검기를 날린다. 검기는 적을 꿰뚫고 적 탄을 벤다" },
+    rabbit: { name: "그림자 토끼", epithet: "밤의 사냥꾼", color: "#9a7aff", kind: "a_shuriken", cd: 0.28, dmg: 2.3, shot: "그림자 표창", desc: "적을 따라가는 표창. 맞히면 다음 적에게 튕겨 간다 (2번)" },
+    bear: { name: "대지의 곰", epithet: "산을 가르는 자", color: "#d8a060", kind: "a_quake", cd: 0.65, dmg: 7, shot: "대지 가르기", desc: "땅을 내리쳐 지진파를 보낸다. 지진파가 지나가는 세로줄의 모든 적을 때린다" },
+    owl: { name: "뇌제 부엉이", epithet: "폭풍의 눈", color: "#9fe8ff", kind: "a_chain", cd: 0.55, dmg: 4.2, shot: "연쇄 번개", desc: "가장 가까운 적에게 번개를 떨어뜨리고, 근처 적들에게 이어진다" },
+    cat: { name: "별의 대마법사", epithet: "밤하늘의 주인", color: "#c58aff", kind: "a_blackhole", cd: 0.6, dmg: 3.4, shot: "작은 블랙홀", desc: "천천히 나아가며 적과 탄을 빨아들이는 블랙홀. 끝나면 크게 터진다" },
+    panda: { name: "판다 네크로맨서", epithet: "잔혹한 흑마법사", color: "#b07aff", kind: "a_souls", cd: 0.4, dmg: 2.8, shot: "망자의 해골", desc: "적을 쫓는 해골을 날린다. 해골에 쓰러진 적은 망령이 되어 다른 적을 덮친다. 아군 정령은 언데드가 되어 위력 +25%" },
+    mech: { name: "슈퍼 사이보그 다람쥐", epithet: "강철의 심장", color: "#ffb347", kind: "a_swarm", cd: 0.34, dmg: 1.5, shot: "강철 심장 미사일", desc: "몸에 단 발사대에서 작은 유도 미사일을 한꺼번에 쏜다. Mk.II 메카를 타고 시작한다" },
+    frog: { name: "극장의 개구리", epithet: "극장의 지배자", color: "#ff5ad8", kind: "a_cards", cd: 0.38, dmg: 2.2, shot: "극장 카드 쇼", desc: "적을 따라가는 마술 카드를 부채꼴로 던진다. 맞으면 폭죽처럼 터진다" },
+  },
+};
+// 각성한 캐릭터 정보 (이름, 공격이 바뀐 사본)
+RD.awakenedChar = (id) => {
+  const c = RD.CHARACTERS.find((x) => x.id === id), F = RD.AWAKEN.forms[id];
+  return { ...c, name: F.name, epithet: F.epithet, awakened: true, desc: F.desc,
+    shot: { ...c.shot, name: F.shot, kind: F.kind, cd: F.cd, dmg: F.dmg, color: F.color, multiDesc: (lv) => `${F.shot} 강화 ${lv} → ${lv + 1}` } };
 };
 
 // 캐릭터마다 다른 기본 체력

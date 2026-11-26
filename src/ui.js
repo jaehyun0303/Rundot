@@ -59,9 +59,11 @@
   function stars(g, x, y, n, max, px = 2) {
     for (let i = 0; i < max; i++) {
       const on = i < n;
+      const king = i === 5; // 6번째 = 왕별 (분홍빛 왕관 별)
       STAR.forEach((row, yy) => [...row].forEach((v, xx) => {
-        if (v === "1") { g.fillStyle = on ? (yy < 2 ? "#fff3a0" : COL.gold) : "#3a2d48"; g.fillRect(x + i * (7 * px + 3) + xx * px, y + yy * px, px, px); }
+        if (v === "1") { g.fillStyle = on ? (king ? (yy < 2 ? "#ffd0f0" : "#ff5ad8") : yy < 2 ? "#fff3a0" : COL.gold) : "#3a2d48"; g.fillRect(x + i * (7 * px + 3) + xx * px, y + yy * px, px, px); }
       }));
+      if (king && on) { g.fillStyle = "#ffd34d"; g.fillRect(x + i * (7 * px + 3) + 1 * px, y - 2 * px, px, 2 * px); g.fillRect(x + i * (7 * px + 3) + 3 * px, y - 3 * px, px, 3 * px); g.fillRect(x + i * (7 * px + 3) + 5 * px, y - 2 * px, px, 2 * px); }
     }
     return max * (7 * px + 3);
   }
